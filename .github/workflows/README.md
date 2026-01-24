@@ -19,9 +19,17 @@ Déclenchement : À chaque push et pull request
 Déclenchement : À chaque push sur `main`/`master` (sans tag)
 
 **Fonctionnalités :**
-- Build automatique avec version nightly
+- Exécute d'abord toutes les vérifications de la CI (check, fmt, clippy, test)
+- Build automatique avec version nightly **uniquement si la CI passe**
 - Création d'une release pre-release sur GitHub
 - Artefacts : binaire, checksums, archives
+
+**Jobs :**
+- `check` : Vérifie que le code compile
+- `fmt` : Vérifie le formatage du code
+- `clippy` : Analyse statique avec clippy
+- `test` : Exécute les tests
+- `build` : Build le binaire nightly (dépend de tous les jobs ci-dessus)
 
 ### 3. Create Release (`create-release.yml`)
 
@@ -51,6 +59,26 @@ Déclenchement : Automatique lors du push d'un tag `v*.*.*`
 - Création de la release GitHub avec artefacts
 - Mise à jour du CHANGELOG.md dans le dépôt
 
+### 5. Sync Wiki (`sync-wiki.yml`)
+
+Déclenchement : 
+- Automatique lors d'un push sur `main`/`master` si des fichiers dans `wiki/` sont modifiés
+- Automatique si `README.md`, `DEVELOPMENT.md` ou `CHANGELOG.md` sont modifiés
+- Manuel via `workflow_dispatch`
+
+**Fonctionnalités :**
+- Synchronisation automatique des pages du dossier `wiki/` vers le WIKI GitHub
+- Détection des changements et mise à jour uniquement si nécessaire
+- Création automatique de nouvelles pages
+- Commit et push automatiques vers le WIKI
+
+**Prérequis :**
+- Le WIKI doit être activé dans Settings > Features > Wikis du repository
+
+**Utilisation :**
+- Les modifications dans `wiki/` sont automatiquement synchronisées
+- Pour forcer une synchronisation : Actions → Sync Wiki → Run workflow
+
 ## Flux de release
 
 ```
@@ -72,7 +100,17 @@ Déclenchement : Automatique lors du push d'un tag `v*.*.*`
 ## Permissions requises
 
 Les workflows nécessitent les permissions suivantes :
-- `contents: write` : Pour créer des tags et releases
+- `contents: write` : Pour créer des tags, releases et pousser vers le WIKI
 - `pull-requests: read` : Pour lire les informations des PRs
 
 Ces permissions sont configurées dans chaque workflow.
+
+## Notes importantes
+
+### Synchronisation du WIKI
+
+Le workflow `sync-wiki.yml` synchronise automatiquement le contenu du dossier `wiki/` vers le WIKI GitHub. Pour que cela fonctionne :
+
+1. Activez le WIKI dans les paramètres du repository (Settings > Features > Wikis)
+2. Les modifications dans `wiki/` seront automatiquement synchronisées lors d'un push
+3. Le workflow utilise `GITHUB_TOKEN` qui a les permissions nécessaires par défaut
