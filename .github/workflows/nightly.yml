@@ -60,6 +60,10 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
           cat Cargo.toml | grep '^version ='
 
+      - name: Update Cargo.lock
+        run: |
+          cargo update --package repolens
+
       - name: Build release binary
         run: |
           cargo build --release --locked

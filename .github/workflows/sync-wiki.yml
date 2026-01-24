@@ -36,37 +36,53 @@ jobs:
           REPO="${{ github.repository }}"
           WIKI_REPO="${REPO}.wiki"
           
-          # Vérifier si le WIKI existe
-          if git ls-remote "https://github.com/${WIKI_REPO}.git" &>/dev/null; then
+          echo "🔍 Vérification du WIKI: ${WIKI_REPO}"
+          
+          # Vérifier si le WIKI existe en essayant de le cloner
+          if git ls-remote "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${WIKI_REPO}.git" &>/dev/null; then
             echo "wiki_exists=true" >> $GITHUB_OUTPUT
-            echo "✅ WIKI trouvé: ${WIKI_REPO}"
+            echo "✅ WIKI trouvé et accessible: ${WIKI_REPO}"
           else
+            # Le WIKI peut ne pas exister encore ou ne pas être activé
+            # On va quand même essayer de le créer
             echo "wiki_exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️  WIKI non trouvé: ${WIKI_REPO}"
-            echo "⚠️  Activez le WIKI dans Settings > Features > Wikis"
+            echo "⚠️  WIKI non trouvé ou non activé: ${WIKI_REPO}"
+            echo "⚠️  Le workflow va essayer de créer le WIKI"
+            echo "⚠️  Si cela échoue, activez le WIKI dans Settings > Features > Wikis"
           fi
       
-      - name: Cloner le WIKI
-        if: steps.check-wiki.outputs.wiki_exists == 'true'
+      - name: Cloner ou initialiser le WIKI
+        id: setup-wiki
         run: |
           REPO="${{ github.repository }}"
           WIKI_REPO="${REPO}.wiki"
           WIKI_DIR=$(mktemp -d)
           echo "WIKI_DIR=${WIKI_DIR}" >> $GITHUB_ENV
           
-          echo "📥 Clonage du WIKI..."
-          git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${WIKI_REPO}.git" "$WIKI_DIR" || {
-            echo "📝 Initialisation d'un nouveau WIKI..."
+          echo "📥 Tentative de clonage du WIKI..."
+          if git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${WIKI_REPO}.git" "$WIKI_DIR" 2>&1; then
+            echo "✅ WIKI cloné avec succès"
+            echo "wiki_initialized=true" >> $GITHUB_OUTPUT
+          else
+            echo "📝 WIKI vide ou non initialisé, création d'un nouveau dépôt..."
             mkdir -p "$WIKI_DIR"
             cd "$WIKI_DIR"
             git init
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
             git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${WIKI_REPO}.git"
-          }
+            echo "wiki_initialized=false" >> $GITHUB_OUTPUT
+            echo "✅ Dépôt WIKI initialisé localement"
+          fi
+          
+          echo "📂 Dossier WIKI: ${WIKI_DIR}"
+          ls -la "$WIKI_DIR" || echo "Dossier vide"
       
       - name: Synchroniser les pages
-        if: steps.check-wiki.outputs.wiki_exists == 'true'
         run: |
           echo "🔄 Synchronisation des pages..."
+          echo "📂 Pages disponibles dans wiki/:"
+          ls -la wiki/*.md 2>/dev/null || echo "Aucune page trouvée dans wiki/"
           
           UPDATED=0
           CREATED=0
@@ -78,6 +94,7 @@ jobs:
               
               # Ignorer README.md du dossier wiki
               if [ "$page_name" = "README.md" ]; then
+                echo "  ⏭️  Ignoré (README.md du dossier wiki): $page_name"
                 continue
               fi
               
@@ -100,47 +117,90 @@ jobs:
           
           echo "UPDATED=${UPDATED}" >> $GITHUB_ENV
           echo "CREATED=${CREATED}" >> $GITHUB_ENV
+          echo "📊 Résumé: ${CREATED} créée(s), ${UPDATED} mise(s) à jour"
       
       - name: Commit et push les changements
-        if: steps.check-wiki.outputs.wiki_exists == 'true' && (env.UPDATED > 0 || env.CREATED > 0)
+        if: env.UPDATED > 0 || env.CREATED > 0
         run: |
           cd "$WIKI_DIR"
           
+          echo "📋 État du dépôt WIKI:"
+          git status || echo "Dépôt non initialisé"
+          
           # Vérifier s'il y a des changements
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "📝 Commit des changements..."
+          if [ -n "$(git status --porcelain 2>/dev/null)" ] || [ "${{ steps.setup-wiki.outputs.wiki_initialized }}" = "false" ]; then
+            echo "📝 Préparation du commit..."
             git add -A
             
             COMMIT_MSG="🔄 Synchronisation automatique du WIKI
+
+- Mise à jour depuis le dépôt principal
+- Commit source: ${{ github.sha }}
+- Workflow: ${{ github.workflow }}
+- Déclenché par: ${{ github.actor }}
+- Date: $(date -Iseconds)"
             
-            - Mise à jour depuis le dépôt principal
-            - Commit source: ${{ github.sha }}
-            - Workflow: ${{ github.workflow }}
-            - Déclenché par: ${{ github.actor }}
-            - Date: $(date -Iseconds)"
-            
-            git commit -m "$COMMIT_MSG" || exit 0
+            echo "💾 Création du commit..."
+            git commit -m "$COMMIT_MSG" || {
+              echo "⚠️  Échec du commit (peut-être aucun changement réel)"
+              git status
+              exit 0
+            }
             
             # Déterminer la branche par défaut
             DEFAULT_BRANCH="main"
-            if ! git ls-remote --heads origin "$DEFAULT_BRANCH" | grep -q "$DEFAULT_BRANCH"; then
+            echo "🔍 Vérification de la branche par défaut..."
+            
+            # Vérifier quelle branche existe
+            if git ls-remote --heads origin "$DEFAULT_BRANCH" 2>/dev/null | grep -q "$DEFAULT_BRANCH"; then
+              echo "✅ Branche 'main' trouvée"
+            elif git ls-remote --heads origin "master" 2>/dev/null | grep -q "master"; then
               DEFAULT_BRANCH="master"
+              echo "✅ Branche 'master' trouvée"
+            else
+              echo "📝 Aucune branche existante, utilisation de 'main' (premier push)"
             fi
             
-            echo "📤 Push vers GitHub..."
-            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" HEAD:$DEFAULT_BRANCH
+            echo "📤 Push vers GitHub (branche: ${DEFAULT_BRANCH})..."
+            echo "🔗 URL: https://github.com/${{ github.repository }}.wiki.git"
+            
+            # Premier push ou push normal
+            if [ "${{ steps.setup-wiki.outputs.wiki_initialized }}" = "false" ]; then
+              echo "🚀 Premier push du WIKI..."
+              git push -u "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" HEAD:${DEFAULT_BRANCH} 2>&1 || {
+                echo "❌ Échec du push"
+                echo "💡 Vérifiez que:"
+                echo "   1. Le WIKI est activé dans Settings > Features > Wikis"
+                echo "   2. Les permissions sont correctes"
+                echo "   3. Le token GITHUB_TOKEN a les droits nécessaires"
+                exit 1
+              }
+            else
+              git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" HEAD:${DEFAULT_BRANCH} 2>&1 || {
+                echo "❌ Échec du push"
+                exit 1
+              }
+            fi
             
             echo "✅ WIKI synchronisé avec succès!"
-            echo "   - Pages mises à jour: ${UPDATED}"
             echo "   - Pages créées: ${CREATED}"
+            echo "   - Pages mises à jour: ${UPDATED}"
+            echo "   - Branche: ${DEFAULT_BRANCH}"
           else
-            echo "ℹ️  Aucun changement détecté"
+            echo "ℹ️  Aucun changement détecté dans le dépôt WIKI"
           fi
       
-      - name: Avertissement si le WIKI n'est pas activé
-        if: steps.check-wiki.outputs.wiki_exists == 'false'
+      - name: Vérification finale
+        if: always()
         run: |
-          echo "::warning::Le WIKI n'est pas activé pour ce repository"
-          echo "Activez-le dans: Settings > Features > Wikis"
-          echo "Puis relancez ce workflow"
-          exit 0  # Ne pas faire échouer le workflow
+          echo "📊 Résumé de la synchronisation:"
+          echo "   - Pages créées: ${CREATED:-0}"
+          echo "   - Pages mises à jour: ${UPDATED:-0}"
+          
+          if [ "${CREATED:-0}" -eq 0 ] && [ "${UPDATED:-0}" -eq 0 ]; then
+            echo "⚠️  Aucune page n'a été synchronisée"
+            echo "💡 Vérifiez que:"
+            echo "   1. Le dossier wiki/ contient des fichiers .md (sauf README.md)"
+            echo "   2. Le WIKI est activé dans Settings > Features > Wikis"
+            echo "   3. Les fichiers ont bien été modifiés dans le commit"
+          fi
