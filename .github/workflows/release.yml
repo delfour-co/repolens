@@ -3,46 +3,314 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    name: Build
+    name: Build Release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          
+          # Validate version format
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
+            echo "Error: Invalid version format: $VERSION"
+            exit 1
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building release version: ${VERSION}"
+
+      - name: Verify tag exists
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Error: Tag $TAG does not exist"
+            exit 1
+          fi
+          git checkout "$TAG"
+
+      - name: Update version in Cargo.toml
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          cat Cargo.toml | grep '^version ='
+
+      - name: Run tests
+        run: |
+          cargo test --locked --release
 
       - name: Build release binary
-        run: cargo build --release
+        run: |
+          cargo build --release --locked
+          strip target/release/repolens || true
 
-      - name: Upload artifact
+      - name: Get binary info
+        id: binary
+        run: |
+          BINARY_SIZE=$(stat -c%s target/release/repolens)
+          BINARY_HASH=$(sha256sum target/release/repolens | cut -d' ' -f1)
+          
+          echo "size=${BINARY_SIZE}" >> $GITHUB_OUTPUT
+          echo "hash=${BINARY_HASH}" >> $GITHUB_OUTPUT
+          
+          echo "Binary size: ${BINARY_SIZE} bytes"
+          echo "Binary hash: ${BINARY_HASH}"
+
+      - name: Create checksums
+        run: |
+          cd target/release
+          sha256sum repolens > repolens.sha256
+          sha512sum repolens > repolens.sha512
+          md5sum repolens > repolens.md5
+
+      - name: Create archive
+        run: |
+          cd target/release
+          tar czf repolens-linux-x86_64.tar.gz repolens repolens.sha256 repolens.sha512 repolens.md5
+          zip repolens-linux-x86_64.zip repolens repolens.sha256 repolens.sha512 repolens.md5
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: repolens-linux-x86_64
-          path: target/release/repolens
+          name: repolens-release-linux-x86_64
+          path: |
+            target/release/repolens
+            target/release/repolens.sha256
+            target/release/repolens.sha512
+            target/release/repolens.md5
+            target/release/repolens-linux-x86_64.tar.gz
+            target/release/repolens-linux-x86_64.zip
+          retention-days: 90
+
+  changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Get previous tag
+        id: previous_tag
+        run: |
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREVIOUS_TAG" ]; then
+            PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "tag=${PREVIOUS_TAG}" >> $GITHUB_OUTPUT
+          echo "Previous tag: ${PREVIOUS_TAG}"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          chmod +x scripts/generate-changelog.sh
+          
+          # Generate new changelog entry
+          NEW_ENTRY=$(./scripts/generate-changelog.sh ${{ steps.previous_tag.outputs.tag }} ${{ steps.version.outputs.tag }})
+          
+          # Read existing CHANGELOG if it exists
+          if [ -f CHANGELOG.md ]; then
+            # Backup existing CHANGELOG
+            cp CHANGELOG.md CHANGELOG.md.bak
+            
+            # Extract header (first 7 lines)
+            HEADER=$(head -n 7 CHANGELOG.md)
+            
+            # Create new CHANGELOG with header and new entry
+            echo "$HEADER" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "$NEW_ENTRY" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            
+            # Append old entries (skip header and first empty line, keep link references)
+            tail -n +9 CHANGELOG.md.bak >> CHANGELOG.md || true
+          else
+            # Create new CHANGELOG
+            cat > CHANGELOG.md << 'EOF'
+            # Changelog
+            
+            All notable changes to this project will be documented in this file.
+            
+            The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+            and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+            EOF
+            echo "" >> CHANGELOG.md
+            echo "$NEW_ENTRY" >> CHANGELOG.md
+          fi
+          
+          # Store new entry for release notes (escape for GitHub Actions)
+          echo "entry<<EOF" >> $GITHUB_OUTPUT
+          echo "$NEW_ENTRY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Show generated entry
+          echo "Generated changelog entry:"
+          echo "$NEW_ENTRY"
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+          retention-days: 90
 
   release:
-    name: Release
-    needs: build
+    name: Create Release
+    needs: [build, changelog]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: repolens-linux-x86_64
           path: ./artifacts
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: ./changelog
+
+      - name: Read changelog
+        id: changelog_content
+        run: |
+          # Try to get the changelog entry from the changelog job
+          if [ -f "changelog/CHANGELOG.md" ]; then
+            # Extract the latest entry from CHANGELOG (from first ## to next ## or end)
+            CHANGELOG=$(awk '/^## \[/{p=1; if(p) print} p && /^## \[/ && !/^## \[.*\] -/ {exit} p' changelog/CHANGELOG.md | head -n 50)
+          else
+            # Fallback: create a simple changelog entry
+            CHANGELOG="## Release ${{ steps.version.outputs.version }}
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+          fi
+          
+          # Escape for GitHub Actions (multiline)
+          {
+            echo "content<<EOF"
+            echo "$CHANGELOG"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Get binary info
+        id: binary
+        run: |
+          if [ -f "artifacts/repolens-release-linux-x86_64/repolens" ]; then
+            BINARY_SIZE=$(stat -c%s artifacts/repolens-release-linux-x86_64/repolens)
+            BINARY_HASH=$(sha256sum artifacts/repolens-release-linux-x86_64/repolens | cut -d' ' -f1)
+          else
+            BINARY_SIZE="unknown"
+            BINARY_HASH="unknown"
+          fi
+          
+          echo "size=${BINARY_SIZE}" >> $GITHUB_OUTPUT
+          echo "hash=${BINARY_HASH}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ./artifacts/repolens
-          generate_release_notes: true
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ${{ steps.changelog_content.outputs.content }}
+            
+            ---
+            
+            ## Installation
+            
+            ### Download
+            
+            - **Binary:** `repolens`
+            - **Archive (tar.gz):** `repolens-linux-x86_64.tar.gz`
+            - **Archive (zip):** `repolens-linux-x86_64.zip`
+            
+            ### Verify
+            
+            ```bash
+            # SHA256
+            sha256sum -c repolens.sha256
+            
+            # SHA512
+            sha512sum -c repolens.sha512
+            
+            # MD5
+            md5sum -c repolens.md5
+            ```
+            
+            ### Install
+            
+            ```bash
+            # Extract and install
+            tar xzf repolens-linux-x86_64.tar.gz
+            sudo mv repolens /usr/local/bin/
+            
+            # Or from zip
+            unzip repolens-linux-x86_64.zip
+            sudo mv repolens /usr/local/bin/
+            ```
+            
+            ### Binary Information
+            
+            - **Size:** ${{ steps.binary.outputs.size }} bytes
+            - **SHA256:** `${{ steps.binary.outputs.hash }}`
+          files: |
+            artifacts/repolens-release-linux-x86_64/repolens
+            artifacts/repolens-release-linux-x86_64/repolens.sha256
+            artifacts/repolens-release-linux-x86_64/repolens.sha512
+            artifacts/repolens-release-linux-x86_64/repolens.md5
+            artifacts/repolens-release-linux-x86_64/repolens-linux-x86_64.tar.gz
+            artifacts/repolens-release-linux-x86_64/repolens-linux-x86_64.zip
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update CHANGELOG in repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if [ -f "changelog/CHANGELOG.md" ]; then
+            cp changelog/CHANGELOG.md CHANGELOG.md
+            git add CHANGELOG.md
+            git commit -m "chore: update CHANGELOG for ${{ steps.version.outputs.tag }}" || exit 0
+            git push || exit 0
+          fi

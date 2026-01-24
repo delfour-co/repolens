@@ -1,0 +1,135 @@
+name: Nightly Build
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags-ignore:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Nightly
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Get version info
+        id: version
+        run: |
+          # Get commit info
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_DATE=$(git log -1 --format=%cd --date=format:%Y%m%d-%H%M%S)
+          
+          # Get current version from Cargo.toml
+          BASE_VERSION=$(grep '^version =' Cargo.toml | cut -d'"' -f2 | cut -d'-' -f1)
+          
+          # Create nightly version
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.${COMMIT_DATE}-${COMMIT_SHA}"
+          
+          echo "version=${NIGHTLY_VERSION}" >> $GITHUB_OUTPUT
+          echo "commit_sha=${COMMIT_SHA}" >> $GITHUB_OUTPUT
+          echo "commit_date=${COMMIT_DATE}" >> $GITHUB_OUTPUT
+          echo "base_version=${BASE_VERSION}" >> $GITHUB_OUTPUT
+          
+          echo "Building nightly version: ${NIGHTLY_VERSION}"
+
+      - name: Update version in Cargo.toml
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          cat Cargo.toml | grep '^version ='
+
+      - name: Build release binary
+        run: |
+          cargo build --release --locked
+          strip target/release/repolens || true
+
+      - name: Get binary info
+        id: binary
+        run: |
+          BINARY_SIZE=$(stat -c%s target/release/repolens)
+          BINARY_HASH=$(sha256sum target/release/repolens | cut -d' ' -f1)
+          
+          echo "size=${BINARY_SIZE}" >> $GITHUB_OUTPUT
+          echo "hash=${BINARY_HASH}" >> $GITHUB_OUTPUT
+          
+          echo "Binary size: ${BINARY_SIZE} bytes"
+          echo "Binary hash: ${BINARY_HASH}"
+
+      - name: Create checksums
+        run: |
+          cd target/release
+          sha256sum repolens > repolens.sha256
+          sha512sum repolens > repolens.sha512
+          md5sum repolens > repolens.md5
+
+      - name: Create archive
+        run: |
+          cd target/release
+          tar czf repolens-linux-x86_64.tar.gz repolens repolens.sha256 repolens.sha512 repolens.md5
+          zip repolens-linux-x86_64.zip repolens repolens.sha256 repolens.sha512 repolens.md5
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: repolens-nightly-linux-x86_64
+          path: |
+            target/release/repolens
+            target/release/repolens.sha256
+            target/release/repolens.sha512
+            target/release/repolens.md5
+            target/release/repolens-linux-x86_64.tar.gz
+            target/release/repolens-linux-x86_64.zip
+          retention-days: 30
+
+      - name: Create Nightly Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag: nightly-${{ steps.version.outputs.commit_date }}-${{ steps.version.outputs.commit_sha }}
+          name: Nightly Build ${{ steps.version.outputs.commit_date }}
+          body: |
+            ## Nightly Build
+            
+            **Version:** ${{ steps.version.outputs.version }}
+            **Commit:** ${{ steps.version.outputs.commit_sha }}
+            **Date:** ${{ steps.version.outputs.commit_date }}
+            
+            ### Binary Information
+            - **Size:** ${{ steps.binary.outputs.size }} bytes
+            - **SHA256:** `${{ steps.binary.outputs.hash }}`
+            
+            ### Downloads
+            - Binary: `repolens`
+            - Archive (tar.gz): `repolens-linux-x86_64.tar.gz`
+            - Archive (zip): `repolens-linux-x86_64.zip`
+            - Checksums: `repolens.sha256`, `repolens.sha512`, `repolens.md5`
+            
+            > ⚠️ This is a nightly build. Use at your own risk.
+            > For stable releases, see the [Releases](https://github.com/${{ github.repository }}/releases) page.
+          files: |
+            target/release/repolens
+            target/release/repolens.sha256
+            target/release/repolens.sha512
+            target/release/repolens.md5
+            target/release/repolens-linux-x86_64.tar.gz
+            target/release/repolens-linux-x86_64.zip
+          draft: false
+          prerelease: true
+          token: ${{ secrets.GITHUB_TOKEN }}

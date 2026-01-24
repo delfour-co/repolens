@@ -14,14 +14,38 @@ A CLI tool to audit GitHub repositories for best practices, security, and compli
 
 ## Installation
 
+### Pre-built Binaries
+
+Download the latest release from the [Releases page](https://github.com/delfour-co/cli--repolens/releases):
+
 ```bash
-# From source
-git clone https://github.com/yourusername/repolens.git
-cd repolens
+# Download and install
+wget https://github.com/delfour-co/cli--repolens/releases/download/v0.1.0/repolens-linux-x86_64.tar.gz
+tar xzf repolens-linux-x86_64.tar.gz
+sudo mv repolens /usr/local/bin/
+
+# Verify installation
+repolens --version
+```
+
+### From Source
+
+```bash
+# Clone repository
+git clone https://github.com/delfour-co/cli--repolens.git
+cd cli--repolens
+
+# Build
 cargo build --release
 
 # The binary will be at target/release/repolens
 ```
+
+### Nightly Builds
+
+Nightly builds are available for testing. See the [Releases page](https://github.com/delfour-co/cli--repolens/releases) for nightly builds (marked as pre-release).
+
+⚠️ **Warning**: Nightly builds may be unstable. Use at your own risk.
 
 ## Usage
 
