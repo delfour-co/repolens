@@ -1,0 +1,97 @@
+//! CLI commands module
+
+pub mod init;
+pub mod plan;
+pub mod apply;
+pub mod report;
+
+use clap::Args;
+use std::path::PathBuf;
+
+/// Arguments for the init command
+#[derive(Args, Debug)]
+pub struct InitArgs {
+    /// Preset to use (opensource, enterprise, strict)
+    #[arg(short, long, value_name = "PRESET")]
+    pub preset: Option<String>,
+
+    /// Force overwrite existing configuration
+    #[arg(short, long)]
+    pub force: bool,
+
+    /// Skip interactive prompts
+    #[arg(long)]
+    pub non_interactive: bool,
+}
+
+/// Arguments for the plan command
+#[derive(Args, Debug)]
+pub struct PlanArgs {
+    /// Output format (terminal, json, sarif)
+    #[arg(short, long, default_value = "terminal")]
+    pub format: OutputFormat,
+
+    /// Only check specific rule categories
+    #[arg(long, value_delimiter = ',')]
+    pub only: Option<Vec<String>>,
+
+    /// Skip specific rule categories
+    #[arg(long, value_delimiter = ',')]
+    pub skip: Option<Vec<String>>,
+
+    /// Output file (defaults to stdout)
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+}
+
+/// Arguments for the apply command
+#[derive(Args, Debug)]
+pub struct ApplyArgs {
+    /// Skip confirmation prompts
+    #[arg(short, long)]
+    pub yes: bool,
+
+    /// Dry run - show what would be done without making changes
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Only apply specific actions
+    #[arg(long, value_delimiter = ',')]
+    pub only: Option<Vec<String>>,
+
+    /// Skip specific actions
+    #[arg(long, value_delimiter = ',')]
+    pub skip: Option<Vec<String>>,
+}
+
+/// Arguments for the report command
+#[derive(Args, Debug)]
+pub struct ReportArgs {
+    /// Output format (html, markdown, json)
+    #[arg(short, long, default_value = "markdown")]
+    pub format: ReportFormat,
+
+    /// Output file
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+
+    /// Include full details in report
+    #[arg(long)]
+    pub detailed: bool,
+}
+
+/// Output format for plan command
+#[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
+pub enum OutputFormat {
+    Terminal,
+    Json,
+    Sarif,
+}
+
+/// Output format for report command
+#[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
+pub enum ReportFormat {
+    Html,
+    Markdown,
+    Json,
+}

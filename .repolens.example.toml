@@ -1,0 +1,47 @@
+# RepoLens Configuration Example
+# Copy this file to .repolens.toml and customize for your project
+
+# General settings
+[general]
+# Preset to use: opensource, enterprise, or strict
+preset = "opensource"
+
+# Rules configuration
+[rules]
+# Enable/disable rule categories
+secrets = true
+files = true
+docs = true
+security = true
+workflows = true
+quality = true
+
+# Required files
+[files]
+readme = true
+license = true
+contributing = true
+code_of_conduct = true
+security_policy = true
+changelog = false
+
+# Documentation requirements
+[docs]
+min_readme_sections = ["Installation", "Usage"]
+require_api_docs = false
+
+# Security settings
+[security]
+require_branch_protection = true
+require_signed_commits = false
+require_2fa = false
+
+# Workflow settings
+[workflows]
+require_ci = true
+require_tests = true
+
+# Severity overrides (optional)
+# [severity]
+# "missing-readme" = "critical"
+# "missing-tests" = "warning"
