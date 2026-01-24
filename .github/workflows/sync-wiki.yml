@@ -132,16 +132,14 @@ jobs:
             echo "📝 Préparation du commit..."
             git add -A
             
-            COMMIT_MSG="🔄 Synchronisation automatique du WIKI
-
-- Mise à jour depuis le dépôt principal
-- Commit source: ${{ github.sha }}
-- Workflow: ${{ github.workflow }}
-- Déclenché par: ${{ github.actor }}
-- Date: $(date -Iseconds)"
-            
             echo "💾 Création du commit..."
-            git commit -m "$COMMIT_MSG" || {
+            git commit -m "🔄 Synchronisation automatique du WIKI" \
+              -m "" \
+              -m "- Mise à jour depuis le dépôt principal" \
+              -m "- Commit source: ${{ github.sha }}" \
+              -m "- Workflow: ${{ github.workflow }}" \
+              -m "- Déclenché par: ${{ github.actor }}" \
+              -m "- Date: $(date -Iseconds)" || {
               echo "⚠️  Échec du commit (peut-être aucun changement réel)"
               git status
               exit 0
