@@ -16,20 +16,17 @@ Déclenchement : À chaque push et pull request
 
 ### 2. Nightly Build (`nightly.yml`)
 
-Déclenchement : À chaque push sur `main`/`master` (sans tag)
+Déclenchement : Automatique après que le workflow CI soit terminé avec succès sur `main`/`master`
 
 **Fonctionnalités :**
-- Exécute d'abord toutes les vérifications de la CI (check, fmt, clippy, test)
+- Se déclenche automatiquement après la réussite du workflow CI
+- Ne refait **pas** les vérifications (check, fmt, clippy, test) - elles sont déjà faites dans CI
 - Build automatique avec version nightly **uniquement si la CI passe**
 - Création d'une release pre-release sur GitHub
 - Artefacts : binaire, checksums, archives
 
 **Jobs :**
-- `check` : Vérifie que le code compile
-- `fmt` : Vérifie le formatage du code
-- `clippy` : Analyse statique avec clippy
-- `test` : Exécute les tests
-- `build` : Build le binaire nightly (dépend de tous les jobs ci-dessus)
+- `build` : Build le binaire nightly (se déclenche seulement si CI réussit)
 
 ### 3. Create Release (`create-release.yml`)
 
