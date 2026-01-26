@@ -1,5 +1,4 @@
 name: Nightly Build
-run-name: "Nightly Build [${{ github.event.workflow_run.head_sha || github.sha }}]"
 
 on:
   workflow_run:
