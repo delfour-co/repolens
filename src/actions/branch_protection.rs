@@ -102,4 +102,3 @@ pub async fn configure(branch: &str, settings: &BranchProtectionSettings) -> Res
 
     Ok(())
 }
-

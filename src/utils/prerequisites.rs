@@ -78,6 +78,7 @@ impl CheckResult {
     }
 
     /// Check if this result represents a failure
+    #[allow(dead_code)]
     pub fn is_failed(&self) -> bool {
         self.status == CheckStatus::Failed
     }
@@ -118,12 +119,18 @@ impl PrerequisitesReport {
 
     /// Get all failed required checks
     pub fn required_failures(&self) -> Vec<&CheckResult> {
-        self.checks.iter().filter(|c| c.is_required_failure()).collect()
+        self.checks
+            .iter()
+            .filter(|c| c.is_required_failure())
+            .collect()
     }
 
     /// Get all failed optional checks (warnings)
     pub fn optional_failures(&self) -> Vec<&CheckResult> {
-        self.checks.iter().filter(|c| c.is_optional_failure()).collect()
+        self.checks
+            .iter()
+            .filter(|c| c.is_optional_failure())
+            .collect()
     }
 
     /// Check if there are any warnings
@@ -260,6 +267,7 @@ pub fn check_remote_is_github(root: &Path) -> CheckResult {
 #[derive(Debug, Clone, Default)]
 pub struct CheckOptions {
     /// Skip optional checks
+    #[allow(dead_code)]
     pub skip_optional: bool,
 }
 
@@ -307,14 +315,20 @@ pub fn run_all_checks(root: &Path, _options: &CheckOptions) -> PrerequisitesRepo
         if has_remote {
             report.add(check_remote_is_github(root));
         } else {
-            report.add(CheckResult::skipped("Remote is GitHub", CheckLevel::Optional));
+            report.add(CheckResult::skipped(
+                "Remote is GitHub",
+                CheckLevel::Optional,
+            ));
         }
     } else {
         report.add(CheckResult::skipped(
             "Remote origin configured",
             CheckLevel::Optional,
         ));
-        report.add(CheckResult::skipped("Remote is GitHub", CheckLevel::Optional));
+        report.add(CheckResult::skipped(
+            "Remote is GitHub",
+            CheckLevel::Optional,
+        ));
     }
 
     report

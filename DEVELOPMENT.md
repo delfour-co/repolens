@@ -30,7 +30,15 @@ Ce document explique comment développer, tester et contribuer au projet RepoLen
    cargo build
    ```
 
-3. **Vérifier l'installation**
+3. **Installer les git hooks**
+   ```bash
+   ./scripts/install-hooks.sh
+   ```
+   Les hooks installés :
+   - **pre-commit** : Vérifie le formatage (`cargo fmt`) et le linting (`cargo clippy`)
+   - **commit-msg** : Valide le format des messages de commit (Conventional Commits)
+
+4. **Vérifier l'installation**
    ```bash
    cargo run -- --help
    ```
@@ -307,14 +315,54 @@ cargo test --test integration_test
    git commit -m "feat: ajout de ma feature"
    git push origin feature/ma-feature
    ```
+   > Les hooks pre-commit vérifient automatiquement le formatage et le linting.
 
 5. **Créer une Pull Request**
+
+## Messages de Commit (Conventional Commits)
+
+Les messages de commit doivent suivre le format [Conventional Commits](https://www.conventionalcommits.org/) :
+
+```
+<type>(<scope>): <description>
+
+[corps optionnel]
+
+[footer optionnel]
+```
+
+### Types disponibles
+
+| Type | Description |
+|------|-------------|
+| `feat` | Nouvelle fonctionnalité |
+| `fix` | Correction de bug |
+| `docs` | Documentation |
+| `style` | Formatage, style de code |
+| `refactor` | Refactoring sans changement fonctionnel |
+| `perf` | Amélioration des performances |
+| `test` | Ajout ou modification de tests |
+| `build` | Système de build, dépendances |
+| `ci` | Configuration CI/CD |
+| `chore` | Maintenance, tâches diverses |
+| `revert` | Annulation d'un commit précédent |
+
+### Exemples
+
+```bash
+git commit -m "feat: add user authentication"
+git commit -m "fix(api): resolve null pointer exception"
+git commit -m "docs: update README with installation instructions"
+git commit -m "refactor(cli): simplify command parsing logic"
+```
+
+> Le hook `commit-msg` valide automatiquement le format des messages.
 
 ## Bonnes Pratiques
 
 ### Code Style
 
-- Utiliser `cargo fmt` avant chaque commit
+- Utiliser `cargo fmt` avant chaque commit (vérifié par le hook pre-commit)
 - Respecter les conventions Rust (snake_case, etc.)
 - Documenter les fonctions publiques avec `///`
 

@@ -80,4 +80,3 @@ pub async fn update(settings: &GitHubRepoSettings) -> Result<()> {
 
     Ok(())
 }
-

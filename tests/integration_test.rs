@@ -18,7 +18,7 @@ async fn test_init_command_creates_config() {
     // Run init command in temp directory
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&[
+        .args([
             "init",
             "--preset",
             "opensource",
@@ -50,7 +50,14 @@ async fn test_init_command_with_different_presets() {
 
         get_cmd()
             .current_dir(temp_dir.path())
-            .args(&["init", "--preset", preset, "--non-interactive", "--force", "--skip-checks"])
+            .args([
+                "init",
+                "--preset",
+                preset,
+                "--non-interactive",
+                "--force",
+                "--skip-checks",
+            ])
             .assert()
             .success();
 
@@ -70,7 +77,7 @@ async fn test_init_command_refuses_overwrite_without_force() {
     // Create initial config
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&[
+        .args([
             "init",
             "--preset",
             "opensource",
@@ -84,7 +91,13 @@ async fn test_init_command_refuses_overwrite_without_force() {
     // Try to create again without force
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&["init", "--preset", "enterprise", "--non-interactive", "--skip-checks"])
+        .args([
+            "init",
+            "--preset",
+            "enterprise",
+            "--non-interactive",
+            "--skip-checks",
+        ])
         .assert()
         .failure()
         .stderr(predicate::str::contains("already exists"));
@@ -97,7 +110,7 @@ async fn test_plan_command_runs_successfully() {
     // Initialize config first
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&[
+        .args([
             "init",
             "--preset",
             "opensource",
@@ -111,7 +124,7 @@ async fn test_plan_command_runs_successfully() {
     // Run plan command (may return non-zero if issues are found, which is expected)
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&["plan"])
+        .args(["plan"])
         .assert()
         .code(predicate::ne(255)); // Any exit code except 255 (unexpected error)
 }
@@ -124,7 +137,7 @@ async fn test_plan_command_with_json_output() {
     // Initialize config first
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&[
+        .args([
             "init",
             "--preset",
             "opensource",
@@ -138,7 +151,7 @@ async fn test_plan_command_with_json_output() {
     // Run plan command with JSON output (may return non-zero if issues are found)
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&["plan", "--format", "json", "--output"])
+        .args(["plan", "--format", "json", "--output"])
         .arg(&output_path)
         .assert()
         .code(predicate::ne(255)); // Any exit code except 255 (unexpected error)
@@ -158,7 +171,7 @@ async fn test_plan_command_detects_missing_readme() {
     // Initialize config
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&[
+        .args([
             "init",
             "--preset",
             "opensource",
@@ -173,7 +186,7 @@ async fn test_plan_command_detects_missing_readme() {
     // Run plan command (may return non-zero if issues are found, which is expected)
     let assert = get_cmd()
         .current_dir(temp_dir.path())
-        .args(&["plan"])
+        .args(["plan"])
         .assert()
         .code(predicate::ne(255)); // Any exit code except 255 (unexpected error)
     let output = assert.get_output();
@@ -191,7 +204,7 @@ async fn test_template_creation() {
     // Initialize config
     get_cmd()
         .current_dir(temp_dir.path())
-        .args(&[
+        .args([
             "init",
             "--preset",
             "opensource",

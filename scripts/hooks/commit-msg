@@ -1,0 +1,77 @@
+#!/bin/bash
+#
+# Commit-msg hook for RepoLens
+# Validates commit message format (Conventional Commits)
+#
+# Format: <type>(<scope>): <description>
+#
+# Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Skip merge commits
+if echo "$COMMIT_MSG" | grep -qE "^Merge "; then
+    exit 0
+fi
+
+# Skip revert commits (auto-generated)
+if echo "$COMMIT_MSG" | grep -qE "^Revert \""; then
+    exit 0
+fi
+
+# Conventional commit regex
+# Format: type(scope): description OR type: description
+PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9_-]+\))?: .{1,}"
+
+# Get first line of commit message
+FIRST_LINE=$(echo "$COMMIT_MSG" | head -n1)
+
+if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
+    echo -e "${RED}Invalid commit message format!${NC}"
+    echo ""
+    echo -e "Your message: ${YELLOW}$FIRST_LINE${NC}"
+    echo ""
+    echo -e "Expected format: ${CYAN}<type>(<scope>): <description>${NC}"
+    echo -e "            or: ${CYAN}<type>: <description>${NC}"
+    echo ""
+    echo -e "${GREEN}Valid types:${NC}"
+    echo -e "  ${CYAN}feat${NC}     - A new feature"
+    echo -e "  ${CYAN}fix${NC}      - A bug fix"
+    echo -e "  ${CYAN}docs${NC}     - Documentation changes"
+    echo -e "  ${CYAN}style${NC}    - Code style changes (formatting, etc.)"
+    echo -e "  ${CYAN}refactor${NC} - Code refactoring"
+    echo -e "  ${CYAN}perf${NC}     - Performance improvements"
+    echo -e "  ${CYAN}test${NC}     - Adding or updating tests"
+    echo -e "  ${CYAN}build${NC}    - Build system changes"
+    echo -e "  ${CYAN}ci${NC}       - CI/CD changes"
+    echo -e "  ${CYAN}chore${NC}    - Other changes (maintenance, etc.)"
+    echo -e "  ${CYAN}revert${NC}   - Reverting a previous commit"
+    echo ""
+    echo -e "${GREEN}Examples:${NC}"
+    echo -e "  feat: add user authentication"
+    echo -e "  fix(api): resolve null pointer exception"
+    echo -e "  docs: update README with installation instructions"
+    echo -e "  refactor(cli): simplify command parsing logic"
+    echo ""
+    exit 1
+fi
+
+# Check description length (should be concise)
+DESCRIPTION_LENGTH=${#FIRST_LINE}
+if [ "$DESCRIPTION_LENGTH" -gt 72 ]; then
+    echo -e "${YELLOW}Warning: Commit message first line is longer than 72 characters ($DESCRIPTION_LENGTH chars)${NC}"
+    echo -e "Consider shortening it for better readability in git log."
+fi
+
+echo -e "${GREEN}Commit message format OK${NC}"
