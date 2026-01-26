@@ -1,3 +1,9 @@
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-local-gray)
+![Docs](https://img.shields.io/badge/docs-RepoLens-blue)
+
+---
+
 # RepoLens - Documentation
 
 Bienvenue dans la documentation de RepoLens, un outil CLI pour auditer les dépôts GitHub et garantir le respect des bonnes pratiques, de la sécurité et de la conformité.

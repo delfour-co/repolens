@@ -1,3 +1,9 @@
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-local-gray)
+![Docs](https://img.shields.io/badge/docs-RepoLens-blue)
+
+---
+
 # Installation
 
 Ce guide vous explique comment installer RepoLens sur votre système.

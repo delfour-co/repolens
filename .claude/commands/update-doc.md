@@ -8,6 +8,7 @@ Cet agent parcourt la documentation du projet, analyse les changements, et met �
 - Les fichiers de documentation locaux (README.md, DEVELOPMENT.md, etc.)
 - Le WIKI GitHub avec les pages appropriées
 - La cohérence entre les différentes sources de documentation
+- Les badges de version sur les pages wiki
 
 ## Étapes
 
@@ -44,11 +45,50 @@ Cet agent parcourt la documentation du projet, analyse les changements, et met �
 
 ## Synchronisation automatique
 
-La synchronisation du WIKI se fait **automatiquement via GitHub Actions** lors d'un push sur `main`/`master` si :
-- Des fichiers dans `wiki/` sont modifiés
-- `README.md`, `DEVELOPMENT.md` ou `CHANGELOG.md` sont modifiés
+La synchronisation du WIKI se fait **automatiquement via GitHub Actions** après :
+- Un build Nightly réussi → Badge "nightly" (orange)
+- Une Release réussie → Badge "stable" (vert)
 
 Le workflow `.github/workflows/sync-wiki.yml` gère cette synchronisation.
+
+### Déclencheurs
+- `workflow_run` : Après "Nightly Build" ou "Release" (succès uniquement)
+- `workflow_dispatch` : Déclenchement manuel avec choix du type de version
+
+## Système de badges
+
+Chaque page wiki inclut un header automatique avec des badges :
+
+```markdown
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-{type}-{color})
+![Updated](https://img.shields.io/badge/updated-{date}-blue)
+
+---
+```
+
+### Types de badges
+
+| Type | Badge | Couleur | Déclencheur |
+|------|-------|---------|-------------|
+| Local | `version-local-gray` | Gris | Fichiers locaux |
+| Nightly | `version-nightly-orange` | Orange | Workflow Nightly Build |
+| Stable | `version-stable-green` | Vert | Workflow Release |
+
+### Fonctionnement
+
+1. **Fichiers locaux** (`wiki/`) : Badge "local" gris
+2. **Synchronisation CI** : Le workflow remplace automatiquement le header avec :
+   - Le type de version (nightly/stable) basé sur le workflow déclencheur
+   - La date de mise à jour
+3. **Wiki GitHub** : Affiche le badge correspondant à la dernière synchronisation
+
+### Bonnes pratiques pour les badges
+
+- Ne **jamais** modifier manuellement le header (entre `<!-- Auto-generated header` et `---`)
+- Le badge "local" indique que la documentation n'a pas encore été synchronisée
+- Le badge "nightly" indique une version en développement
+- Le badge "stable" indique une version release
 
 ## Commandes utiles (pour synchronisation manuelle locale)
 
@@ -116,9 +156,25 @@ La synchronisation doit :
 
 ## Notes
 
-- **Synchronisation automatique** : La CI synchronise automatiquement lors d'un push
+- **Synchronisation automatique** : La CI synchronise après les workflows Nightly Build et Release
 - Le script `update-wiki.sh` est disponible pour une synchronisation manuelle locale
 - L'authentification GitHub CLI (`gh`) est nécessaire uniquement pour le script local
 - Les pages WIKI sont dans le dossier `wiki/` localement
-- Le workflow CI utilise `GITHUB_TOKEN` qui a les permissions nécessaires
+- **Important** : Le workflow CI nécessite un secret `WIKI_PAT` (Personal Access Token avec scope `repo`)
+- Le `GITHUB_TOKEN` standard ne peut pas pousser vers les wikis GitHub
 - Toujours faire un `--dry-run` avant la mise à jour manuelle réelle
+
+## Configuration requise pour la CI
+
+### Secret WIKI_PAT
+
+Le workflow de synchronisation nécessite un Personal Access Token pour pousser vers le wiki :
+
+1. Créer un PAT sur https://github.com/settings/tokens
+2. Sélectionner "Generate new token (classic)"
+3. Donner le scope `repo` (Full control of private repositories)
+4. Ajouter le secret `WIKI_PAT` dans Settings > Secrets and variables > Actions
+
+### Activation du Wiki
+
+Le wiki doit être activé dans les paramètres du dépôt : Settings > Features > Wikis

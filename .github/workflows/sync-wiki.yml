@@ -1,66 +1,135 @@
 name: Sync Wiki
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - 'wiki/**'
-      - 'README.md'
-      - 'DEVELOPMENT.md'
-      - 'CHANGELOG.md'
-      - '.github/workflows/sync-wiki.yml'
-  workflow_dispatch:  # Permet de déclencher manuellement
+  workflow_run:
+    workflows: ["Nightly Build", "Release"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Type de version pour les badges'
+        required: true
+        default: 'nightly'
+        type: choice
+        options:
+          - nightly
+          - stable
 
 permissions:
-  contents: write  # Nécessaire pour pousser vers le WIKI
+  contents: read
 
 jobs:
   sync-wiki:
     name: Synchroniser le WIKI
     runs-on: ubuntu-latest
-    
+    # Exécuter seulement si le workflow déclencheur a réussi (ou si c'est un déclenchement manuel)
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+
     steps:
+      - name: Afficher les informations du déclencheur
+        run: |
+          echo "📋 Informations du déclenchement:"
+          echo "   - Événement: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            echo "   - Workflow source: ${{ github.event.workflow_run.name }}"
+            echo "   - Conclusion: ${{ github.event.workflow_run.conclusion }}"
+            echo "   - Branche: ${{ github.event.workflow_run.head_branch }}"
+            echo "   - Commit: ${{ github.event.workflow_run.head_sha }}"
+          else
+            echo "   - Déclenchement manuel"
+            echo "   - Type de version: ${{ github.event.inputs.version_type }}"
+          fi
+
+      - name: Vérifier le secret WIKI_PAT
+        run: |
+          if [ -z "${{ secrets.WIKI_PAT }}" ]; then
+            echo "❌ Le secret WIKI_PAT n'est pas configuré!"
+            echo ""
+            echo "📝 Instructions pour créer le PAT:"
+            echo "   1. Aller sur https://github.com/settings/tokens"
+            echo "   2. Cliquer sur 'Generate new token (classic)'"
+            echo "   3. Donner un nom: 'Wiki Sync PAT'"
+            echo "   4. Sélectionner le scope 'repo' (Full control of private repositories)"
+            echo "   5. Générer et copier le token"
+            echo ""
+            echo "📝 Instructions pour ajouter le secret:"
+            echo "   1. Aller dans Settings > Secrets and variables > Actions"
+            echo "   2. Cliquer sur 'New repository secret'"
+            echo "   3. Nom: WIKI_PAT"
+            echo "   4. Valeur: coller le token créé"
+            echo ""
+            exit 1
+          fi
+          echo "✅ Secret WIKI_PAT trouvé"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Nécessaire pour avoir l'historique Git complet
-      
+          fetch-depth: 0
+
+      - name: Déterminer le type de version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION_TYPE="${{ github.event.inputs.version_type }}"
+          elif [ "${{ github.event.workflow_run.name }}" = "Release" ]; then
+            VERSION_TYPE="stable"
+          else
+            VERSION_TYPE="nightly"
+          fi
+
+          echo "version_type=${VERSION_TYPE}" >> $GITHUB_OUTPUT
+
+          # Définir les badges selon le type
+          if [ "$VERSION_TYPE" = "stable" ]; then
+            echo "badge_color=green" >> $GITHUB_OUTPUT
+            echo "badge_label=stable" >> $GITHUB_OUTPUT
+            echo "📦 Version: Stable (Release)"
+          else
+            echo "badge_color=orange" >> $GITHUB_OUTPUT
+            echo "badge_label=nightly" >> $GITHUB_OUTPUT
+            echo "🌙 Version: Nightly"
+          fi
+
       - name: Configurer Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-      
+
       - name: Vérifier que le WIKI est activé
         id: check-wiki
+        env:
+          WIKI_PAT: ${{ secrets.WIKI_PAT }}
         run: |
           REPO="${{ github.repository }}"
           WIKI_REPO="${REPO}.wiki"
-          
+
           echo "🔍 Vérification du WIKI: ${WIKI_REPO}"
-          
-          # Vérifier si le WIKI existe en essayant de le cloner
-          if git ls-remote "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${WIKI_REPO}.git" &>/dev/null; then
+
+          if git ls-remote "https://x-access-token:${WIKI_PAT}@github.com/${WIKI_REPO}.git" &>/dev/null; then
             echo "wiki_exists=true" >> $GITHUB_OUTPUT
-            echo "✅ WIKI trouvé et accessible: ${WIKI_REPO}"
+            echo "✅ WIKI trouvé et accessible"
           else
-            # Le WIKI peut ne pas exister encore ou ne pas être activé
-            # On va quand même essayer de le créer
             echo "wiki_exists=false" >> $GITHUB_OUTPUT
-            echo "⚠️  WIKI non trouvé ou non activé: ${WIKI_REPO}"
-            echo "⚠️  Le workflow va essayer de créer le WIKI"
-            echo "⚠️  Si cela échoue, activez le WIKI dans Settings > Features > Wikis"
+            echo "⚠️  WIKI non trouvé ou non activé"
+            echo "💡 Activez le WIKI dans Settings > Features > Wikis"
           fi
-      
+
       - name: Cloner ou initialiser le WIKI
         id: setup-wiki
+        env:
+          WIKI_PAT: ${{ secrets.WIKI_PAT }}
         run: |
           REPO="${{ github.repository }}"
           WIKI_REPO="${REPO}.wiki"
           WIKI_DIR=$(mktemp -d)
           echo "WIKI_DIR=${WIKI_DIR}" >> $GITHUB_ENV
-          
+
           echo "📥 Tentative de clonage du WIKI..."
-          if git clone "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${WIKI_REPO}.git" "$WIKI_DIR" 2>&1; then
+          if git clone "https://x-access-token:${WIKI_PAT}@github.com/${WIKI_REPO}.git" "$WIKI_DIR" 2>&1; then
             echo "✅ WIKI cloné avec succès"
             echo "wiki_initialized=true" >> $GITHUB_OUTPUT
           else
@@ -70,86 +139,135 @@ jobs:
             git init
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${WIKI_REPO}.git"
+            git remote add origin "https://x-access-token:${WIKI_PAT}@github.com/${WIKI_REPO}.git"
             echo "wiki_initialized=false" >> $GITHUB_OUTPUT
             echo "✅ Dépôt WIKI initialisé localement"
           fi
-          
+
           echo "📂 Dossier WIKI: ${WIKI_DIR}"
           ls -la "$WIKI_DIR" || echo "Dossier vide"
-      
-      - name: Synchroniser les pages
+
+      - name: Synchroniser les pages avec badges
+        env:
+          VERSION_TYPE: ${{ steps.version.outputs.version_type }}
+          BADGE_COLOR: ${{ steps.version.outputs.badge_color }}
+          BADGE_LABEL: ${{ steps.version.outputs.badge_label }}
         run: |
           echo "🔄 Synchronisation des pages..."
           echo "📂 Pages disponibles dans wiki/:"
           ls -la wiki/*.md 2>/dev/null || echo "Aucune page trouvée dans wiki/"
-          
+
           UPDATED=0
           CREATED=0
-          
+
+          # Date de mise à jour
+          UPDATE_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+
+          # Fonction pour ajouter le header avec badges
+          add_header() {
+            local file="$1"
+            local page_name="$2"
+            local temp_file=$(mktemp)
+
+            # Créer le header
+            cat > "$temp_file" << EOF
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-${VERSION_TYPE}-${BADGE_COLOR})
+![Updated](https://img.shields.io/badge/updated-$(echo "${UPDATE_DATE}" | sed 's/ /%20/g')-blue)
+
+---
+
+EOF
+
+            # Supprimer l'ancien header s'il existe (entre les marqueurs)
+            if grep -q "<!-- Auto-generated header" "$file"; then
+              # Extraire le contenu après le marqueur de fin de header (---)
+              sed -n '/^<!-- Auto-generated header/,/^---$/d; p' "$file" >> "$temp_file"
+            else
+              # Pas de header existant, ajouter le contenu complet
+              cat "$file" >> "$temp_file"
+            fi
+
+            mv "$temp_file" "$file"
+          }
+
           # Copier toutes les pages du dossier wiki/ vers le WIKI
           for page in wiki/*.md; do
             if [ -f "$page" ]; then
               page_name=$(basename "$page")
-              
+
               # Ignorer README.md du dossier wiki
               if [ "$page_name" = "README.md" ]; then
                 echo "  ⏭️  Ignoré (README.md du dossier wiki): $page_name"
                 continue
               fi
-              
-              if [ -f "$WIKI_DIR/$page_name" ]; then
-                # Vérifier si le contenu a changé
-                if ! cmp -s "$page" "$WIKI_DIR/$page_name"; then
-                  cp "$page" "$WIKI_DIR/$page_name"
+
+              # Copier le fichier
+              cp "$page" "$WIKI_DIR/$page_name"
+
+              # Ajouter le header avec badges
+              add_header "$WIKI_DIR/$page_name" "$page_name"
+
+              if [ -f "$WIKI_DIR/.git/index" ]; then
+                # Vérifier si le fichier a changé dans git
+                cd "$WIKI_DIR"
+                if git diff --quiet "$page_name" 2>/dev/null; then
+                  echo "  ✓  Déjà à jour: $page_name"
+                  cd - > /dev/null
+                else
                   echo "  ✏️  Mise à jour: $page_name"
                   UPDATED=$((UPDATED + 1))
-                else
-                  echo "  ✓  Déjà à jour: $page_name"
+                  cd - > /dev/null
                 fi
               else
-                cp "$page" "$WIKI_DIR/$page_name"
                 echo "  ➕ Création: $page_name"
                 CREATED=$((CREATED + 1))
               fi
             fi
           done
-          
+
           echo "UPDATED=${UPDATED}" >> $GITHUB_ENV
           echo "CREATED=${CREATED}" >> $GITHUB_ENV
           echo "📊 Résumé: ${CREATED} créée(s), ${UPDATED} mise(s) à jour"
-      
+
       - name: Commit et push les changements
-        if: env.UPDATED > 0 || env.CREATED > 0
+        env:
+          WIKI_PAT: ${{ secrets.WIKI_PAT }}
+          VERSION_TYPE: ${{ steps.version.outputs.version_type }}
         run: |
           cd "$WIKI_DIR"
-          
+
           echo "📋 État du dépôt WIKI:"
           git status || echo "Dépôt non initialisé"
-          
+
           # Vérifier s'il y a des changements
           if [ -n "$(git status --porcelain 2>/dev/null)" ] || [ "${{ steps.setup-wiki.outputs.wiki_initialized }}" = "false" ]; then
             echo "📝 Préparation du commit..."
             git add -A
-            
+
+            # Construire le message de commit
+            if [ "$VERSION_TYPE" = "stable" ]; then
+              COMMIT_MSG="📦 Sync Wiki - Release stable"
+            else
+              COMMIT_MSG="🌙 Sync Wiki - Nightly build"
+            fi
+
             echo "💾 Création du commit..."
-            git commit -m "🔄 Synchronisation automatique du WIKI" \
+            git commit -m "$COMMIT_MSG" \
               -m "" \
-              -m "- Mise à jour depuis le dépôt principal" \
-              -m "- Commit source: ${{ github.sha }}" \
-              -m "- Workflow: ${{ github.workflow }}" \
-              -m "- Déclenché par: ${{ github.actor }}" \
+              -m "- Version: ${VERSION_TYPE}" \
+              -m "- Source: ${{ github.event.workflow_run.name || 'Manual trigger' }}" \
+              -m "- Commit: ${{ github.event.workflow_run.head_sha || github.sha }}" \
               -m "- Date: $(date -Iseconds)" || {
               echo "⚠️  Échec du commit (peut-être aucun changement réel)"
               git status
               exit 0
             }
-            
+
             # Déterminer la branche par défaut
             DEFAULT_BRANCH="main"
             echo "🔍 Vérification de la branche par défaut..."
-            
-            # Vérifier quelle branche existe
+
             if git ls-remote --heads origin "$DEFAULT_BRANCH" 2>/dev/null | grep -q "$DEFAULT_BRANCH"; then
               echo "✅ Branche 'main' trouvée"
             elif git ls-remote --heads origin "master" 2>/dev/null | grep -q "master"; then
@@ -158,47 +276,48 @@ jobs:
             else
               echo "📝 Aucune branche existante, utilisation de 'main' (premier push)"
             fi
-            
+
             echo "📤 Push vers GitHub (branche: ${DEFAULT_BRANCH})..."
-            echo "🔗 URL: https://github.com/${{ github.repository }}.wiki.git"
-            
-            # Premier push ou push normal
+
+            REPO="${{ github.repository }}"
+            WIKI_URL="https://x-access-token:${WIKI_PAT}@github.com/${REPO}.wiki.git"
+
             if [ "${{ steps.setup-wiki.outputs.wiki_initialized }}" = "false" ]; then
               echo "🚀 Premier push du WIKI..."
-              git push -u "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" HEAD:${DEFAULT_BRANCH} 2>&1 || {
+              git push -u "$WIKI_URL" HEAD:${DEFAULT_BRANCH} 2>&1 || {
                 echo "❌ Échec du push"
-                echo "💡 Vérifiez que:"
-                echo "   1. Le WIKI est activé dans Settings > Features > Wikis"
-                echo "   2. Les permissions sont correctes"
-                echo "   3. Le token GITHUB_TOKEN a les droits nécessaires"
+                echo "💡 Vérifiez que le WIKI est activé dans Settings > Features > Wikis"
                 exit 1
               }
             else
-              git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" HEAD:${DEFAULT_BRANCH} 2>&1 || {
+              git push "$WIKI_URL" HEAD:${DEFAULT_BRANCH} 2>&1 || {
                 echo "❌ Échec du push"
                 exit 1
               }
             fi
-            
+
             echo "✅ WIKI synchronisé avec succès!"
-            echo "   - Pages créées: ${CREATED}"
-            echo "   - Pages mises à jour: ${UPDATED}"
+            echo "   - Version: ${VERSION_TYPE}"
             echo "   - Branche: ${DEFAULT_BRANCH}"
           else
             echo "ℹ️  Aucun changement détecté dans le dépôt WIKI"
           fi
-      
+
       - name: Vérification finale
         if: always()
         run: |
           echo "📊 Résumé de la synchronisation:"
+          echo "   - Type de version: ${{ steps.version.outputs.version_type }}"
           echo "   - Pages créées: ${CREATED:-0}"
           echo "   - Pages mises à jour: ${UPDATED:-0}"
-          
+
           if [ "${CREATED:-0}" -eq 0 ] && [ "${UPDATED:-0}" -eq 0 ]; then
+            echo ""
             echo "⚠️  Aucune page n'a été synchronisée"
             echo "💡 Vérifiez que:"
             echo "   1. Le dossier wiki/ contient des fichiers .md (sauf README.md)"
             echo "   2. Le WIKI est activé dans Settings > Features > Wikis"
-            echo "   3. Les fichiers ont bien été modifiés dans le commit"
           fi
+
+          echo ""
+          echo "🔗 Wiki URL: https://github.com/${{ github.repository }}/wiki"

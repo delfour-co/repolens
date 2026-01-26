@@ -1,3 +1,9 @@
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-local-gray)
+![Docs](https://img.shields.io/badge/docs-RepoLens-blue)
+
+---
+
 # Presets
 
 RepoLens propose trois presets de configuration prédéfinis pour différents cas d'usage.

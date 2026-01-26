@@ -1,3 +1,9 @@
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-local-gray)
+![Docs](https://img.shields.io/badge/docs-RepoLens-blue)
+
+---
+
 # Bonnes pratiques
 
 Ce guide présente les meilleures pratiques pour utiliser RepoLens et maintenir un dépôt GitHub de qualité.

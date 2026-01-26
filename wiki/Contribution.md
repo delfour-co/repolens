@@ -1,3 +1,9 @@
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-local-gray)
+![Docs](https://img.shields.io/badge/docs-RepoLens-blue)
+
+---
+
 # Contribution
 
 Merci de votre intérêt pour contribuer à RepoLens ! Ce guide vous explique comment contribuer efficacement.

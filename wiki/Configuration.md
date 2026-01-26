@@ -1,3 +1,9 @@
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-local-gray)
+![Docs](https://img.shields.io/badge/docs-RepoLens-blue)
+
+---
+
 # Configuration
 
 RepoLens utilise un fichier de configuration TOML (`.repolens.toml`) à la racine de votre projet pour personnaliser le comportement de l'audit.

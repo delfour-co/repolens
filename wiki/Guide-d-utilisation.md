@@ -1,3 +1,9 @@
+<!-- Auto-generated header - Do not edit manually -->
+![Version](https://img.shields.io/badge/version-local-gray)
+![Docs](https://img.shields.io/badge/docs-RepoLens-blue)
+
+---
+
 # Guide d'utilisation
 
 Ce guide vous explique comment utiliser RepoLens pour auditer vos dépôts GitHub.
