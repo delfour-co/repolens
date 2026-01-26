@@ -113,7 +113,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
         uses: softprops/action-gh-release@v1
         with:
-          tag: nightly-${{ steps.version.outputs.commit_date }}-${{ steps.version.outputs.commit_sha }}
+          tag_name: nightly-${{ steps.version.outputs.commit_date }}-${{ steps.version.outputs.commit_sha }}
           name: Nightly Build ${{ steps.version.outputs.commit_date }}
           body: |
             ## Nightly Build
