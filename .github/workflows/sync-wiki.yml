@@ -168,20 +168,17 @@ jobs:
             local file="$1"
             local page_name="$2"
             local temp_file=$(mktemp)
+            local date_encoded=$(echo "${UPDATE_DATE}" | sed 's/ /%20/g')
 
-            # Créer le header
-            cat > "$temp_file" << EOF
-<!-- Auto-generated header - Do not edit manually -->
-![Version](https://img.shields.io/badge/version-${VERSION_TYPE}-${BADGE_COLOR})
-![Updated](https://img.shields.io/badge/updated-$(echo "${UPDATE_DATE}" | sed 's/ /%20/g')-blue)
-
----
-
-EOF
+            # Créer le header avec printf
+            printf '%s\n' "<!-- Auto-generated header - Do not edit manually -->" > "$temp_file"
+            printf '%s\n' "![Version](https://img.shields.io/badge/version-${VERSION_TYPE}-${BADGE_COLOR})" >> "$temp_file"
+            printf '%s\n' "![Updated](https://img.shields.io/badge/updated-${date_encoded}-blue)" >> "$temp_file"
+            printf '\n%s\n\n' "---" >> "$temp_file"
 
             # Supprimer l'ancien header s'il existe (entre les marqueurs)
             if grep -q "<!-- Auto-generated header" "$file"; then
-              # Extraire le contenu après le marqueur de fin de header (---)
+              # Extraire le contenu après le marqueur de fin de header
               sed -n '/^<!-- Auto-generated header/,/^---$/d; p' "$file" >> "$temp_file"
             else
               # Pas de header existant, ajouter le contenu complet
