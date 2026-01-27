@@ -1,0 +1,73 @@
+# Configuration pour cargo-deny
+# Documentation: https://embarkstudios.github.io/cargo-deny/
+
+# Vérification des licences
+[licenses]
+# Licences autorisées (ajustez selon vos besoins)
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+    "Zlib",
+    "Unlicense",
+]
+# Licences interdites
+deny = [
+    "AGPL-1.0",
+    "AGPL-3.0",
+    "GPL-1.0",
+    "GPL-2.0",
+    "GPL-3.0",
+    "LGPL-2.0",
+    "LGPL-2.1",
+]
+# Copier les licences dans le répertoire de sortie
+copy-left = []
+# Licences non classifiées (avertissement seulement)
+unlicensed = "warn"
+# Licences non reconnues (avertissement seulement)
+unknown = "warn"
+# Licences manquantes (avertissement seulement)
+missing = "warn"
+
+# Vérification des dépendances bannies/autorisées
+[bans]
+# Niveau de vérification
+level = "deny"
+# Autoriser plusieurs versions de la même dépendance
+multiple-versions = "warn"
+# Autoriser les dépendances dupliquées
+duplicate = "warn"
+# Liste des crates interdits (exemple)
+deny = []
+# Liste des crates autorisés (exemple)
+allow = []
+# Exceptions pour certaines dépendances
+skip = []
+
+# Vérification des sources des dépendances
+[sources]
+# Autoriser uniquement les sources de registre officielles
+unknown-registry = "deny"
+# Autoriser les dépendances depuis git
+git = "allow"
+# Autoriser les dépendances depuis le système de fichiers
+path = "allow"
+# Autoriser les dépendances depuis le registre crates.io
+registry = ["crates-io"]
+
+# Vérification des vulnérabilités
+[advisories]
+# Base de données des vulnérabilités
+db-path = "~/.cargo/advisory-db"
+# Vérifier les vulnérabilités
+vulnerability = "deny"
+# Vérifier les crates non maintenus
+unmaintained = "warn"
+# Vérifier les crates non sécurisés
+unsound = "deny"
+# Ignorer les vulnérabilités spécifiques (ID de la base de données)
+ignore = []

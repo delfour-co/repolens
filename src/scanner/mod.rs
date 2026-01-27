@@ -8,13 +8,28 @@ use std::path::PathBuf;
 pub use filesystem::FileInfo;
 
 /// Main scanner for repository analysis
+///
+/// The `Scanner` provides access to repository files and metadata.
+/// It caches file information for efficient access during rule execution.
 pub struct Scanner {
+    /// Root directory of the repository
     root: PathBuf,
+    /// Cached file information
     file_cache: Vec<FileInfo>,
 }
 
 impl Scanner {
     /// Create a new scanner for the given root directory
+    ///
+    /// Scans the directory and caches file information for later use.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - The root directory of the repository to scan
+    ///
+    /// # Returns
+    ///
+    /// A new `Scanner` instance with cached file information
     pub fn new(root: PathBuf) -> Self {
         let file_cache = filesystem::scan_directory(&root);
 
@@ -22,6 +37,13 @@ impl Scanner {
     }
 
     /// Get the repository name from the root path or git remote
+    ///
+    /// First attempts to get the repository name from git remote.
+    /// Falls back to the directory name if git information is unavailable.
+    ///
+    /// # Returns
+    ///
+    /// The repository name as a string
     pub fn repository_name(&self) -> String {
         // Try to get from git remote first
         if let Some(name) = git::get_repository_name(&self.root) {
@@ -32,27 +54,66 @@ impl Scanner {
         self.root
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("unknown")
-            .to_string()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                // If directory name contains non-UTF8, use lossy conversion
+                self.root.to_string_lossy().to_string()
+            })
     }
 
-    /// Check if a file exists
+    /// Check if a file exists in the repository
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Relative path to the file from repository root
+    ///
+    /// # Returns
+    ///
+    /// `true` if the file exists, `false` otherwise
     pub fn file_exists(&self, path: &str) -> bool {
         self.root.join(path).exists()
     }
 
-    /// Check if a directory exists
+    /// Check if a directory exists in the repository
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Relative path to the directory from repository root
+    ///
+    /// # Returns
+    ///
+    /// `true` if the directory exists, `false` otherwise
     pub fn directory_exists(&self, path: &str) -> bool {
         let full_path = self.root.join(path);
         full_path.exists() && full_path.is_dir()
     }
 
-    /// Read file content
+    /// Read file content as a string
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Relative path to the file from repository root
+    ///
+    /// # Returns
+    ///
+    /// The file content as a string, or an I/O error if reading fails
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or is not valid UTF-8
     pub fn read_file(&self, path: &str) -> std::io::Result<String> {
         std::fs::read_to_string(self.root.join(path))
     }
 
     /// Get files with specific extensions
+    ///
+    /// # Arguments
+    ///
+    /// * `extensions` - Slice of file extensions (without the dot), e.g., `["rs", "toml"]`
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to `FileInfo` for matching files
     pub fn files_with_extensions(&self, extensions: &[&str]) -> Vec<&FileInfo> {
         self.file_cache
             .iter()
@@ -65,6 +126,16 @@ impl Scanner {
     }
 
     /// Get files matching a glob pattern
+    ///
+    /// Supports simple glob patterns like `*.rs`, `**/test/**`, etc.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - Glob pattern to match against file paths
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to `FileInfo` for matching files
     pub fn files_matching_pattern(&self, pattern: &str) -> Vec<&FileInfo> {
         self.file_cache
             .iter()
@@ -79,11 +150,27 @@ impl Scanner {
     }
 
     /// Get files larger than a given size in bytes
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - Minimum file size in bytes
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to `FileInfo` for files larger than the specified size
     pub fn files_larger_than(&self, size: u64) -> Vec<&FileInfo> {
         self.file_cache.iter().filter(|f| f.size > size).collect()
     }
 
     /// Get files in a specific directory
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Directory path (with or without trailing slash)
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to `FileInfo` for files in the specified directory
     pub fn files_in_directory(&self, dir: &str) -> Vec<&FileInfo> {
         let dir_path = if dir.ends_with('/') {
             dir.to_string()
@@ -97,7 +184,11 @@ impl Scanner {
             .collect()
     }
 
-    /// Get all files
+    /// Get all files in the repository
+    ///
+    /// # Returns
+    ///
+    /// A slice of all `FileInfo` entries
     #[allow(dead_code)]
     pub fn all_files(&self) -> &[FileInfo] {
         &self.file_cache

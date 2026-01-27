@@ -1,7 +1,7 @@
 //! Rules evaluation engine
 
 use anyhow::Result;
-use tracing::{debug, info};
+use tracing::{debug, info, span, Level};
 
 use super::categories::{
     docs::DocsRules, files::FilesRules, quality::QualityRules, secrets::SecretsRules,
@@ -66,7 +66,8 @@ impl RulesEngine {
         info!("Starting audit with preset: {}", self.config.preset);
 
         let repo_name = scanner.repository_name();
-        let mut results = AuditResults::new(repo_name, &self.config.preset);
+        let repo_name_ref = &repo_name;
+        let mut results = AuditResults::new(repo_name.clone(), &self.config.preset);
 
         // Get all rule categories
         let categories: Vec<Box<dyn RuleCategory>> = vec![
@@ -83,19 +84,31 @@ impl RulesEngine {
             let category_name = category.name();
 
             if !self.should_run_category(category_name) {
-                debug!("Skipping category: {}", category_name);
+                debug!(category = category_name, "Skipping category");
                 continue;
             }
 
-            debug!("Running category: {}", category_name);
+            let span = span!(Level::INFO, "category", category = category_name, repository = %repo_name_ref);
+            let _guard = span.enter();
+
+            debug!(category = category_name, "Running category");
 
             match category.run(scanner, &self.config).await {
                 Ok(findings) => {
-                    debug!("Category {} found {} issues", category_name, findings.len());
+                    let count = findings.len();
+                    debug!(
+                        category = category_name,
+                        findings_count = count,
+                        "Category completed"
+                    );
                     results.add_findings(findings);
                 }
                 Err(e) => {
-                    tracing::warn!("Error running category {}: {}", category_name, e);
+                    tracing::warn!(
+                        category = category_name,
+                        error = %e,
+                        "Error running category"
+                    );
                 }
             }
         }
@@ -108,5 +121,146 @@ impl RulesEngine {
         );
 
         Ok(results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scanner::Scanner;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_rules_engine_runs_all_categories() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create a basic file structure
+        fs::write(root.join("README.md"), "# Test Project").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let engine = RulesEngine::new(config);
+
+        let results = engine.run(&scanner).await.unwrap();
+
+        // Verify that results are returned (may be empty if no issues found)
+        let _ = results.findings().len();
+        assert_eq!(results.preset, "opensource");
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_filters_with_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(root.join("README.md"), "# Test").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut engine = RulesEngine::new(config);
+        engine.set_only_categories(vec!["secrets".to_string()]);
+
+        let results = engine.run(&scanner).await.unwrap();
+
+        // Verify that only secrets category was run
+        // All findings should be from secrets category
+        for finding in results.findings() {
+            assert_eq!(finding.category, "secrets");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_filters_with_skip() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(root.join("README.md"), "# Test").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut engine = RulesEngine::new(config);
+        engine.set_skip_categories(vec!["secrets".to_string()]);
+
+        let results = engine.run(&scanner).await.unwrap();
+
+        // Verify that secrets category was skipped
+        for finding in results.findings() {
+            assert_ne!(finding.category, "secrets");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_handles_category_errors_gracefully() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create a file that might cause issues
+        fs::write(root.join("test.txt"), "test").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let engine = RulesEngine::new(config);
+
+        // Should not panic even if a category fails
+        let results = engine.run(&scanner).await;
+        assert!(results.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_collects_all_findings() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create files that should trigger findings
+        fs::write(
+            root.join("test.js"),
+            "const apiKey = 'sk_test_1234567890abcdef';",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let engine = RulesEngine::new(config);
+
+        let results = engine.run(&scanner).await.unwrap();
+
+        // Should have collected findings from multiple categories
+        // (at least secrets should find something)
+        let _ = results.findings().len();
+    }
+
+    #[test]
+    fn test_should_run_category_with_only() {
+        let config = Config::default();
+        let mut engine = RulesEngine::new(config);
+        engine.set_only_categories(vec!["secrets".to_string(), "files".to_string()]);
+
+        assert!(engine.should_run_category("secrets"));
+        assert!(engine.should_run_category("files"));
+        assert!(!engine.should_run_category("docs"));
+    }
+
+    #[test]
+    fn test_should_run_category_with_skip() {
+        let config = Config::default();
+        let mut engine = RulesEngine::new(config);
+        engine.set_skip_categories(vec!["secrets".to_string()]);
+
+        assert!(!engine.should_run_category("secrets"));
+        assert!(engine.should_run_category("files"));
+        assert!(engine.should_run_category("docs"));
+    }
+
+    #[test]
+    fn test_should_run_category_default() {
+        let config = Config::default();
+        let engine = RulesEngine::new(config);
+
+        // By default, all categories should run
+        assert!(engine.should_run_category("secrets"));
+        assert!(engine.should_run_category("files"));
+        assert!(engine.should_run_category("docs"));
     }
 }

@@ -1,4 +1,9 @@
 //! File-related rules
+//!
+//! This module provides rules for checking repository files, including:
+//! - Large files that should use Git LFS
+//! - .gitignore configuration and recommended entries
+//! - Temporary files that shouldn't be committed
 
 use anyhow::Result;
 
@@ -7,14 +12,26 @@ use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
 
+/// Rules for checking repository files
 pub struct FilesRules;
 
 #[async_trait::async_trait]
 impl RuleCategory for FilesRules {
+    /// Get the category name
     fn name(&self) -> &'static str {
         "files"
     }
 
+    /// Run all file-related rules
+    ///
+    /// # Arguments
+    ///
+    /// * `scanner` - The scanner to access repository files
+    /// * `config` - The configuration with enabled rules
+    ///
+    /// # Returns
+    ///
+    /// A vector of findings for file-related issues
     async fn run(&self, scanner: &Scanner, config: &Config) -> Result<Vec<Finding>> {
         let mut findings = Vec::new();
 
@@ -37,6 +54,17 @@ impl RuleCategory for FilesRules {
     }
 }
 
+/// Check for files larger than the recommended threshold
+///
+/// Large files can slow down repository operations and should use Git LFS.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for large files
 async fn check_large_files(scanner: &Scanner) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
 
@@ -66,6 +94,18 @@ async fn check_large_files(scanner: &Scanner) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
+/// Check .gitignore file existence and recommended entries
+///
+/// Verifies that .gitignore exists and contains recommended patterns
+/// to prevent committing unwanted files.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for .gitignore issues
 async fn check_gitignore(scanner: &Scanner) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
 
@@ -89,7 +129,10 @@ async fn check_gitignore(scanner: &Scanner) -> Result<Vec<Finding>> {
     }
 
     // Check for recommended entries
-    let gitignore_content = scanner.read_file(".gitignore").unwrap_or_default();
+    let gitignore_content = scanner.read_file(".gitignore").unwrap_or_else(|e| {
+        tracing::warn!("Failed to read .gitignore: {}", e);
+        String::new()
+    });
     let recommended_entries = [
         (".env", "Environment files"),
         ("*.key", "Private keys"),
@@ -119,6 +162,17 @@ async fn check_gitignore(scanner: &Scanner) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
+/// Check for temporary files that shouldn't be committed
+///
+/// Detects common temporary file patterns like .log, .tmp, .swp, etc.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for temporary files
 async fn check_temp_files(scanner: &Scanner) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
 
@@ -141,4 +195,69 @@ async fn check_temp_files(scanner: &Scanner) -> Result<Vec<Finding>> {
     }
 
     Ok(findings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scanner::Scanner;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_check_large_files_detects_large_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let large_file = root.join("large.bin");
+
+        let large_content = vec![0u8; 11 * 1024 * 1024];
+        fs::write(&large_file, large_content).unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_large_files(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "FILE001"));
+    }
+
+    #[tokio::test]
+    async fn test_check_gitignore_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_gitignore(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "FILE002"));
+    }
+
+    #[tokio::test]
+    async fn test_check_gitignore_missing_recommended_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let gitignore = root.join(".gitignore");
+
+        fs::write(&gitignore, "node_modules/").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_gitignore(&scanner).await.unwrap();
+
+        assert!(findings.iter().any(|f| f.rule_id == "FILE003"));
+    }
+
+    #[tokio::test]
+    async fn test_check_temp_files_detects_tmp() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let tmp_file = root.join("temp.tmp");
+
+        fs::write(&tmp_file, "temporary content").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_temp_files(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "FILE004"));
+    }
 }

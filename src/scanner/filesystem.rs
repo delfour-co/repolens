@@ -1,6 +1,7 @@
 //! File system scanning utilities
 
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 use std::path::Path;
 
 /// Information about a file in the repository
@@ -16,9 +17,9 @@ pub struct FileInfo {
 }
 
 /// Scan a directory and return information about all files
+///
+/// Uses parallel processing for better performance on large repositories.
 pub fn scan_directory(root: &Path) -> Vec<FileInfo> {
-    let mut files = Vec::new();
-
     let walker = WalkBuilder::new(root)
         .hidden(false)
         .git_ignore(true)
@@ -28,45 +29,48 @@ pub fn scan_directory(root: &Path) -> Vec<FileInfo> {
         .parents(true)
         .build();
 
-    for entry in walker.flatten() {
-        let path = entry.path();
+    walker
+        .into_iter()
+        .par_bridge()
+        .filter_map(|entry_result| {
+            let entry = entry_result.ok()?;
+            let path = entry.path();
 
-        // Skip the root directory itself
-        if path == root {
-            continue;
-        }
+            // Skip the root directory itself
+            if path == root {
+                return None;
+            }
 
-        // Skip .git directory
-        if path.components().any(|c| c.as_os_str() == ".git") {
-            continue;
-        }
+            // Skip .git directory
+            if path.components().any(|c| c.as_os_str() == ".git") {
+                return None;
+            }
 
-        // Get relative path
-        let relative_path = path
-            .strip_prefix(root)
-            .ok()
-            .and_then(|p| p.to_str())
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+            // Get relative path - handle errors gracefully
+            let relative_path = match path.strip_prefix(root) {
+                Ok(stripped) => stripped
+                    .to_str()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| stripped.to_string_lossy().to_string()),
+                Err(_) => {
+                    return None;
+                }
+            };
 
-        if relative_path.is_empty() {
-            continue;
-        }
+            if relative_path.is_empty() {
+                return None;
+            }
 
-        // Get file metadata
-        let metadata = match entry.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
+            // Get file metadata
+            let metadata = entry.metadata().ok()?;
 
-        files.push(FileInfo {
-            path: relative_path,
-            size: metadata.len(),
-            is_dir: metadata.is_dir(),
-        });
-    }
-
-    files
+            Some(FileInfo {
+                path: relative_path,
+                size: metadata.len(),
+                is_dir: metadata.is_dir(),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

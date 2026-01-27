@@ -134,8 +134,10 @@ impl AuditResults {
     }
 
     /// Get findings by category
-    pub fn findings_by_category(&self, category: &str) -> impl Iterator<Item = &Finding> {
-        let category = category.to_string();
+    pub fn findings_by_category<'a>(
+        &'a self,
+        category: &'a str,
+    ) -> impl Iterator<Item = &'a Finding> {
         self.findings.iter().filter(move |f| f.category == category)
     }
 

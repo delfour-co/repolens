@@ -165,59 +165,111 @@ impl Config {
 /// Simple glob matching (supports * and **)
 fn glob_match(pattern: &str, text: &str) -> bool {
     if pattern.contains("**") {
-        // For ** patterns, use simple contains check
-        let parts: Vec<&str> = pattern.split("**").collect();
-        if parts.len() == 2 {
-            let prefix = parts[0].trim_end_matches('/');
-            let suffix = parts[1].trim_start_matches('/');
-
-            if !prefix.is_empty() && !text.starts_with(prefix) {
-                return false;
-            }
-            if !suffix.is_empty() {
-                // Handle patterns like *.test.ts by checking if text ends with the suffix
-                // after handling the leading * in the suffix
-                if suffix.starts_with('*') {
-                    let suffix_pattern = suffix.trim_start_matches('*');
-                    if !text.ends_with(suffix_pattern) {
-                        return false;
-                    }
-                } else if !text.ends_with(suffix) && !text.contains(&format!("/{}", suffix)) {
-                    return false;
-                }
-            }
-            return true;
-        }
+        return glob_match_double_star(pattern, text);
     }
 
     if pattern.contains('*') {
-        // Simple * wildcard matching
-        let parts: Vec<&str> = pattern.split('*').collect();
-        let mut pos = 0;
-
-        for (i, part) in parts.iter().enumerate() {
-            if part.is_empty() {
-                continue;
-            }
-
-            if let Some(found_pos) = text[pos..].find(part) {
-                if i == 0 && found_pos != 0 {
-                    return false;
-                }
-                pos += found_pos + part.len();
-            } else {
-                return false;
-            }
-        }
-
-        if !parts.last().unwrap_or(&"").is_empty() {
-            return text.ends_with(parts.last().unwrap());
-        }
-
-        return true;
+        return glob_match_single_star(pattern, text);
     }
 
     text == pattern
+}
+
+/// Match pattern with double star (**)
+fn glob_match_double_star(pattern: &str, text: &str) -> bool {
+    let parts: Vec<&str> = pattern.split("**").collect();
+
+    // Handle patterns like "**/test/**" which split into ['', '/test/', '']
+    if parts.len() == 3 && parts[0].is_empty() && parts[2].is_empty() {
+        // Pattern is **something**, check if text contains something
+        let middle = parts[1].trim_matches('/');
+        return text.contains(&format!("/{}", middle)) || text.starts_with(middle);
+    }
+
+    if parts.len() != 2 {
+        return false;
+    }
+
+    let prefix = parts[0].trim_end_matches('/');
+    let suffix_raw = parts[1];
+    let suffix = suffix_raw.trim_start_matches('/');
+
+    if !prefix.is_empty() && !text.starts_with(prefix) {
+        return false;
+    }
+
+    if suffix.is_empty() {
+        // Pattern like "**" or "prefix/**" matches everything
+        return true;
+    }
+
+    // Handle patterns like *.test.ts
+    if suffix.starts_with('*') {
+        let suffix_pattern = suffix.trim_start_matches('*');
+        return text.ends_with(suffix_pattern);
+    }
+
+    // For patterns like "**/test/**" or "**/test", check if suffix appears anywhere
+    if prefix.is_empty() {
+        // Pattern starts with **, check if suffix appears anywhere
+        // For "**/test/**", suffix_raw is "/test/", suffix is "test/"
+        // We need to check if the path contains "/test/" anywhere
+        // Since suffix_raw had a leading slash, check for "/suffix" pattern
+        if suffix_raw.starts_with('/') {
+            // Check for "/suffix" in the path (e.g., "/test/" in "src/test/file.ts")
+            // suffix is "test/" so we check for "/test/"
+            // Also handle case where path starts with "test/"
+            let pattern_to_find = format!("/{}", suffix);
+            if text.contains(&pattern_to_find) {
+                return true;
+            }
+            // Also check if text starts with suffix (for paths like "test/file.ts")
+            if text.starts_with(suffix) {
+                return true;
+            }
+            return false;
+        }
+        // No leading slash in original, check for suffix anywhere
+        return text.contains(suffix);
+    }
+
+    // Pattern has both prefix and suffix
+    // Check if text starts with prefix and contains suffix after prefix
+    if let Some(after_prefix) = text.strip_prefix(prefix) {
+        return after_prefix.contains(suffix) || after_prefix.ends_with(suffix);
+    }
+
+    // Fallback: check ends or contains
+    text.ends_with(suffix) || text.contains(suffix)
+}
+
+/// Match pattern with single star (*)
+fn glob_match_single_star(pattern: &str, text: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    let mut pos = 0;
+
+    for (i, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+
+        if let Some(found_pos) = text[pos..].find(part) {
+            if i == 0 && found_pos != 0 {
+                return false;
+            }
+            pos += found_pos + part.len();
+        } else {
+            return false;
+        }
+    }
+
+    if let Some(last_part) = parts.last() {
+        if !last_part.is_empty() {
+            return text.ends_with(last_part);
+        }
+    }
+
+    true
 }
 
 #[cfg(test)]
@@ -230,7 +282,14 @@ mod tests {
         assert!(glob_match("*.ts", "path/to/file.ts"));
         assert!(!glob_match("*.ts", "file.js"));
 
-        assert!(glob_match("**/test/**", "src/test/file.ts"));
+        // For "**/test/**", we check if path contains "/test/" anywhere
+        // For "**/test/**", check if path contains "/test/" anywhere
+        // "src/test/file.ts" contains "/test/" so it should match
+        assert!(
+            glob_match("**/test/**", "src/test/file.ts"),
+            "Pattern **/test/** should match src/test/file.ts"
+        );
+        assert!(glob_match("**/test/**", "test/file.ts"));
         assert!(glob_match("**/*.test.ts", "src/file.test.ts"));
     }
 

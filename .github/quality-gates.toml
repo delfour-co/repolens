@@ -1,0 +1,84 @@
+# Quality Gates Configuration
+# Ce fichier définit les seuils minimums de qualité pour permettre la build nightly
+# Si un seuil n'est pas atteint, la nightly build échouera
+
+[coverage]
+# Couverture de code minimum (en pourcentage)
+minimum = 80.0
+# Couverture de code cible (pour information)
+target = 90.0
+# Fichiers à exclure du calcul de couverture
+exclude = [
+    "src/main.rs",  # Point d'entrée, souvent difficile à tester
+    "src/lib.rs",   # Fichier de réexport
+    "tests/**",     # Tests eux-mêmes
+]
+
+[clippy]
+# Nombre maximum de warnings Clippy autorisés
+max_warnings = 0
+# Niveau de sévérité minimum à considérer (allow, warn, deny)
+severity = "warn"
+# Activer les règles strictes
+strict = true
+
+[security]
+# Nombre maximum de vulnérabilités critiques autorisées
+max_critical_vulnerabilities = 0
+# Nombre maximum de vulnérabilités importantes autorisées
+max_high_vulnerabilities = 0
+# Nombre maximum de vulnérabilités moyennes autorisées
+max_medium_vulnerabilities = 5
+# Autoriser les vulnérabilités non corrigées (false = bloquer)
+allow_unpatched = false
+
+[dependencies]
+# Nombre maximum de dépendances obsolètes autorisées
+max_outdated = 5
+# Nombre maximum de dépendances dupliquées autorisées
+max_duplicates = 0
+# Vérifier les licences (true = bloquer si licence non autorisée)
+check_licenses = true
+
+[code_metrics]
+# Taille maximale du binaire en bytes (0 = pas de limite)
+max_binary_size = 10_000_000  # 10 MB
+# Nombre minimum de tests requis
+min_tests = 20
+# Nombre minimum de tests d'intégration requis
+min_integration_tests = 5
+# Complexité cyclomatique maximale par fonction (0 = pas de limite)
+max_cyclomatic_complexity = 15
+# Pourcentage maximum de code unsafe autorisé
+max_unsafe_percentage = 5.0
+
+[documentation]
+# Pourcentage minimum de documentation requis
+min_documentation_coverage = 80.0
+# Exiger de la documentation pour toutes les fonctions publiques
+require_public_docs = true
+
+[tests]
+# Tous les tests doivent passer
+require_all_tests_pass = true
+# Temps maximum d'exécution des tests en secondes (0 = pas de limite)
+max_test_duration = 300
+# Activer les tests de performance
+enable_performance_tests = false
+
+[build]
+# Le build doit réussir
+require_build_success = true
+# Temps maximum de build en secondes (0 = pas de limite)
+max_build_duration = 600
+
+# Seuils spécifiques pour la nightly build
+[nightly]
+# Activer les vérifications strictes pour nightly
+strict_mode = true
+# Bloquer la nightly si la couverture diminue
+block_on_coverage_decrease = true
+# Bloquer la nightly si de nouvelles vulnérabilités apparaissent
+block_on_new_vulnerabilities = true
+# Bloquer la nightly si de nouveaux warnings apparaissent
+block_on_new_warnings = true

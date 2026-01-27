@@ -9,6 +9,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 mod actions;
 mod cli;
 mod config;
+mod error;
 mod providers;
 mod rules;
 mod scanner;

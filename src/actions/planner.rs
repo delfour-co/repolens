@@ -1,4 +1,7 @@
 //! Action planner - Creates action plans based on audit results
+//!
+//! This module provides functionality to generate action plans from audit results.
+//! It analyzes findings and creates appropriate actions to fix issues.
 
 use std::collections::HashMap;
 
@@ -9,18 +12,55 @@ use super::plan::{
     Action, ActionOperation, ActionPlan, BranchProtectionSettings, GitHubRepoSettings,
 };
 
+/// Parameters for planning file creation
+struct FileCreationParams<'a> {
+    rule_id: &'a str,
+    file_path: &'a str,
+    template: &'a str,
+    action_id: &'a str,
+    action_description: &'a str,
+    detail: Option<&'a str>,
+}
+
 /// Creates action plans based on audit results and configuration
+///
+/// The `ActionPlanner` analyzes audit findings and generates a plan of actions
+/// to fix detected issues. Actions can include:
+/// - Creating missing files (LICENSE, CONTRIBUTING.md, etc.)
+/// - Updating .gitignore
+/// - Configuring branch protection
+/// - Updating GitHub repository settings
 pub struct ActionPlanner {
+    /// Configuration for action planning
     config: Config,
 }
 
 impl ActionPlanner {
-    /// Create a new action planner
+    /// Create a new action planner with the given configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The configuration that determines which actions to plan
+    ///
+    /// # Returns
+    ///
+    /// A new `ActionPlanner` instance
     pub fn new(config: Config) -> Self {
         Self { config }
     }
 
     /// Create an action plan based on audit results
+    ///
+    /// Analyzes the audit results and generates actions to fix detected issues.
+    /// Only actions enabled in the configuration will be included.
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - The audit results to analyze
+    ///
+    /// # Returns
+    ///
+    /// An `ActionPlan` containing all planned actions
     pub fn create_plan(&self, results: &AuditResults) -> ActionPlan {
         let mut plan = ActionPlan::new();
 
@@ -70,6 +110,18 @@ impl ActionPlanner {
         plan
     }
 
+    /// Plan .gitignore updates based on findings
+    ///
+    /// Collects entries that should be added to .gitignore from audit findings
+    /// and adds standard entries if they're missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - The audit results
+    ///
+    /// # Returns
+    ///
+    /// An `Action` to update .gitignore, or `None` if no updates are needed
     fn plan_gitignore_update(&self, results: &AuditResults) -> Option<Action> {
         // Collect entries that should be added to .gitignore
         let mut entries = Vec::new();
@@ -109,6 +161,17 @@ impl ActionPlanner {
         )
     }
 
+    /// Plan LICENSE file creation
+    ///
+    /// Creates a LICENSE file if one is missing and license creation is enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - The audit results
+    ///
+    /// # Returns
+    ///
+    /// An `Action` to create LICENSE, or `None` if not needed
     fn plan_license_creation(&self, results: &AuditResults) -> Option<Action> {
         // Check if LICENSE is missing
         let needs_license = results
@@ -150,72 +213,97 @@ impl ActionPlanner {
         )
     }
 
-    fn plan_contributing_creation(&self, results: &AuditResults) -> Option<Action> {
-        let needs_contributing = results
+    /// Generic helper to plan file creation from template
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - The audit results
+    /// * `params` - Parameters for file creation
+    ///
+    /// # Returns
+    ///
+    /// An `Action` if the file needs to be created, `None` otherwise
+    fn plan_file_creation(
+        &self,
+        results: &AuditResults,
+        params: FileCreationParams<'_>,
+    ) -> Option<Action> {
+        let needs_file = results
             .findings_by_category("docs")
-            .any(|f| f.rule_id == "DOC005");
+            .any(|f| f.rule_id == params.rule_id);
 
-        if !needs_contributing {
+        if !needs_file {
             return None;
         }
 
-        Some(Action::new(
-            "contributing-create",
+        let mut action = Action::new(
+            params.action_id,
             "file",
-            "Create CONTRIBUTING.md",
+            params.action_description,
             ActionOperation::CreateFile {
-                path: "CONTRIBUTING.md".to_string(),
-                template: "CONTRIBUTING.md".to_string(),
+                path: params.file_path.to_string(),
+                template: params.template.to_string(),
                 variables: HashMap::new(),
             },
-        ))
+        );
+
+        if let Some(detail) = params.detail {
+            action = action.with_detail(detail);
+        }
+
+        Some(action)
+    }
+
+    fn plan_contributing_creation(&self, results: &AuditResults) -> Option<Action> {
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "DOC005",
+                file_path: "CONTRIBUTING.md",
+                template: "CONTRIBUTING.md",
+                action_id: "contributing-create",
+                action_description: "Create CONTRIBUTING.md",
+                detail: None,
+            },
+        )
     }
 
     fn plan_code_of_conduct_creation(&self, results: &AuditResults) -> Option<Action> {
-        let needs_coc = results
-            .findings_by_category("docs")
-            .any(|f| f.rule_id == "DOC006");
-
-        if !needs_coc {
-            return None;
-        }
-
-        Some(
-            Action::new(
-                "coc-create",
-                "file",
-                "Create CODE_OF_CONDUCT.md",
-                ActionOperation::CreateFile {
-                    path: "CODE_OF_CONDUCT.md".to_string(),
-                    template: "CODE_OF_CONDUCT.md".to_string(),
-                    variables: HashMap::new(),
-                },
-            )
-            .with_detail("Using Contributor Covenant template"),
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "DOC006",
+                file_path: "CODE_OF_CONDUCT.md",
+                template: "CODE_OF_CONDUCT.md",
+                action_id: "coc-create",
+                action_description: "Create CODE_OF_CONDUCT.md",
+                detail: Some("Using Contributor Covenant template"),
+            },
         )
     }
 
     fn plan_security_creation(&self, results: &AuditResults) -> Option<Action> {
-        let needs_security = results
-            .findings_by_category("docs")
-            .any(|f| f.rule_id == "DOC007");
-
-        if !needs_security {
-            return None;
-        }
-
-        Some(Action::new(
-            "security-create",
-            "file",
-            "Create SECURITY.md",
-            ActionOperation::CreateFile {
-                path: "SECURITY.md".to_string(),
-                template: "SECURITY.md".to_string(),
-                variables: HashMap::new(),
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "DOC007",
+                file_path: "SECURITY.md",
+                template: "SECURITY.md",
+                action_id: "security-create",
+                action_description: "Create SECURITY.md",
+                detail: None,
             },
-        ))
+        )
     }
 
+    /// Plan branch protection configuration
+    ///
+    /// Creates an action to configure branch protection settings based on
+    /// the configuration.
+    ///
+    /// # Returns
+    ///
+    /// An `Action` to configure branch protection
     fn plan_branch_protection(&self) -> Action {
         let bp = &self.config.actions.branch_protection;
 
@@ -252,6 +340,14 @@ impl ActionPlanner {
         .with_details(details)
     }
 
+    /// Plan GitHub repository settings updates
+    ///
+    /// Creates an action to update GitHub repository settings like discussions,
+    /// vulnerability alerts, etc.
+    ///
+    /// # Returns
+    ///
+    /// An `Action` to update GitHub settings
     fn plan_github_settings(&self) -> Action {
         let gs = &self.config.actions.github_settings;
 
@@ -282,5 +378,94 @@ impl ActionPlanner {
             ActionOperation::UpdateGitHubSettings { settings },
         )
         .with_details(details)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::rules::results::{AuditResults, Finding, Severity};
+
+    #[test]
+    fn test_create_plan_includes_gitignore() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "FILE003",
+            "files",
+            Severity::Info,
+            ".gitignore missing recommended entry: .env",
+        ));
+
+        let plan = planner.create_plan(&results);
+
+        assert!(!plan.is_empty());
+        assert!(plan.actions().iter().any(|a| a.id() == "gitignore-update"));
+    }
+
+    #[test]
+    fn test_create_plan_includes_license() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC004",
+            "docs",
+            Severity::Critical,
+            "LICENSE file is missing",
+        ));
+
+        let plan = planner.create_plan(&results);
+
+        assert!(plan.actions().iter().any(|a| a.id() == "license-create"));
+    }
+
+    #[test]
+    fn test_create_plan_includes_contributing() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC005",
+            "docs",
+            Severity::Warning,
+            "CONTRIBUTING file is missing",
+        ));
+
+        let plan = planner.create_plan(&results);
+
+        assert!(plan
+            .actions()
+            .iter()
+            .any(|a| a.id() == "contributing-create"));
+    }
+
+    #[test]
+    fn test_create_plan_filters_by_config() {
+        let mut config = Config::default();
+        config.actions.contributing = false;
+
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC005",
+            "docs",
+            Severity::Warning,
+            "CONTRIBUTING file is missing",
+        ));
+
+        let plan = planner.create_plan(&results);
+
+        // Should not include contributing because it's disabled in config
+        assert!(!plan
+            .actions()
+            .iter()
+            .any(|a| a.id() == "contributing-create"));
     }
 }

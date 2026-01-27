@@ -1,4 +1,7 @@
 //! Plan command - Analyze repository and show planned actions
+//!
+//! This module implements the `plan` command which analyzes a repository
+//! and generates an action plan to fix detected issues.
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
@@ -11,6 +14,22 @@ use crate::exit_codes;
 use crate::rules::engine::RulesEngine;
 use crate::scanner::Scanner;
 
+/// Execute the plan command
+///
+/// Analyzes the repository, runs audit rules, generates an action plan,
+/// and outputs the results in the requested format.
+///
+/// # Arguments
+///
+/// * `args` - Command line arguments for the plan command
+///
+/// # Returns
+///
+/// An exit code: 0 for success, 1 for critical issues, 2 for warnings
+///
+/// # Errors
+///
+/// Returns an error if the audit or plan generation fails
 pub async fn execute(args: PlanArgs) -> Result<i32> {
     // Load configuration
     let config = Config::load_or_default()?;
