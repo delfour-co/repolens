@@ -71,7 +71,8 @@ pub fn update_gitignore_at(root: &Path, entries: &[String]) -> Result<()> {
 
 /// Update .gitignore with new entries in current directory
 pub fn update_gitignore(entries: &[String]) -> Result<()> {
-    update_gitignore_at(Path::new("."), entries)
+    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
+    update_gitignore_at(&current_dir, entries)
 }
 
 #[cfg(test)]

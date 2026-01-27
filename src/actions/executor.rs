@@ -155,11 +155,27 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
-        // Save current directory
-        let original_dir = std::env::current_dir().unwrap();
+        // Save current directory (fallback to /tmp if current dir is invalid)
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+
+        // Ensure we're in a valid directory before changing
+        if std::env::current_dir().is_err() {
+            let _ = std::env::set_current_dir("/tmp");
+        }
 
         // Change to temp directory
-        std::env::set_current_dir(root).unwrap();
+        std::env::set_current_dir(root).expect("Failed to change to temp directory");
+
+        // Verify we're in the right directory
+        let current_dir = std::env::current_dir().expect("Failed to get current directory");
+        assert_eq!(
+            current_dir.canonicalize().unwrap_or_default(),
+            root.canonicalize().unwrap_or_default(),
+            "Failed to change to temp directory - current dir: {:?}, expected: {:?}",
+            current_dir,
+            root
+        );
 
         let config = Config::default();
         let executor = ActionExecutor::new(config);
@@ -176,11 +192,23 @@ mod tests {
         let result = executor.execute_action(&action).await;
 
         // Check result before restoring directory
-        assert!(result.is_ok());
-        assert!(root.join(".gitignore").exists());
+        assert!(
+            result.is_ok(),
+            "Action execution failed: {:?}",
+            result.err()
+        );
 
-        // Restore directory
-        std::env::set_current_dir(&original_dir).unwrap();
+        // Verify file was created in the temp directory
+        let gitignore_path = root.join(".gitignore");
+        assert!(
+            gitignore_path.exists(),
+            ".gitignore not found at {:?}. Current dir: {:?}",
+            gitignore_path,
+            std::env::current_dir().ok()
+        );
+
+        // Restore directory (ignore errors if directory no longer exists)
+        let _ = std::env::set_current_dir(&original_dir);
     }
 
     #[tokio::test]
@@ -188,7 +216,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
-        std::env::set_current_dir(root).unwrap();
+        // Save current directory (fallback to /tmp if current dir is invalid)
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+
+        // Ensure we're in a valid directory before changing
+        if std::env::current_dir().is_err() {
+            let _ = std::env::set_current_dir("/tmp");
+        }
+
+        std::env::set_current_dir(root).expect("Failed to change to temp directory");
 
         let config = Config::default();
         let executor = ActionExecutor::new(config);
@@ -210,7 +247,8 @@ mod tests {
         // We're testing that the function handles it gracefully
         let _ = result;
 
-        std::env::set_current_dir("/").unwrap();
+        // Restore directory (ignore errors if directory no longer exists)
+        let _ = std::env::set_current_dir(&original_dir);
     }
 
     #[tokio::test]
@@ -218,8 +256,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
-        let original_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(root).unwrap();
+        // Save current directory (fallback to /tmp if current dir is invalid)
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+
+        // Ensure we're in a valid directory before changing
+        if std::env::current_dir().is_err() {
+            let _ = std::env::set_current_dir("/tmp");
+        }
+
+        std::env::set_current_dir(root).expect("Failed to change to temp directory");
 
         let config = Config::default();
         let executor = ActionExecutor::new(config);
@@ -239,7 +285,8 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
 
-        std::env::set_current_dir(&original_dir).unwrap();
+        // Restore directory (ignore errors if directory no longer exists)
+        let _ = std::env::set_current_dir(&original_dir);
     }
 
     #[tokio::test]
@@ -247,7 +294,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
-        std::env::set_current_dir(root).unwrap();
+        // Save current directory (fallback to /tmp if current dir is invalid)
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+
+        // Ensure we're in a valid directory before changing
+        if std::env::current_dir().is_err() {
+            let _ = std::env::set_current_dir("/tmp");
+        }
+
+        std::env::set_current_dir(root).expect("Failed to change to temp directory");
 
         let config = Config::default();
         let executor = ActionExecutor::new(config);
@@ -271,6 +327,7 @@ mod tests {
         assert!(!results[0].success);
         assert!(results[0].error.is_some());
 
-        std::env::set_current_dir("/").unwrap();
+        // Restore directory (ignore errors if directory no longer exists)
+        let _ = std::env::set_current_dir(&original_dir);
     }
 }
