@@ -10,6 +10,7 @@ use crate::error::RepoLensError;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
+use crate::utils::{detect_languages, get_gitignore_entries_with_descriptions};
 
 /// Rules for checking repository files
 pub struct FilesRules;
@@ -127,21 +128,39 @@ async fn check_gitignore(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensErro
         return Ok(findings);
     }
 
-    // Check for recommended entries
+    // Check for recommended entries based on detected languages
     let gitignore_content = scanner.read_file(".gitignore").unwrap_or_else(|e| {
         tracing::warn!("Failed to read .gitignore: {}", e);
         String::new()
     });
-    let recommended_entries = [
-        (".env", "Environment files"),
-        ("*.key", "Private keys"),
-        ("*.pem", "Certificates"),
-        ("node_modules", "Node.js dependencies"),
-        (".DS_Store", "macOS metadata"),
-    ];
+
+    // Detect languages present in the repository
+    let languages = detect_languages(scanner);
+
+    // Get recommended entries for detected languages
+    let recommended_entries = get_gitignore_entries_with_descriptions(&languages);
 
     for (pattern, description) in recommended_entries {
-        if !gitignore_content.contains(pattern) {
+        // Check if pattern already exists (handle various formats)
+        let pattern_clean = pattern.trim_end_matches('/');
+        let pattern_variants = [
+            pattern.as_str(),
+            &format!("/{}", pattern),
+            &format!("{}/", pattern),
+            pattern_clean,
+            &format!("/{}", pattern_clean),
+            &format!("{}/", pattern_clean),
+        ];
+
+        let exists = gitignore_content.lines().any(|line| {
+            let line = line.trim();
+            let line_clean = line.trim_end_matches('/');
+            pattern_variants
+                .iter()
+                .any(|p| line == *p || line_clean == pattern_clean)
+        });
+
+        if !exists {
             findings.push(
                 Finding::new(
                     "FILE003",
@@ -258,5 +277,142 @@ mod tests {
 
         assert!(!findings.is_empty());
         assert!(findings.iter().any(|f| f.rule_id == "FILE004"));
+    }
+
+    #[tokio::test]
+    async fn test_check_gitignore_rust_project_no_node_modules() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let gitignore = root.join(".gitignore");
+        let cargo_toml = root.join("Cargo.toml");
+
+        // Create a Rust project
+        fs::write(
+            &cargo_toml,
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"",
+        )
+        .unwrap();
+        fs::write(&gitignore, ".env\n*.key\n").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_gitignore(&scanner).await.unwrap();
+
+        // Should suggest target/ for Rust
+        let target_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains("target/"));
+        assert!(
+            target_finding.is_some(),
+            "Should suggest target/ for Rust projects"
+        );
+
+        // Should NOT suggest node_modules for Rust projects
+        let node_modules_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains("node_modules"));
+        assert!(
+            node_modules_finding.is_none(),
+            "Should NOT suggest node_modules for Rust projects"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_gitignore_javascript_project_suggests_node_modules() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let gitignore = root.join(".gitignore");
+        let package_json = root.join("package.json");
+
+        // Create a JavaScript project
+        fs::write(
+            &package_json,
+            "{\"name\": \"test\", \"version\": \"1.0.0\"}",
+        )
+        .unwrap();
+        fs::write(&gitignore, ".env\n*.key\n").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_gitignore(&scanner).await.unwrap();
+
+        // Should suggest node_modules/ for JavaScript
+        let node_modules_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains("node_modules"));
+        assert!(
+            node_modules_finding.is_some(),
+            "Should suggest node_modules/ for JavaScript projects"
+        );
+
+        // Should NOT suggest target/ for JavaScript projects
+        let target_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains("target/"));
+        assert!(
+            target_finding.is_none(),
+            "Should NOT suggest target/ for JavaScript projects"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_gitignore_universal_entries_always_suggested() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let gitignore = root.join(".gitignore");
+
+        // Create empty .gitignore
+        fs::write(&gitignore, "").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_gitignore(&scanner).await.unwrap();
+
+        // Should suggest universal entries
+        let env_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains(".env"));
+        assert!(
+            env_finding.is_some(),
+            "Should suggest .env (universal entry)"
+        );
+
+        let key_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains("*.key"));
+        assert!(
+            key_finding.is_some(),
+            "Should suggest *.key (universal entry)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_check_gitignore_python_project_suggests_python_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let gitignore = root.join(".gitignore");
+        let requirements_txt = root.join("requirements.txt");
+
+        // Create a Python project
+        fs::write(&requirements_txt, "requests==2.28.0\n").unwrap();
+        fs::write(&gitignore, ".env\n").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_gitignore(&scanner).await.unwrap();
+
+        // Should suggest Python-specific entries
+        let pycache_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains("__pycache__"));
+        assert!(
+            pycache_finding.is_some(),
+            "Should suggest __pycache__/ for Python projects"
+        );
+
+        // Should NOT suggest node_modules
+        let node_modules_finding = findings
+            .iter()
+            .find(|f| f.rule_id == "FILE003" && f.message.contains("node_modules"));
+        assert!(
+            node_modules_finding.is_none(),
+            "Should NOT suggest node_modules for Python projects"
+        );
     }
 }

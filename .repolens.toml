@@ -36,3 +36,5 @@ vulnerability_alerts = true
 automated_security_fixes = true
 
 [templates]
+
+["rules.custom"]

@@ -112,8 +112,9 @@ impl ActionPlanner {
 
     /// Plan .gitignore updates based on findings
     ///
-    /// Collects entries that should be added to .gitignore from audit findings
-    /// and adds standard entries if they're missing.
+    /// Collects entries that should be added to .gitignore from audit findings.
+    /// The findings already contain language-specific recommendations based on
+    /// detected languages in the repository.
     ///
     /// # Arguments
     ///
@@ -123,24 +124,18 @@ impl ActionPlanner {
     ///
     /// An `Action` to update .gitignore, or `None` if no updates are needed
     fn plan_gitignore_update(&self, results: &AuditResults) -> Option<Action> {
-        // Collect entries that should be added to .gitignore
+        // Collect entries that should be added to .gitignore from findings
+        // These findings are already language-aware thanks to check_gitignore
         let mut entries = Vec::new();
 
-        // Check findings for missing gitignore entries
+        // Extract patterns from FILE003 findings
         for finding in results.findings_by_category("files") {
             if finding.rule_id == "FILE003" {
                 // Extract the pattern from the message
+                // Format: ".gitignore missing recommended entry: <pattern>"
                 if let Some(pattern) = finding.message.split("entry: ").nth(1) {
-                    entries.push(pattern.to_string());
+                    entries.push(pattern.trim().to_string());
                 }
-            }
-        }
-
-        // Add standard entries if not present
-        let standard_entries = [".env", "*.key", "*.pem", ".DS_Store"];
-        for entry in standard_entries {
-            if !entries.contains(&entry.to_string()) {
-                entries.push(entry.to_string());
             }
         }
 
