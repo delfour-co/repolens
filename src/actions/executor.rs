@@ -101,7 +101,13 @@ impl ActionExecutor {
         match action.operation() {
             ActionOperation::UpdateGitignore { entries } => {
                 debug!("Updating .gitignore with {} entries", entries.len());
-                gitignore::update_gitignore(entries)?;
+                // Get current directory at the start to avoid race conditions in parallel tests
+                let current_dir = std::env::current_dir().map_err(|e| {
+                    RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to get current directory: {}", e),
+                    })
+                })?;
+                gitignore::update_gitignore_at(&current_dir, entries)?;
             }
 
             ActionOperation::CreateFile {
@@ -139,6 +145,7 @@ mod tests {
     async fn test_execute_action_update_gitignore() {
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
+        let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
 
         // Save current directory (fallback to /tmp if current dir is invalid)
         let original_dir =
@@ -150,17 +157,7 @@ mod tests {
         }
 
         // Change to temp directory
-        std::env::set_current_dir(root).expect("Failed to change to temp directory");
-
-        // Verify we're in the right directory
-        let current_dir = std::env::current_dir().expect("Failed to get current directory");
-        assert_eq!(
-            current_dir.canonicalize().unwrap_or_default(),
-            root.canonicalize().unwrap_or_default(),
-            "Failed to change to temp directory - current dir: {:?}, expected: {:?}",
-            current_dir,
-            root
-        );
+        std::env::set_current_dir(&root_abs).expect("Failed to change to temp directory");
 
         let config = Config::default();
         let executor = ActionExecutor::new(config);
@@ -174,26 +171,33 @@ mod tests {
             },
         );
 
+        // Execute action - it will get current_dir at start, but we ensure it's correct
+        // by setting it just before execution. However, parallel tests might still interfere,
+        // so we also verify the file was created using absolute path.
+        std::env::set_current_dir(&root_abs)
+            .expect("Failed to restore temp directory before execution");
+
         let result = executor.execute_action(&action).await;
 
-        // Check result before restoring directory
+        // Restore directory immediately after execution
+        let _ = std::env::set_current_dir(&original_dir);
+
+        // Check result after restoring directory
         assert!(
             result.is_ok(),
             "Action execution failed: {:?}",
             result.err()
         );
 
-        // Verify file was created in the temp directory
-        let gitignore_path = root.join(".gitignore");
+        // Verify file was created in the temp directory using absolute path
+        // This works regardless of what the current directory is
+        let gitignore_path = root_abs.join(".gitignore");
         assert!(
             gitignore_path.exists(),
-            ".gitignore not found at {:?}. Current dir: {:?}",
+            ".gitignore not found at {:?}. Root was: {:?}",
             gitignore_path,
-            std::env::current_dir().ok()
+            root_abs
         );
-
-        // Restore directory (ignore errors if directory no longer exists)
-        let _ = std::env::set_current_dir(&original_dir);
     }
 
     #[tokio::test]

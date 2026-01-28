@@ -41,3 +41,6 @@ logs/security/
 # Temprary files
 *.tmp
 .scripts/*
+
+# Added by repolens
+*.key

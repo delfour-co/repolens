@@ -80,6 +80,7 @@ pub fn update_gitignore_at(root: &Path, entries: &[String]) -> Result<(), RepoLe
 }
 
 /// Update .gitignore with new entries in current directory
+#[allow(dead_code)] // Kept for public API, may be used by external code
 pub fn update_gitignore(entries: &[String]) -> Result<(), RepoLensError> {
     let current_dir = std::env::current_dir().map_err(|e| {
         RepoLensError::Action(ActionError::ExecutionFailed {
