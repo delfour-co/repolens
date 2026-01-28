@@ -13,6 +13,7 @@ use crate::error::RepoLensError;
 use crate::exit_codes;
 use crate::rules::engine::RulesEngine;
 use crate::scanner::Scanner;
+use colored::Colorize;
 
 /// Execute the plan command
 ///
@@ -31,9 +32,11 @@ use crate::scanner::Scanner;
 ///
 /// Returns an error if the audit or plan generation fails
 pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
+    eprintln!("{}", "Chargement de la configuration...".dimmed());
     // Load configuration
     let config = Config::load_or_default()?;
 
+    eprintln!("{}", "Analyse du dépôt...".dimmed());
     // Initialize scanner
     let scanner = Scanner::new(PathBuf::from("."));
 
@@ -48,13 +51,28 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
         engine.set_skip_categories(skip.clone());
     }
 
-    // Execute audit
-    let audit_results = engine.run(&scanner).await?;
+    // Set up progress callback
+    engine.set_progress_callback(Box::new(|category_name, current, total| {
+        eprintln!(
+            "  {} {} ({}/{})...",
+            "→".dimmed(),
+            category_name.cyan(),
+            current,
+            total
+        );
+    }));
 
+    // Execute audit
+    eprintln!("{}", "Exécution de l'audit...".dimmed());
+    let audit_results = engine.run(&scanner).await?;
+    eprintln!("{} {}", "✓".green(), "Audit terminé.".green());
+
+    eprintln!("{}", "Génération du plan d'action...".dimmed());
     // Generate action plan
     let planner = ActionPlanner::new(config);
     let action_plan = planner.create_plan(&audit_results);
 
+    eprintln!("{}", "Génération du rapport...".dimmed());
     // Render output
     let output: Box<dyn OutputRenderer> = match args.format {
         OutputFormat::Terminal => Box::new(TerminalOutput::new()),
