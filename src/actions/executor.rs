@@ -137,12 +137,24 @@ impl ActionExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::plan::{ActionOperation, ActionPlan};
+    use crate::actions::plan::{Action, ActionOperation, ActionPlan};
     use std::collections::HashMap;
+    use std::sync::OnceLock;
     use tempfile::TempDir;
+    use tokio::sync::Mutex;
+
+    // Global mutex to serialize tests that change the current directory
+    // This prevents race conditions when tests run in parallel
+    static DIR_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn get_dir_mutex() -> &'static Mutex<()> {
+        DIR_MUTEX.get_or_init(|| Mutex::new(()))
+    }
 
     #[tokio::test]
     async fn test_execute_action_update_gitignore() {
+        let _guard = get_dir_mutex().lock().await;
+
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -171,12 +183,7 @@ mod tests {
             },
         );
 
-        // Execute action - it will get current_dir at start, but we ensure it's correct
-        // by setting it just before execution. However, parallel tests might still interfere,
-        // so we also verify the file was created using absolute path.
-        std::env::set_current_dir(&root_abs)
-            .expect("Failed to restore temp directory before execution");
-
+        // Execute action - it will get current_dir at start
         let result = executor.execute_action(&action).await;
 
         // Restore directory immediately after execution
@@ -194,14 +201,16 @@ mod tests {
         let gitignore_path = root_abs.join(".gitignore");
         assert!(
             gitignore_path.exists(),
-            ".gitignore not found at {:?}. Root was: {:?}",
+            ".gitignore not found at {:?}. Root was: {:?}. Current dir: {:?}",
             gitignore_path,
-            root_abs
+            root_abs,
+            std::env::current_dir()
         );
     }
 
     #[tokio::test]
     async fn test_execute_action_create_file() {
+        let _guard = get_dir_mutex().lock().await;
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
@@ -242,6 +251,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_all_actions() {
+        let _guard = get_dir_mutex().lock().await;
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
@@ -280,6 +290,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_handles_errors_gracefully() {
+        let _guard = get_dir_mutex().lock().await;
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
