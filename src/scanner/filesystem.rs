@@ -96,4 +96,78 @@ mod tests {
             .iter()
             .any(|f| f.path == "subdir/nested.txt" || f.path == "subdir\\nested.txt"));
     }
+
+    #[test]
+    fn test_scan_directory_file_size() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create a file with known content
+        let content = "hello world";
+        fs::write(root.join("sized.txt"), content).unwrap();
+
+        let files = scan_directory(root);
+        let sized_file = files.iter().find(|f| f.path == "sized.txt").unwrap();
+
+        assert_eq!(sized_file.size, content.len() as u64);
+    }
+
+    #[test]
+    fn test_scan_directory_excludes_git() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create .git directory (simulating a git repo)
+        fs::create_dir(root.join(".git")).unwrap();
+        fs::write(root.join(".git/config"), "git config").unwrap();
+        fs::write(root.join("regular.txt"), "regular file").unwrap();
+
+        let files = scan_directory(root);
+
+        // Should not include .git files
+        assert!(!files.iter().any(|f| f.path.contains(".git")));
+        // Should include regular files
+        assert!(files.iter().any(|f| f.path == "regular.txt"));
+    }
+
+    #[test]
+    fn test_scan_directory_empty() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        let files = scan_directory(root);
+        assert!(files.is_empty() || files.iter().all(|f| f.is_dir));
+    }
+
+    #[test]
+    fn test_scan_directory_nested_structure() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        // Create deeply nested structure
+        fs::create_dir_all(root.join("a/b/c/d")).unwrap();
+        fs::write(root.join("a/b/c/d/deep.txt"), "deep file").unwrap();
+
+        let files = scan_directory(root);
+        assert!(files.iter().any(|f| f.path.contains("deep.txt")));
+    }
+
+    #[test]
+    fn test_file_info_is_dir() {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+
+        fs::create_dir(root.join("testdir")).unwrap();
+        fs::write(root.join("testfile.txt"), "content").unwrap();
+
+        let files = scan_directory(root);
+
+        let testdir = files.iter().find(|f| f.path == "testdir");
+        if let Some(dir_info) = testdir {
+            assert!(dir_info.is_dir);
+        }
+
+        let testfile = files.iter().find(|f| f.path == "testfile.txt").unwrap();
+        assert!(!testfile.is_dir);
+    }
 }

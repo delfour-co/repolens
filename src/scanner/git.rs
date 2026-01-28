@@ -102,6 +102,41 @@ pub fn is_git_repository(root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::process::Command as StdCommand;
+    use tempfile::TempDir;
+
+    fn init_git_repo(root: &Path) -> bool {
+        StdCommand::new("git")
+            .args(["init"])
+            .current_dir(root)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    fn configure_git_user(root: &Path) {
+        let _ = StdCommand::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(root)
+            .output();
+        let _ = StdCommand::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(root)
+            .output();
+    }
+
+    fn create_initial_commit(root: &Path) {
+        fs::write(root.join("README.md"), "# Test").unwrap();
+        let _ = StdCommand::new("git")
+            .args(["add", "README.md"])
+            .current_dir(root)
+            .output();
+        let _ = StdCommand::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(root)
+            .output();
+    }
 
     #[test]
     fn test_parse_ssh_url() {
@@ -165,9 +200,6 @@ mod tests {
 
     #[test]
     fn test_is_git_repository() {
-        use std::fs;
-        use tempfile::TempDir;
-
         // Test with non-git directory
         let temp_dir = TempDir::new().unwrap();
         assert!(!is_git_repository(temp_dir.path()));
@@ -175,5 +207,82 @@ mod tests {
         // Test with git directory
         fs::create_dir(temp_dir.path().join(".git")).unwrap();
         assert!(is_git_repository(temp_dir.path()));
+    }
+
+    #[test]
+    fn test_get_repository_name_no_git() {
+        let temp_dir = TempDir::new().unwrap();
+        // No git repo, should return None
+        assert!(get_repository_name(temp_dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_get_repository_name_no_remote() {
+        let temp_dir = TempDir::new().unwrap();
+        if !init_git_repo(temp_dir.path()) {
+            return; // Skip if git not available
+        }
+        configure_git_user(temp_dir.path());
+        create_initial_commit(temp_dir.path());
+
+        // Git repo but no remote
+        assert!(get_repository_name(temp_dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_get_default_branch_with_main() {
+        let temp_dir = TempDir::new().unwrap();
+        if !init_git_repo(temp_dir.path()) {
+            return; // Skip if git not available
+        }
+        configure_git_user(temp_dir.path());
+        create_initial_commit(temp_dir.path());
+
+        // Should find main or master
+        let branch = get_default_branch(temp_dir.path());
+        // Either returns main/master or None if neither exists
+        if let Some(b) = branch {
+            assert!(b == "main" || b == "master");
+        }
+    }
+
+    #[test]
+    fn test_get_default_branch_no_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        // No git repo
+        assert!(get_default_branch(temp_dir.path()).is_none());
+    }
+
+    #[test]
+    fn test_parse_gitlab_ssh_url() {
+        let url = "git@gitlab.com:group/subgroup/repo.git";
+        let result = parse_repo_name_from_url_impl(url);
+        // Should parse the path after the colon
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("repo"));
+    }
+
+    #[test]
+    fn test_parse_bitbucket_https_url() {
+        let url = "https://bitbucket.org/team/repo.git";
+        assert_eq!(
+            parse_repo_name_from_url_impl(url),
+            Some("team/repo".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_empty_url() {
+        assert_eq!(parse_repo_name_from_url_impl(""), None);
+    }
+
+    #[test]
+    fn test_parse_url_only_protocol() {
+        // These URLs are incomplete but the parser extracts what it can
+        let result1 = parse_repo_name_from_url_impl("https://");
+        let result2 = parse_repo_name_from_url_impl("http://");
+        // Just verify it doesn't panic
+        let _ = result1;
+        let _ = result2;
     }
 }

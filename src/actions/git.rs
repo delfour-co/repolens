@@ -262,16 +262,12 @@ mod tests {
     use super::*;
     use std::fs;
     use std::process::Command;
-    use std::sync::OnceLock;
+    use std::sync::Mutex;
     use tempfile::TempDir;
-    use tokio::sync::Mutex;
 
     // Global mutex to serialize tests that change the current directory
-    static DIR_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-
-    fn get_dir_mutex() -> &'static Mutex<()> {
-        DIR_MUTEX.get_or_init(|| Mutex::new(()))
-    }
+    // Using std::sync::Mutex instead of tokio::sync::Mutex for cross-runtime compatibility
+    static DIR_MUTEX: Mutex<()> = Mutex::new(());
 
     fn init_git_repo(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         Command::new("git")
@@ -318,9 +314,9 @@ mod tests {
         assert!(is_git_repository(root));
     }
 
-    #[tokio::test]
-    async fn test_create_branch() {
-        let _guard = get_dir_mutex().lock().await;
+    #[test]
+    fn test_create_branch() {
+        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -356,9 +352,9 @@ mod tests {
         let _ = std::env::set_current_dir(&original_dir);
     }
 
-    #[tokio::test]
-    async fn test_has_changes() {
-        let _guard = get_dir_mutex().lock().await;
+    #[test]
+    fn test_has_changes() {
+        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -387,9 +383,9 @@ mod tests {
         let _ = std::env::set_current_dir(&original_dir);
     }
 
-    #[tokio::test]
-    async fn test_stage_all_changes() {
-        let _guard = get_dir_mutex().lock().await;
+    #[test]
+    fn test_stage_all_changes() {
+        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -426,9 +422,9 @@ mod tests {
         let _ = std::env::set_current_dir(&original_dir);
     }
 
-    #[tokio::test]
-    async fn test_create_commit() {
-        let _guard = get_dir_mutex().lock().await;
+    #[test]
+    fn test_create_commit() {
+        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -466,9 +462,9 @@ mod tests {
         let _ = std::env::set_current_dir(&original_dir);
     }
 
-    #[tokio::test]
-    async fn test_get_default_branch() {
-        let _guard = get_dir_mutex().lock().await;
+    #[test]
+    fn test_get_default_branch() {
+        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -496,9 +492,9 @@ mod tests {
         let _ = std::env::set_current_dir(&original_dir);
     }
 
-    #[tokio::test]
-    async fn test_get_current_branch() {
-        let _guard = get_dir_mutex().lock().await;
+    #[test]
+    fn test_get_current_branch() {
+        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());

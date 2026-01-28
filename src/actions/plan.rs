@@ -186,3 +186,265 @@ impl Default for ActionPlan {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_action_new() {
+        let action = Action::new(
+            "action1",
+            "files",
+            "Test action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.log".to_string()],
+            },
+        );
+
+        assert_eq!(action.id(), "action1");
+        assert_eq!(action.category(), "files");
+        assert_eq!(action.description(), "Test action");
+        assert!(action.details().is_empty());
+    }
+
+    #[test]
+    fn test_action_with_detail() {
+        let action = Action::new(
+            "action1",
+            "files",
+            "Test action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.log".to_string()],
+            },
+        )
+        .with_detail("Detail 1");
+
+        assert_eq!(action.details().len(), 1);
+        assert_eq!(action.details()[0], "Detail 1");
+    }
+
+    #[test]
+    fn test_action_with_details() {
+        let action = Action::new(
+            "action1",
+            "files",
+            "Test action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.log".to_string()],
+            },
+        )
+        .with_details(vec!["Detail 1", "Detail 2", "Detail 3"]);
+
+        assert_eq!(action.details().len(), 3);
+    }
+
+    #[test]
+    fn test_action_operation() {
+        let action = Action::new(
+            "action1",
+            "files",
+            "Test action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.log".to_string()],
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateGitignore { entries } => {
+                assert_eq!(entries.len(), 1);
+                assert_eq!(entries[0], "*.log");
+            }
+            _ => panic!("Expected UpdateGitignore operation"),
+        }
+    }
+
+    #[test]
+    fn test_action_plan_new() {
+        let plan = ActionPlan::new();
+        assert!(plan.is_empty());
+        assert_eq!(plan.len(), 0);
+    }
+
+    #[test]
+    fn test_action_plan_default() {
+        let plan = ActionPlan::default();
+        assert!(plan.is_empty());
+    }
+
+    #[test]
+    fn test_action_plan_add() {
+        let mut plan = ActionPlan::new();
+        plan.add(Action::new(
+            "action1",
+            "files",
+            "Test action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.log".to_string()],
+            },
+        ));
+
+        assert!(!plan.is_empty());
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan.actions().len(), 1);
+    }
+
+    #[test]
+    fn test_action_plan_filter_only() {
+        let mut plan = ActionPlan::new();
+        plan.add(Action::new(
+            "action1",
+            "files",
+            "Files action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.log".to_string()],
+            },
+        ));
+        plan.add(Action::new(
+            "action2",
+            "security",
+            "Security action",
+            ActionOperation::ConfigureBranchProtection {
+                branch: "main".to_string(),
+                settings: BranchProtectionSettings::default(),
+            },
+        ));
+        plan.add(Action::new(
+            "action3",
+            "files",
+            "Another files action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.tmp".to_string()],
+            },
+        ));
+
+        plan.filter_only(&["files".to_string()]);
+
+        assert_eq!(plan.len(), 2);
+        for action in plan.actions() {
+            assert_eq!(action.category(), "files");
+        }
+    }
+
+    #[test]
+    fn test_action_plan_filter_skip() {
+        let mut plan = ActionPlan::new();
+        plan.add(Action::new(
+            "action1",
+            "files",
+            "Files action",
+            ActionOperation::UpdateGitignore {
+                entries: vec!["*.log".to_string()],
+            },
+        ));
+        plan.add(Action::new(
+            "action2",
+            "security",
+            "Security action",
+            ActionOperation::ConfigureBranchProtection {
+                branch: "main".to_string(),
+                settings: BranchProtectionSettings::default(),
+            },
+        ));
+        plan.add(Action::new(
+            "action3",
+            "docs",
+            "Docs action",
+            ActionOperation::CreateFile {
+                path: "README.md".to_string(),
+                template: "readme".to_string(),
+                variables: std::collections::HashMap::new(),
+            },
+        ));
+
+        plan.filter_skip(&["security".to_string()]);
+
+        assert_eq!(plan.len(), 2);
+        for action in plan.actions() {
+            assert_ne!(action.category(), "security");
+        }
+    }
+
+    #[test]
+    fn test_branch_protection_settings_default() {
+        let settings = BranchProtectionSettings::default();
+
+        assert_eq!(settings.required_approvals, 1);
+        assert!(settings.require_status_checks);
+        assert!(settings.require_conversation_resolution);
+        assert!(settings.require_linear_history);
+        assert!(settings.block_force_push);
+        assert!(settings.block_deletions);
+        assert!(settings.enforce_admins);
+        assert!(!settings.require_signed_commits);
+    }
+
+    #[test]
+    fn test_github_repo_settings_default() {
+        let settings = GitHubRepoSettings::default();
+
+        assert!(settings.enable_discussions.is_none());
+        assert!(settings.enable_issues.is_none());
+        assert!(settings.enable_wiki.is_none());
+        assert!(settings.enable_vulnerability_alerts.is_none());
+        assert!(settings.enable_automated_security_fixes.is_none());
+    }
+
+    #[test]
+    fn test_action_operation_create_file() {
+        let mut variables = std::collections::HashMap::new();
+        variables.insert("name".to_string(), "Test Project".to_string());
+
+        let action = Action::new(
+            "action1",
+            "docs",
+            "Create README",
+            ActionOperation::CreateFile {
+                path: "README.md".to_string(),
+                template: "readme".to_string(),
+                variables,
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::CreateFile {
+                path,
+                template,
+                variables,
+            } => {
+                assert_eq!(path, "README.md");
+                assert_eq!(template, "readme");
+                assert_eq!(variables.get("name"), Some(&"Test Project".to_string()));
+            }
+            _ => panic!("Expected CreateFile operation"),
+        }
+    }
+
+    #[test]
+    fn test_action_operation_update_github_settings() {
+        let settings = GitHubRepoSettings {
+            enable_discussions: Some(true),
+            enable_issues: Some(true),
+            enable_wiki: Some(false),
+            enable_vulnerability_alerts: Some(true),
+            enable_automated_security_fixes: Some(true),
+        };
+
+        let action = Action::new(
+            "action1",
+            "security",
+            "Update GitHub settings",
+            ActionOperation::UpdateGitHubSettings {
+                settings: settings.clone(),
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateGitHubSettings { settings } => {
+                assert_eq!(settings.enable_discussions, Some(true));
+                assert_eq!(settings.enable_wiki, Some(false));
+            }
+            _ => panic!("Expected UpdateGitHubSettings operation"),
+        }
+    }
+}

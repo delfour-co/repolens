@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+#### Code Coverage Improvement
+- Improved test coverage to 90% minimum for core modules
+- Fixed `test_has_changes` test race condition in `src/actions/git.rs` by using `std::sync::Mutex` instead of `tokio::sync::Mutex` for better cross-runtime compatibility
+- Added comprehensive tests for:
+  - CLI output modules (terminal, json, markdown, html, sarif)
+  - Configuration modules (loader, presets)
+  - Rules engine and results
+  - Scanner modules (filesystem, git)
+  - Error types
+  - Action plan and templates
+  - Cache module
+- Updated CI coverage threshold from 50% to 90% with appropriate file exclusions for untestable modules (CLI commands, providers, external API dependencies)
+
 ### Added
 
 #### Interactive Mode for Apply Command (#3)

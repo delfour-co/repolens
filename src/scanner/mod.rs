@@ -224,3 +224,170 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 
     text.contains(pattern.trim_start_matches('*').trim_end_matches('*'))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn create_test_repo() -> TempDir {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        // Create directory structure
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("tests")).unwrap();
+        fs::create_dir_all(root.join(".github/workflows")).unwrap();
+
+        // Create files
+        fs::write(root.join("README.md"), "# Test Project").unwrap();
+        fs::write(root.join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
+        fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+        fs::write(root.join("src/lib.rs"), "pub fn lib() {}").unwrap();
+        fs::write(root.join("tests/test.rs"), "#[test] fn test() {}").unwrap();
+        fs::write(root.join(".github/workflows/ci.yml"), "name: CI\non: push").unwrap();
+
+        // Create a large file (for testing files_larger_than)
+        let large_content = "x".repeat(10000);
+        fs::write(root.join("large_file.bin"), large_content).unwrap();
+
+        temp_dir
+    }
+
+    #[test]
+    fn test_scanner_new() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+        assert!(!scanner.all_files().is_empty());
+    }
+
+    #[test]
+    fn test_repository_name_fallback() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+        // Without git, should fall back to directory name
+        let name = scanner.repository_name();
+        assert!(!name.is_empty());
+    }
+
+    #[test]
+    fn test_file_exists() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        assert!(scanner.file_exists("README.md"));
+        assert!(scanner.file_exists("src/main.rs"));
+        assert!(!scanner.file_exists("nonexistent.txt"));
+    }
+
+    #[test]
+    fn test_directory_exists() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        assert!(scanner.directory_exists("src"));
+        assert!(scanner.directory_exists(".github/workflows"));
+        assert!(!scanner.directory_exists("nonexistent"));
+    }
+
+    #[test]
+    fn test_read_file() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let content = scanner.read_file("README.md").unwrap();
+        assert_eq!(content, "# Test Project");
+
+        let result = scanner.read_file("nonexistent.txt");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_files_with_extensions() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let rs_files = scanner.files_with_extensions(&["rs"]);
+        assert!(rs_files.len() >= 2); // main.rs, lib.rs, test.rs
+
+        let md_files = scanner.files_with_extensions(&["md"]);
+        assert!(!md_files.is_empty());
+
+        let multi_ext = scanner.files_with_extensions(&["rs", "toml"]);
+        assert!(multi_ext.len() >= 3);
+    }
+
+    #[test]
+    fn test_files_matching_pattern() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let rs_pattern = scanner.files_matching_pattern("*.rs");
+        assert!(!rs_pattern.is_empty());
+
+        let src_pattern = scanner.files_matching_pattern("src/");
+        assert!(!src_pattern.is_empty());
+    }
+
+    #[test]
+    fn test_files_larger_than() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let large_files = scanner.files_larger_than(5000);
+        assert!(!large_files.is_empty());
+
+        let very_large = scanner.files_larger_than(1_000_000);
+        assert!(very_large.is_empty());
+    }
+
+    #[test]
+    fn test_files_in_directory() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let src_files = scanner.files_in_directory("src");
+        assert!(src_files.len() >= 2);
+
+        let github_files = scanner.files_in_directory(".github");
+        assert!(!github_files.is_empty());
+    }
+
+    #[test]
+    fn test_glob_match_star() {
+        assert!(glob_match("*", "anything"));
+        assert!(glob_match("*", ""));
+    }
+
+    #[test]
+    fn test_glob_match_extension() {
+        assert!(glob_match("*.rs", "main.rs"));
+        assert!(glob_match("*.rs", "src/lib.rs"));
+        assert!(!glob_match("*.rs", "main.txt"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star() {
+        // The glob_match function has specific behavior for **
+        assert!(glob_match("src/**", "src/lib.rs"));
+        assert!(glob_match("src/**", "src/sub/file.rs"));
+        // Test pattern with ** at end
+        assert!(glob_match("tests/**", "tests/unit/test.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_partial() {
+        assert!(glob_match("main", "src/main.rs"));
+        assert!(glob_match("*main*", "src/main.rs"));
+    }
+
+    #[test]
+    fn test_all_files() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let files = scanner.all_files();
+        assert!(files.len() >= 6); // We created at least 6 files
+    }
+}

@@ -274,6 +274,8 @@ fn glob_match_single_star(pattern: &str, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_glob_match() {
@@ -319,5 +321,230 @@ message = "TODO comment found"
         let rule = config.custom_rules.rules.get("no-todo").unwrap();
         assert_eq!(rule.pattern, Some("TODO".to_string()));
         assert_eq!(rule.severity, "warning");
+    }
+
+    #[test]
+    fn test_default_preset_function() {
+        assert_eq!(default_preset(), "opensource");
+    }
+
+    #[test]
+    fn test_from_preset_opensource() {
+        let config = Config::from_preset(Preset::OpenSource);
+        assert_eq!(config.preset, "opensource");
+        assert!(config.actions.license.enabled);
+        assert!(config.actions.contributing);
+        assert!(config.actions.code_of_conduct);
+        assert!(config.actions.security_policy);
+        assert!(config.actions.github_settings.discussions);
+    }
+
+    #[test]
+    fn test_from_preset_strict() {
+        let config = Config::from_preset(Preset::Strict);
+        assert_eq!(config.preset, "strict");
+        assert!(config.actions.license.enabled);
+        assert!(config.actions.contributing);
+        assert_eq!(config.actions.branch_protection.required_approvals, 2);
+        assert!(config.actions.branch_protection.require_signed_commits);
+    }
+
+    #[test]
+    fn test_load_from_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        fs::write(&config_path, r#"preset = "enterprise""#).unwrap();
+
+        let config = Config::load_from_file(&config_path).unwrap();
+        assert_eq!(config.preset, "enterprise");
+    }
+
+    #[test]
+    fn test_load_from_file_not_found() {
+        let result = Config::load_from_file(Path::new("/nonexistent/config.toml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_to_toml() {
+        let config = Config::default();
+        let toml_str = config.to_toml().unwrap();
+        assert!(toml_str.contains("preset = \"opensource\""));
+    }
+
+    #[test]
+    fn test_is_rule_enabled_default() {
+        let config = Config::default();
+        assert!(config.is_rule_enabled("nonexistent_rule"));
+    }
+
+    #[test]
+    fn test_is_rule_enabled_disabled() {
+        let mut config = Config::default();
+        config.rules.insert(
+            "test_rule".to_string(),
+            RuleConfig {
+                enabled: false,
+                severity: None,
+            },
+        );
+        assert!(!config.is_rule_enabled("test_rule"));
+    }
+
+    #[test]
+    fn test_get_rule_severity() {
+        let mut config = Config::default();
+        config.rules.insert(
+            "test_rule".to_string(),
+            RuleConfig {
+                enabled: true,
+                severity: Some("critical".to_string()),
+            },
+        );
+        assert_eq!(config.get_rule_severity("test_rule"), Some("critical"));
+        assert_eq!(config.get_rule_severity("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_should_ignore_file() {
+        let mut config = Config::default();
+        config.secrets.ignore_files = vec!["*.min.js".to_string(), "vendor/**".to_string()];
+
+        assert!(config.should_ignore_file("bundle.min.js"));
+        assert!(config.should_ignore_file("vendor/lib.js"));
+        assert!(!config.should_ignore_file("main.js"));
+    }
+
+    #[test]
+    fn test_should_ignore_pattern() {
+        let mut config = Config::default();
+        config.secrets.ignore_patterns = vec!["test_*".to_string(), "*_mock".to_string()];
+
+        assert!(config.should_ignore_pattern("test_secret"));
+        assert!(config.should_ignore_pattern("api_mock"));
+        assert!(!config.should_ignore_pattern("real_secret"));
+    }
+
+    #[test]
+    fn test_is_url_allowed() {
+        let mut config = Config::default();
+        config.urls.allowed_internal = vec![
+            "https://internal.company.com/*".to_string(),
+            "http://localhost:*".to_string(),
+        ];
+
+        assert!(config.is_url_allowed("https://internal.company.com/api"));
+        assert!(config.is_url_allowed("http://localhost:3000"));
+        assert!(!config.is_url_allowed("https://external.com/api"));
+    }
+
+    #[test]
+    fn test_is_url_allowed_empty() {
+        let config = Config::default();
+        assert!(!config.is_url_allowed("any_url"));
+    }
+
+    #[test]
+    fn test_glob_match_exact() {
+        assert!(glob_match("file.txt", "file.txt"));
+        assert!(!glob_match("file.txt", "other.txt"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star() {
+        assert!(glob_match("*.txt", "file.txt"));
+        assert!(glob_match("file.*", "file.txt"));
+        assert!(glob_match("*.txt", "path/to/file.txt"));
+        assert!(glob_match("test_*", "test_file"));
+        assert!(glob_match("*_test", "my_test"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_prefix() {
+        assert!(glob_match("src/**", "src/file.txt"));
+        assert!(glob_match("src/**", "src/sub/file.txt"));
+        assert!(!glob_match("src/**", "other/file.txt"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_suffix() {
+        assert!(glob_match("**/*.rs", "src/main.rs"));
+        assert!(glob_match("**/*.rs", "main.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_middle() {
+        assert!(glob_match("**/test/**", "src/test/file.txt"));
+        assert!(glob_match("**/test/**", "test/file.txt"));
+    }
+
+    #[test]
+    fn test_config_full_deserialization() {
+        let toml_content = r#"
+preset = "strict"
+
+[rules]
+[rules.SEC001]
+enabled = false
+severity = "warning"
+
+["rules.secrets"]
+ignore_patterns = ["test_*"]
+ignore_files = ["*.test.ts"]
+custom_patterns = ["MY_SECRET_\\w+"]
+
+["rules.urls"]
+allowed_internal = ["https://internal.example.com/*"]
+
+[actions]
+gitignore = true
+contributing = true
+code_of_conduct = true
+security_policy = true
+
+[actions.license]
+enabled = true
+license_type = "Apache-2.0"
+author = "Test Author"
+year = "2024"
+
+[actions.branch_protection]
+enabled = true
+branch = "main"
+required_approvals = 2
+require_status_checks = true
+block_force_push = true
+require_signed_commits = true
+
+[actions.github_settings]
+discussions = false
+issues = true
+wiki = false
+vulnerability_alerts = true
+automated_security_fixes = true
+
+[templates]
+license_author = "Template Author"
+license_year = "2024"
+project_name = "My Project"
+project_description = "A test project"
+
+[cache]
+enabled = true
+ttl_seconds = 3600
+"#;
+        let config: Config = toml::from_str(toml_content).unwrap();
+        assert_eq!(config.preset, "strict");
+        assert!(!config.is_rule_enabled("SEC001"));
+        assert_eq!(config.get_rule_severity("SEC001"), Some("warning"));
+        assert!(config.should_ignore_pattern("test_secret"));
+        assert!(config.should_ignore_file("file.test.ts"));
+        assert!(config.is_url_allowed("https://internal.example.com/api"));
+        assert_eq!(config.actions.license.license_type, "Apache-2.0");
+        assert_eq!(config.actions.branch_protection.required_approvals, 2);
+        assert_eq!(
+            config.templates.project_name,
+            Some("My Project".to_string())
+        );
     }
 }

@@ -320,4 +320,87 @@ mod tests {
         assert!(engine.should_run_category("files"));
         assert!(engine.should_run_category("docs"));
     }
+
+    #[test]
+    fn test_set_progress_callback() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let config = Config::default();
+        let mut engine = RulesEngine::new(config);
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let call_count_clone = call_count.clone();
+
+        engine.set_progress_callback(Box::new(move |_name, _current, _total| {
+            call_count_clone.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        assert!(engine.progress_callback.is_some());
+    }
+
+    #[test]
+    fn test_cache_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = Config::default();
+        let mut engine = RulesEngine::new(config.clone());
+
+        // Initially no cache
+        assert!(engine.cache().is_none());
+        assert!(engine.cache_mut().is_none());
+
+        // Set cache
+        let cache = AuditCache::new(temp_dir.path(), config.cache);
+        engine.set_cache(cache);
+
+        // Now has cache
+        assert!(engine.cache().is_some());
+        assert!(engine.cache_mut().is_some());
+
+        // Take cache
+        let taken = engine.take_cache();
+        assert!(taken.is_some());
+        assert!(engine.cache().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_with_progress_callback() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("README.md"), "# Test").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut engine = RulesEngine::new(config);
+
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let call_count_clone = call_count.clone();
+
+        engine.set_progress_callback(Box::new(move |_name, _current, _total| {
+            call_count_clone.fetch_add(1, Ordering::SeqCst);
+        }));
+
+        let _ = engine.run(&scanner).await.unwrap();
+
+        // Should have called progress callback for each category
+        assert!(call_count.load(Ordering::SeqCst) > 0);
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_with_cache() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("README.md"), "# Test").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut engine = RulesEngine::new(config.clone());
+        engine.set_cache(AuditCache::new(root, config.cache));
+
+        let results = engine.run(&scanner).await.unwrap();
+        assert_eq!(results.preset, "opensource");
+    }
 }

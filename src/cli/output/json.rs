@@ -82,3 +82,94 @@ impl ReportRenderer for JsonOutput {
         Ok(serde_json::to_string_pretty(results)?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rules::results::{Finding, Severity};
+
+    fn create_test_results() -> AuditResults {
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "SEC001",
+            "secrets",
+            Severity::Critical,
+            "Secret exposed",
+        ));
+        results.add_finding(Finding::new(
+            "DOC001",
+            "docs",
+            Severity::Warning,
+            "README missing",
+        ));
+        results
+    }
+
+    #[test]
+    fn test_json_output_new() {
+        let _output = JsonOutput::new();
+        // JsonOutput is a unit struct
+    }
+
+    #[test]
+    fn test_json_output_default() {
+        let _output = JsonOutput;
+        // JsonOutput is a unit struct
+    }
+
+    #[test]
+    fn test_render_plan() {
+        use crate::actions::plan::{Action, ActionOperation};
+
+        let output = JsonOutput::new();
+        let results = create_test_results();
+        let mut plan = ActionPlan::new();
+        plan.add(
+            Action::new(
+                "action1",
+                "files",
+                "Update gitignore",
+                ActionOperation::UpdateGitignore {
+                    entries: vec!["*.log".to_string()],
+                },
+            )
+            .with_detail("Adding *.log"),
+        );
+
+        let rendered = output.render_plan(&results, &plan).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+        assert_eq!(json["repository"], "test-repo");
+        assert_eq!(json["preset"], "opensource");
+        assert_eq!(json["audit"]["critical_count"], 1);
+        assert_eq!(json["audit"]["warning_count"], 1);
+        assert!(!json["actions"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_render_plan_empty() {
+        let output = JsonOutput::new();
+        let results = AuditResults::new("empty-repo", "strict");
+        let plan = ActionPlan::new();
+
+        let rendered = output.render_plan(&results, &plan).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+        assert_eq!(json["repository"], "empty-repo");
+        assert_eq!(json["preset"], "strict");
+        assert_eq!(json["audit"]["critical_count"], 0);
+        assert!(json["actions"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_render_report() {
+        let output = JsonOutput::new();
+        let results = create_test_results();
+
+        let rendered = output.render_report(&results).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+        assert_eq!(json["repository_name"], "test-repo");
+        assert_eq!(json["preset"], "opensource");
+    }
+}
