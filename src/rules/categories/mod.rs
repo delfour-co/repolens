@@ -1,7 +1,7 @@
 //\! Rule categories
 
-pub mod dependencies;
 pub mod custom;
+pub mod dependencies;
 pub mod docs;
 pub mod files;
 pub mod quality;

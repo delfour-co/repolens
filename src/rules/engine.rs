@@ -4,8 +4,9 @@ use crate::error::RepoLensError;
 use tracing::{debug, info, span, Level};
 
 use super::categories::{
-    dependencies::DependencyRules, docs::DocsRules, files::FilesRules, quality::QualityRules,
-    custom::CustomRules, secrets::SecretsRules, security::SecurityRules, workflows::WorkflowsRules,
+    custom::CustomRules, dependencies::DependencyRules, docs::DocsRules, files::FilesRules,
+    quality::QualityRules, secrets::SecretsRules, security::SecurityRules,
+    workflows::WorkflowsRules,
 };
 use super::results::AuditResults;
 use crate::config::Config;
