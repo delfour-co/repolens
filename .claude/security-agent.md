@@ -30,6 +30,14 @@ git worktree remove "$WORKTREE_DIR"
 
 Pour les audits en lecture seule (sans modifications), le worktree n'est pas nécessaire.
 
+## Documentation Obligatoire
+
+**Mettre à jour la documentation DANS LA MÊME PR que les corrections:**
+- `README.md` - Si impact utilisateur
+- `CHANGELOG.md` - Entrée sous `## [Unreleased]` > `### Security`
+- `SECURITY.md` - Si changement de politique
+- `wiki/` - Pages concernées si existantes
+
 ## Checks de Sécurité
 
 ### Dépendances

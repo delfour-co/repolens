@@ -27,10 +27,77 @@ Download the latest release from the [Releases page](https://github.com/kdelfour
 ```bash
 # Download and install
 wget https://github.com/kdelfour/repolens/releases/download/v0.1.0/repolens-linux-x86_64.tar.gz
+Pre-built binaries are available for all major platforms. Download the latest release from the [Releases page](https://github.com/delfour-co/cli--repolens/releases).
+
+#### Supported Platforms
+
+| Platform | Architecture | Archive |
+|----------|-------------|---------|
+| Linux | x86_64 | `repolens-linux-x86_64.tar.gz` |
+| Linux | ARM64 | `repolens-linux-arm64.tar.gz` |
+| macOS | Intel x86_64 | `repolens-darwin-x86_64.tar.gz` |
+| macOS | Apple Silicon ARM64 | `repolens-darwin-arm64.tar.gz` |
+| Windows | x86_64 | `repolens-windows-x86_64.zip` |
+
+#### Linux (x86_64)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-linux-x86_64.tar.gz
 tar xzf repolens-linux-x86_64.tar.gz
 sudo mv repolens /usr/local/bin/
+```
 
-# Verify installation
+#### Linux (ARM64)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-linux-arm64.tar.gz
+tar xzf repolens-linux-arm64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+#### macOS (Apple Silicon)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-darwin-arm64.tar.gz
+tar xzf repolens-darwin-arm64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+#### macOS (Intel)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-darwin-x86_64.tar.gz
+tar xzf repolens-darwin-x86_64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+#### Windows (x86_64)
+
+```powershell
+# Download the zip archive from the Releases page
+Invoke-WebRequest -Uri https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-windows-x86_64.zip -OutFile repolens-windows-x86_64.zip
+Expand-Archive repolens-windows-x86_64.zip -DestinationPath .
+Move-Item repolens.exe C:\Users\$env:USERNAME\bin\
+```
+
+#### Verify Checksums
+
+Each release includes a `checksums.sha256` file. After downloading your archive, verify its integrity:
+
+```bash
+# Download the checksums file
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/checksums.sha256
+
+# Verify (Linux)
+sha256sum -c checksums.sha256 --ignore-missing
+
+# Verify (macOS)
+shasum -a 256 -c checksums.sha256 --ignore-missing
+```
+
+#### Verify Installation
+
+```bash
 repolens --version
 ```
 
@@ -200,6 +267,78 @@ See the [Custom Rules documentation](wiki/Custom-Rules.md) for more examples and
 - **security**: Security best practices and policies
 - **workflows**: CI/CD and GitHub Actions validation
 - **quality**: Code quality standards
+
+## GitHub Action
+
+RepoLens is available as a GitHub Action to integrate repository auditing directly into your CI/CD workflows.
+
+### Basic Usage
+
+```yaml
+name: RepoLens Audit
+on: [push, pull_request]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: kdelfour/repolens@main
+        with:
+          preset: 'opensource'
+          format: 'terminal'
+          fail-on: 'critical'
+```
+
+### Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `preset` | Audit preset (`opensource`, `enterprise`, `strict`) | `opensource` |
+| `format` | Output format (`terminal`, `json`, `sarif`, `markdown`, `html`) | `terminal` |
+| `fail-on` | Fail on severity level (`critical`, `high`, `medium`, `low`, `none`) | `critical` |
+| `config` | Path to a custom `.repolens.toml` config file | |
+| `version` | RepoLens version to install (e.g. `0.1.0` or `latest`) | `latest` |
+| `upload-artifact` | Upload report as a GitHub Actions artifact | `true` |
+| `artifact-name` | Name of the uploaded artifact | `repolens-report` |
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `report-path` | Path to the generated report file |
+| `findings-count` | Total number of findings detected |
+| `exit-code` | Exit code (`0`=success, `1`=critical, `2`=warnings) |
+
+### SARIF Integration
+
+Upload results to GitHub Advanced Security for visibility in the Security tab:
+
+```yaml
+- uses: kdelfour/repolens@main
+  id: audit
+  with:
+    format: 'sarif'
+    fail-on: 'none'
+
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: ${{ steps.audit.outputs.report-path }}
+    category: 'repolens'
+```
+
+### PR Comment
+
+Post audit results as a comment on pull requests. See the full example in [`examples/github-action/pr-comment.yml`](examples/github-action/pr-comment.yml).
+
+### More Examples
+
+See the [`examples/github-action/`](examples/github-action/) directory for complete workflow examples:
+
+- [`basic.yml`](examples/github-action/basic.yml) -- Basic usage on push and pull requests
+- [`sarif-upload.yml`](examples/github-action/sarif-upload.yml) -- SARIF upload for GitHub Security
+- [`pr-comment.yml`](examples/github-action/pr-comment.yml) -- Post results as a PR comment
 
 ## Contributing
 

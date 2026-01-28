@@ -10,11 +10,88 @@ Ce guide vous explique comment installer RepoLens sur votre système.
 
 ## Prérequis
 
-- **Rust** : Version stable (1.70+ recommandée)
 - **Git** : Pour la gestion de version
 - **GitHub CLI** (`gh`) : Optionnel, pour les fonctionnalités GitHub (installation via `gh auth login`)
 
+## Installation via binaires pré-compilés (recommandé)
+
+Des binaires pré-compilés sont disponibles pour toutes les plateformes majeures. Rendez-vous sur la [page Releases](https://github.com/delfour-co/cli--repolens/releases) pour télécharger la dernière version.
+
+### Plateformes supportées
+
+| Plateforme | Architecture | Archive |
+|------------|-------------|---------|
+| Linux | x86_64 | `repolens-linux-x86_64.tar.gz` |
+| Linux | ARM64 | `repolens-linux-arm64.tar.gz` |
+| macOS | Intel x86_64 | `repolens-darwin-x86_64.tar.gz` |
+| macOS | Apple Silicon ARM64 | `repolens-darwin-arm64.tar.gz` |
+| Windows | x86_64 | `repolens-windows-x86_64.zip` |
+
+### Linux (x86_64)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-linux-x86_64.tar.gz
+tar xzf repolens-linux-x86_64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+### Linux (ARM64)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-linux-arm64.tar.gz
+tar xzf repolens-linux-arm64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+### macOS (Apple Silicon)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-darwin-arm64.tar.gz
+tar xzf repolens-darwin-arm64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+### macOS (Intel)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-darwin-x86_64.tar.gz
+tar xzf repolens-darwin-x86_64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+### Windows (x86_64)
+
+```powershell
+# Telecharger l'archive depuis la page Releases
+Invoke-WebRequest -Uri https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-windows-x86_64.zip -OutFile repolens-windows-x86_64.zip
+Expand-Archive repolens-windows-x86_64.zip -DestinationPath .
+Move-Item repolens.exe C:\Users\$env:USERNAME\bin\
+```
+
+### Verifier les checksums
+
+Chaque release inclut un fichier `checksums.sha256` pour verifier l'integrite des archives :
+
+```bash
+# Telecharger le fichier de checksums
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/checksums.sha256
+
+# Verifier (Linux)
+sha256sum -c checksums.sha256 --ignore-missing
+
+# Verifier (macOS)
+shasum -a 256 -c checksums.sha256 --ignore-missing
+```
+
+### Verifier l'installation
+
+```bash
+repolens --version
+```
+
 ## Installation depuis les sources
+
+> **Note** : L'installation depuis les sources necessite **Rust** version stable (1.70+ recommandee).
 
 ### 1. Cloner le repository
 

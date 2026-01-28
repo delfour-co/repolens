@@ -106,6 +106,23 @@ cargo tarpaulin --out Stdout --skip-clean 2>/dev/null || echo "Coverage: install
 - Pas de warnings clippy
 - Couverture acceptable (pas de régression)
 
+## Documentation Obligatoire
+
+**IMPORTANT: Mettre à jour la documentation DANS LA MÊME PR que le code.**
+
+Après chaque implémentation, avant de créer la PR:
+
+1. **README.md** - Ajouter/mettre à jour la section concernée (usage, installation, exemples)
+2. **CHANGELOG.md** - Ajouter une entrée sous la section `## [Unreleased]` :
+   ```markdown
+   ### Added
+   - Description de la feature (#XX)
+   ```
+3. **Wiki** (`wiki/`) - Mettre à jour les pages concernées si elles existent
+4. **Rustdoc** - Documenter les fonctions/types publics ajoutés
+
+**Ne JAMAIS créer une PR sans documentation.** Code et doc sont indissociables.
+
 ## Checklist PR
 
 ```
@@ -114,7 +131,10 @@ cargo tarpaulin --out Stdout --skip-clean 2>/dev/null || echo "Coverage: install
 - [ ] cargo clippy -- -D warnings
 - [ ] cargo test --all-features (100% pass)
 - [ ] Couverture vérifiée
-- [ ] Documentation ajoutée
+- [ ] README.md mis à jour
+- [ ] CHANGELOG.md mis à jour
+- [ ] Wiki mis à jour (si applicable)
+- [ ] Rustdoc sur les fonctions publiques
 - [ ] Pas de unwrap() en production
 - [ ] Worktree nettoyé après merge
 ```

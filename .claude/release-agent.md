@@ -87,12 +87,21 @@ cargo publish --dry-run
 cargo publish
 ```
 
+## Documentation Obligatoire
+
+**Avant chaque release, vérifier:**
+- `CHANGELOG.md` - Renommer `## [Unreleased]` en `## [X.Y.Z] - YYYY-MM-DD`
+- `README.md` - Version à jour, instructions d'installation correctes
+- `wiki/` - Toutes les pages sont synchronisées
+
 ## Checklist Release
 
 ```
 - [ ] Worktree créé et isolé
 - [ ] Tests passent
-- [ ] Changelog à jour
+- [ ] CHANGELOG.md finalisé (Unreleased → version)
+- [ ] README.md à jour
+- [ ] Wiki synchronisé
 - [ ] Version bumpée
 - [ ] Tag créé
 - [ ] Release GitHub créée
