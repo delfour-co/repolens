@@ -16,15 +16,77 @@ A CLI tool to audit GitHub repositories for best practices, security, and compli
 
 ### Pre-built Binaries
 
-Download the latest release from the [Releases page](https://github.com/delfour-co/cli--repolens/releases):
+Pre-built binaries are available for all major platforms. Download the latest release from the [Releases page](https://github.com/delfour-co/cli--repolens/releases).
+
+#### Supported Platforms
+
+| Platform | Architecture | Archive |
+|----------|-------------|---------|
+| Linux | x86_64 | `repolens-linux-x86_64.tar.gz` |
+| Linux | ARM64 | `repolens-linux-arm64.tar.gz` |
+| macOS | Intel x86_64 | `repolens-darwin-x86_64.tar.gz` |
+| macOS | Apple Silicon ARM64 | `repolens-darwin-arm64.tar.gz` |
+| Windows | x86_64 | `repolens-windows-x86_64.zip` |
+
+#### Linux (x86_64)
 
 ```bash
-# Download and install
-wget https://github.com/delfour-co/cli--repolens/releases/download/v0.1.0/repolens-linux-x86_64.tar.gz
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-linux-x86_64.tar.gz
 tar xzf repolens-linux-x86_64.tar.gz
 sudo mv repolens /usr/local/bin/
+```
 
-# Verify installation
+#### Linux (ARM64)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-linux-arm64.tar.gz
+tar xzf repolens-linux-arm64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+#### macOS (Apple Silicon)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-darwin-arm64.tar.gz
+tar xzf repolens-darwin-arm64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+#### macOS (Intel)
+
+```bash
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-darwin-x86_64.tar.gz
+tar xzf repolens-darwin-x86_64.tar.gz
+sudo mv repolens /usr/local/bin/
+```
+
+#### Windows (x86_64)
+
+```powershell
+# Download the zip archive from the Releases page
+Invoke-WebRequest -Uri https://github.com/delfour-co/cli--repolens/releases/latest/download/repolens-windows-x86_64.zip -OutFile repolens-windows-x86_64.zip
+Expand-Archive repolens-windows-x86_64.zip -DestinationPath .
+Move-Item repolens.exe C:\Users\$env:USERNAME\bin\
+```
+
+#### Verify Checksums
+
+Each release includes a `checksums.sha256` file. After downloading your archive, verify its integrity:
+
+```bash
+# Download the checksums file
+curl -LO https://github.com/delfour-co/cli--repolens/releases/latest/download/checksums.sha256
+
+# Verify (Linux)
+sha256sum -c checksums.sha256 --ignore-missing
+
+# Verify (macOS)
+shasum -a 256 -c checksums.sha256 --ignore-missing
+```
+
+#### Verify Installation
+
+```bash
 repolens --version
 ```
 

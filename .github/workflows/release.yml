@@ -10,8 +10,47 @@ env:
 
 jobs:
   build:
-    name: Build Release
-    runs-on: ubuntu-latest
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: repolens
+            archive_name: repolens-linux-x86_64
+            use_cross: false
+
+          - name: Linux ARM64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            artifact_name: repolens
+            archive_name: repolens-linux-arm64
+            use_cross: true
+
+          - name: macOS Intel x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: repolens
+            archive_name: repolens-darwin-x86_64
+            use_cross: false
+
+          - name: macOS Apple Silicon ARM64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: repolens
+            archive_name: repolens-darwin-arm64
+            use_cross: false
+
+          - name: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: repolens.exe
+            archive_name: repolens-windows-x86_64
+            use_cross: false
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,85 +60,119 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          targets: ${{ matrix.target }}
           components: rustfmt, clippy
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --locked
 
       - name: Get version from tag
         id: version
+        shell: bash
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          
+
           # Validate version format
           if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
             echo "Error: Invalid version format: $VERSION"
             exit 1
           fi
-          
+
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
           echo "Building release version: ${VERSION}"
 
-      - name: Verify tag exists
-        run: |
-          TAG=${GITHUB_REF#refs/tags/}
-          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Error: Tag $TAG does not exist"
-            exit 1
-          fi
-          git checkout "$TAG"
-
       - name: Update version in Cargo.toml
+        shell: bash
         run: |
-          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          sed -i.bak "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          rm -f Cargo.toml.bak
           cat Cargo.toml | grep '^version ='
 
       - name: Run tests
-        run: |
-          cargo test --locked --release
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo test --release
 
-      - name: Build release binary
-        run: |
-          cargo build --release --locked
-          strip target/release/repolens || true
+      - name: Build release binary (native)
+        if: ${{ !matrix.use_cross }}
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Get binary info
-        id: binary
-        run: |
-          BINARY_SIZE=$(stat -c%s target/release/repolens)
-          BINARY_HASH=$(sha256sum target/release/repolens | cut -d' ' -f1)
-          
-          echo "size=${BINARY_SIZE}" >> $GITHUB_OUTPUT
-          echo "hash=${BINARY_HASH}" >> $GITHUB_OUTPUT
-          
-          echo "Binary size: ${BINARY_SIZE} bytes"
-          echo "Binary hash: ${BINARY_HASH}"
+      - name: Build release binary (cross)
+        if: ${{ matrix.use_cross }}
+        run: cross build --release --target ${{ matrix.target }}
 
-      - name: Create checksums
+      - name: Strip binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          cd target/release
-          sha256sum repolens > repolens.sha256
-          sha512sum repolens > repolens.sha512
-          md5sum repolens > repolens.md5
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            # For cross-compiled binaries, try to strip but don't fail
+            strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }} 2>/dev/null || true
+          else
+            strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }} || true
+          fi
 
-      - name: Create archive
+      - name: Create archive (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          cd target/release
-          tar czf repolens-linux-x86_64.tar.gz repolens repolens.sha256 repolens.sha512 repolens.md5
-          zip repolens-linux-x86_64.zip repolens repolens.sha256 repolens.sha512 repolens.md5
+          cd target/${{ matrix.target }}/release
+          tar czf ${{ matrix.archive_name }}.tar.gz ${{ matrix.artifact_name }}
+          echo "Archive created: ${{ matrix.archive_name }}.tar.gz"
 
-      - name: Upload artifacts
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.archive_name }}.zip
+          Write-Output "Archive created: ${{ matrix.archive_name }}.zip"
+
+      - name: Generate checksum (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          if [ -f "${{ matrix.archive_name }}.tar.gz" ]; then
+            shasum -a 256 ${{ matrix.archive_name }}.tar.gz > ${{ matrix.archive_name }}.tar.gz.sha256
+            echo "Checksum:"
+            cat ${{ matrix.archive_name }}.tar.gz.sha256
+          fi
+
+      - name: Generate checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.archive_name }}.zip").Hash.ToLower()
+          "$hash  ${{ matrix.archive_name }}.zip" | Out-File -Encoding ascii "${{ matrix.archive_name }}.zip.sha256"
+          Write-Output "Checksum:"
+          Get-Content "${{ matrix.archive_name }}.zip.sha256"
+
+      - name: Upload artifact (Linux/macOS)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: repolens-release-linux-x86_64
+          name: ${{ matrix.archive_name }}
           path: |
-            target/release/repolens
-            target/release/repolens.sha256
-            target/release/repolens.sha512
-            target/release/repolens.md5
-            target/release/repolens-linux-x86_64.tar.gz
-            target/release/repolens-linux-x86_64.zip
+            target/${{ matrix.target }}/release/${{ matrix.archive_name }}.tar.gz
+            target/${{ matrix.target }}/release/${{ matrix.archive_name }}.tar.gz.sha256
+          retention-days: 90
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive_name }}
+          path: |
+            target/${{ matrix.target }}/release/${{ matrix.archive_name }}.zip
+            target/${{ matrix.target }}/release/${{ matrix.archive_name }}.zip.sha256
           retention-days: 90
 
   changelog:
@@ -132,45 +205,45 @@ jobs:
         id: changelog
         run: |
           chmod +x scripts/generate-changelog.sh
-          
+
           # Generate new changelog entry
           NEW_ENTRY=$(./scripts/generate-changelog.sh ${{ steps.previous_tag.outputs.tag }} ${{ steps.version.outputs.tag }})
-          
+
           # Read existing CHANGELOG if it exists
           if [ -f CHANGELOG.md ]; then
             # Backup existing CHANGELOG
             cp CHANGELOG.md CHANGELOG.md.bak
-            
+
             # Extract header (first 7 lines)
             HEADER=$(head -n 7 CHANGELOG.md)
-            
+
             # Create new CHANGELOG with header and new entry
             echo "$HEADER" > CHANGELOG.md
             echo "" >> CHANGELOG.md
             echo "$NEW_ENTRY" >> CHANGELOG.md
             echo "" >> CHANGELOG.md
-            
+
             # Append old entries (skip header and first empty line, keep link references)
             tail -n +9 CHANGELOG.md.bak >> CHANGELOG.md || true
           else
             # Create new CHANGELOG
             cat > CHANGELOG.md << 'EOF'
             # Changelog
-            
+
             All notable changes to this project will be documented in this file.
-            
+
             The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
             and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
             EOF
             echo "" >> CHANGELOG.md
             echo "$NEW_ENTRY" >> CHANGELOG.md
           fi
-          
+
           # Store new entry for release notes (escape for GitHub Actions)
           echo "entry<<EOF" >> $GITHUB_OUTPUT
           echo "$NEW_ENTRY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
+
           # Show generated entry
           echo "Generated changelog entry:"
           echo "$NEW_ENTRY"
@@ -199,7 +272,7 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Download artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
@@ -223,7 +296,7 @@ jobs:
 
             See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
           fi
-          
+
           # Escape for GitHub Actions (multiline)
           {
             echo "content<<EOF"
@@ -231,19 +304,36 @@ jobs:
             echo "EOF"
           } >> $GITHUB_OUTPUT
 
-      - name: Get binary info
-        id: binary
+      - name: Collect release assets
+        id: assets
         run: |
-          if [ -f "artifacts/repolens-release-linux-x86_64/repolens" ]; then
-            BINARY_SIZE=$(stat -c%s artifacts/repolens-release-linux-x86_64/repolens)
-            BINARY_HASH=$(sha256sum artifacts/repolens-release-linux-x86_64/repolens | cut -d' ' -f1)
-          else
-            BINARY_SIZE="unknown"
-            BINARY_HASH="unknown"
-          fi
-          
-          echo "size=${BINARY_SIZE}" >> $GITHUB_OUTPUT
-          echo "hash=${BINARY_HASH}" >> $GITHUB_OUTPUT
+          mkdir -p release-assets
+
+          echo "Available artifacts:"
+          find artifacts/ -type f | sort
+
+          # Copy all archives and individual checksums into release-assets
+          find artifacts/ -name '*.tar.gz' -exec cp {} release-assets/ \;
+          find artifacts/ -name '*.zip' -exec cp {} release-assets/ \;
+
+          # Generate consolidated checksums file
+          cd release-assets
+          echo "# SHA256 checksums for RepoLens ${{ steps.version.outputs.tag }}" > checksums.sha256
+          echo "# Generated on $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> checksums.sha256
+          echo "" >> checksums.sha256
+
+          for file in *.tar.gz *.zip; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" >> checksums.sha256
+            fi
+          done
+
+          echo ""
+          echo "Release assets:"
+          ls -la
+          echo ""
+          echo "Checksums:"
+          cat checksums.sha256
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -252,53 +342,48 @@ jobs:
           name: Release ${{ steps.version.outputs.version }}
           body: |
             ${{ steps.changelog_content.outputs.content }}
-            
+
             ---
-            
+
             ## Installation
-            
+
             ### Download
-            
-            - **Binary:** `repolens`
-            - **Archive (tar.gz):** `repolens-linux-x86_64.tar.gz`
-            - **Archive (zip):** `repolens-linux-x86_64.zip`
-            
-            ### Verify
-            
+
+            | Platform | Architecture | Archive |
+            |----------|-------------|---------|
+            | Linux | x86_64 | `repolens-linux-x86_64.tar.gz` |
+            | Linux | ARM64 | `repolens-linux-arm64.tar.gz` |
+            | macOS | Intel x86_64 | `repolens-darwin-x86_64.tar.gz` |
+            | macOS | Apple Silicon ARM64 | `repolens-darwin-arm64.tar.gz` |
+            | Windows | x86_64 | `repolens-windows-x86_64.zip` |
+
+            ### Verify checksums
+
             ```bash
-            # SHA256
-            sha256sum -c repolens.sha256
-            
-            # SHA512
-            sha512sum -c repolens.sha512
-            
-            # MD5
-            md5sum -c repolens.md5
+            # Download the checksums file and verify your archive
+            sha256sum -c checksums.sha256 --ignore-missing
             ```
-            
-            ### Install
-            
+
+            ### Install (Linux/macOS)
+
             ```bash
-            # Extract and install
+            # Extract and install (example for Linux x86_64)
             tar xzf repolens-linux-x86_64.tar.gz
             sudo mv repolens /usr/local/bin/
-            
-            # Or from zip
-            unzip repolens-linux-x86_64.zip
-            sudo mv repolens /usr/local/bin/
+            repolens --version
             ```
-            
-            ### Binary Information
-            
-            - **Size:** ${{ steps.binary.outputs.size }} bytes
-            - **SHA256:** `${{ steps.binary.outputs.hash }}`
+
+            ### Install (Windows)
+
+            ```powershell
+            # Extract the zip archive
+            Expand-Archive repolens-windows-x86_64.zip -DestinationPath .
+            # Move to a directory in your PATH or add the directory to PATH
+            Move-Item repolens.exe C:\Users\$env:USERNAME\bin\
+            repolens --version
+            ```
           files: |
-            artifacts/repolens-release-linux-x86_64/repolens
-            artifacts/repolens-release-linux-x86_64/repolens.sha256
-            artifacts/repolens-release-linux-x86_64/repolens.sha512
-            artifacts/repolens-release-linux-x86_64/repolens.md5
-            artifacts/repolens-release-linux-x86_64/repolens-linux-x86_64.tar.gz
-            artifacts/repolens-release-linux-x86_64/repolens-linux-x86_64.zip
+            release-assets/*
           draft: false
           prerelease: false
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -307,7 +392,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           if [ -f "changelog/CHANGELOG.md" ]; then
             cp changelog/CHANGELOG.md CHANGELOG.md
             git add CHANGELOG.md
