@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use super::{OutputFormat, PlanArgs};
 use crate::actions::planner::ActionPlanner;
+use crate::cache::{delete_cache_directory, AuditCache};
 use crate::cli::output::{JsonOutput, OutputRenderer, SarifOutput, TerminalOutput};
 use crate::config::Config;
 use crate::error::RepoLensError;
@@ -34,7 +35,46 @@ use colored::Colorize;
 pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
     eprintln!("{}", "Chargement de la configuration...".dimmed());
     // Load configuration
-    let config = Config::load_or_default()?;
+    let mut config = Config::load_or_default()?;
+
+    // Handle cache directory override from CLI
+    if let Some(ref cache_dir) = args.cache_dir {
+        config.cache.directory = cache_dir.display().to_string();
+    }
+
+    // Disable cache if --no-cache is specified
+    if args.no_cache {
+        config.cache.enabled = false;
+        eprintln!("{}", "Cache disabled.".dimmed());
+    }
+
+    // Clear cache if --clear-cache is specified
+    let project_root = PathBuf::from(".");
+    if args.clear_cache {
+        eprintln!("{}", "Clearing cache...".dimmed());
+        if let Err(e) = delete_cache_directory(&project_root, &config.cache) {
+            eprintln!("{} Failed to clear cache: {}", "Warning:".yellow(), e);
+        } else {
+            eprintln!("{} {}", "✓".green(), "Cache cleared.".green());
+        }
+    }
+
+    // Load or create cache
+    let cache = if config.cache.enabled {
+        let cache = AuditCache::load(&project_root, config.cache.clone());
+        let stats = cache.stats();
+        if stats.total_entries > 0 {
+            eprintln!(
+                "{} {} {}",
+                "Cache:".dimmed(),
+                stats.total_entries.to_string().cyan(),
+                "entries loaded.".dimmed()
+            );
+        }
+        Some(cache)
+    } else {
+        None
+    };
 
     eprintln!("{}", "Analyse du dépôt...".dimmed());
     // Initialize scanner
@@ -42,6 +82,11 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
 
     // Run the rules engine
     let mut engine = RulesEngine::new(config.clone());
+
+    // Set cache in the engine
+    if let Some(c) = cache {
+        engine.set_cache(c);
+    }
 
     // Apply filters if specified
     if let Some(only) = &args.only {
@@ -65,6 +110,14 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
     // Execute audit
     eprintln!("{}", "Exécution de l'audit...".dimmed());
     let audit_results = engine.run(&scanner).await?;
+
+    // Save cache if enabled
+    if let Some(cache) = engine.take_cache() {
+        if let Err(e) = cache.save() {
+            eprintln!("{} Failed to save cache: {}", "Warning:".yellow(), e);
+        }
+    }
+
     eprintln!("{} {}", "✓".green(), "Audit terminé.".green());
 
     eprintln!("{}", "Génération du plan d'action...".dimmed());

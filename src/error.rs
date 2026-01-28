@@ -27,6 +27,10 @@ pub enum RepoLensError {
     /// Rule execution errors
     #[error("Rule error: {0}")]
     Rule(#[from] RuleError),
+
+    /// Cache-related errors
+    #[error("Cache error: {0}")]
+    Cache(#[from] CacheError),
 }
 
 /// Errors that occur during repository scanning
@@ -162,6 +166,43 @@ pub enum RuleError {
     #[error("Rule execution failed: {message}")]
     ExecutionFailed {
         /// Error message describing the failure
+        message: String,
+    },
+}
+
+/// Errors that occur during cache operations
+#[derive(Error, Debug)]
+#[allow(dead_code)]
+pub enum CacheError {
+    /// Failed to read cache file
+    #[error("Failed to read cache file '{path}': {message}")]
+    FileRead {
+        /// Path to the cache file
+        path: String,
+        /// Error message
+        message: String,
+    },
+
+    /// Failed to write cache file
+    #[error("Failed to write cache file '{path}': {message}")]
+    FileWrite {
+        /// Path to the cache file
+        path: String,
+        /// Error message
+        message: String,
+    },
+
+    /// Failed to parse cache file
+    #[error("Failed to parse cache file: {message}")]
+    Parse {
+        /// Error message describing the parse failure
+        message: String,
+    },
+
+    /// Failed to delete cache
+    #[error("Failed to delete cache: {message}")]
+    Delete {
+        /// Error message
         message: String,
     },
 }

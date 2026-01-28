@@ -46,6 +46,18 @@ pub struct PlanArgs {
     /// Output file (defaults to stdout)
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
+
+    /// Disable cache and force a complete re-audit
+    #[arg(long)]
+    pub no_cache: bool,
+
+    /// Clear the cache before running the audit
+    #[arg(long)]
+    pub clear_cache: bool,
+
+    /// Custom cache directory path
+    #[arg(long, value_name = "DIR")]
+    pub cache_dir: Option<PathBuf>,
 }
 
 /// Arguments for the apply command
@@ -90,6 +102,18 @@ pub struct ReportArgs {
     /// Include full details in report
     #[arg(long)]
     pub detailed: bool,
+
+    /// Disable cache and force a complete re-audit
+    #[arg(long)]
+    pub no_cache: bool,
+
+    /// Clear the cache before running the audit
+    #[arg(long)]
+    pub clear_cache: bool,
+
+    /// Custom cache directory path
+    #[arg(long, value_name = "DIR")]
+    pub cache_dir: Option<PathBuf>,
 }
 
 /// Output format for plan command

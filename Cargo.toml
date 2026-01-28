@@ -68,6 +68,12 @@ thiserror = "1"
 # URL parsing for validation
 url = "2"
 
+# SHA256 hashing for cache
+sha2 = "0.10"
+
+# Home directory resolution
+dirs = "5"
+
 # GitHub API (via gh CLI wrapper initially, octocrab for direct API later)
 which = "6"
 

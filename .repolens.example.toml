@@ -81,3 +81,14 @@ command = "test -f Dockerfile"
 severity = "info"
 invert = true  # Fail if Dockerfile doesn't exist
 message = "Dockerfile not found"
+
+# Cache configuration
+# Caching improves performance by avoiding re-auditing unchanged files
+[cache]
+# Enable/disable caching (default: true)
+enabled = true
+# Maximum age for cache entries in hours (default: 24)
+max_age_hours = 24
+# Cache directory (relative to project root or absolute path)
+# Can also use ~ for home directory, e.g., "~/.cache/repolens"
+directory = ".repolens/cache"

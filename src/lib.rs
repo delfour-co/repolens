@@ -4,6 +4,7 @@
 //! and preparing them for open source or enterprise standards.
 
 pub mod actions;
+pub mod cache;
 pub mod cli;
 pub mod config;
 pub mod error;

@@ -9,6 +9,9 @@ pub use presets::Preset;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// Re-export CacheConfig from cache module for convenience
+pub use crate::cache::CacheConfig;
+
 /// Rule configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RuleConfig {
