@@ -184,14 +184,55 @@ repolens plan --format markdown
 ### Apply Fixes
 
 ```bash
-# Preview changes
+# Preview changes (shows diff without applying)
 repolens apply --dry-run
 
-# Apply all fixes
+# Apply all fixes with confirmation prompt
 repolens apply
 
-# Apply specific fixes
+# Interactive mode: select actions individually with diff preview
+repolens apply --interactive
+repolens apply -i
+
+# Auto-accept all actions without confirmation
+repolens apply --yes
+repolens apply -y
+
+# Apply specific categories only
 repolens apply --only files,docs
+
+# Skip specific categories
+repolens apply --skip security
+```
+
+#### Interactive Mode
+
+The interactive mode (`-i` or `--interactive`) provides an enhanced user experience:
+
+1. **Visual Summary**: Displays a categorized overview of all planned actions
+2. **Action Selection**: Use `MultiSelect` to choose which actions to apply (Space to toggle, Enter to confirm)
+3. **Diff Preview**: Shows a colored diff (green for additions, red for deletions) for each selected action
+4. **Progress Bar**: Displays real-time progress during execution
+5. **Execution Summary**: Shows detailed results with success/failure counts
+
+Example output:
+```
+==============================================================================
+                     ACTION SUMMARY
+==============================================================================
+
+[F] GITIGNORE (1 action)
+    + Update .gitignore with recommended entries
+      - .env
+      - *.key
+
+[F] FILES (2 actions)
+    + Create CONTRIBUTING.md from template
+    + Create SECURITY.md from template
+
+==============================================================================
+  Total: 3 actions to apply
+==============================================================================
 ```
 
 ### Generate Report
