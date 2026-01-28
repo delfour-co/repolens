@@ -1,5 +1,6 @@
 //\! Rule categories
 
+pub mod dependencies;
 pub mod custom;
 pub mod docs;
 pub mod files;
