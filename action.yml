@@ -1,0 +1,230 @@
+name: 'RepoLens Audit'
+description: 'Audit your repository for best practices, security issues, and compliance with open-source standards'
+author: 'Kevin Delfour'
+
+branding:
+  icon: 'search'
+  color: 'blue'
+
+inputs:
+  preset:
+    description: 'Audit preset to use (opensource, enterprise, strict)'
+    required: false
+    default: 'opensource'
+  format:
+    description: 'Output format (terminal, json, sarif, markdown, html)'
+    required: false
+    default: 'terminal'
+  fail-on:
+    description: 'Fail on severity level (critical, high, medium, low, none)'
+    required: false
+    default: 'critical'
+  config:
+    description: 'Path to a custom .repolens.toml config file'
+    required: false
+    default: ''
+  version:
+    description: 'RepoLens version to install (e.g. "0.1.0", or "latest")'
+    required: false
+    default: 'latest'
+  upload-artifact:
+    description: 'Upload report as a GitHub Actions artifact (true/false)'
+    required: false
+    default: 'true'
+  artifact-name:
+    description: 'Name of the uploaded artifact'
+    required: false
+    default: 'repolens-report'
+
+outputs:
+  report-path:
+    description: 'Path to the generated report file'
+    value: ${{ steps.audit.outputs.report-path }}
+  findings-count:
+    description: 'Total number of findings detected'
+    value: ${{ steps.audit.outputs.findings-count }}
+  exit-code:
+    description: 'Exit code from the audit (0=success, 1=critical findings, 2=warnings only)'
+    value: ${{ steps.audit.outputs.exit-code }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Determine version
+      id: version
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        if [ "$INPUT_VERSION" = "latest" ]; then
+          RELEASE_TAG=$(curl -s https://api.github.com/repos/kdelfour/repolens/releases/latest | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')
+          if [ -z "$RELEASE_TAG" ] || [ "$RELEASE_TAG" = "null" ]; then
+            echo "::error::Failed to determine latest RepoLens version from GitHub releases"
+            exit 1
+          fi
+          VERSION="${RELEASE_TAG#v}"
+        else
+          VERSION="$INPUT_VERSION"
+        fi
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "Installing RepoLens version: ${VERSION}"
+
+    - name: Cache RepoLens binary
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/bin/repolens
+        key: repolens-${{ runner.os }}-${{ steps.version.outputs.version }}
+
+    - name: Install RepoLens
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        TAG: ${{ steps.version.outputs.tag }}
+      run: |
+        DOWNLOAD_URL="https://github.com/kdelfour/repolens/releases/download/${TAG}/repolens-linux-x86_64.tar.gz"
+
+        echo "Downloading RepoLens ${VERSION} from ${DOWNLOAD_URL}..."
+        curl -sL "${DOWNLOAD_URL}" -o /tmp/repolens.tar.gz
+
+        if ! file /tmp/repolens.tar.gz | grep -q 'gzip'; then
+          echo "::error::Downloaded file is not a valid gzip archive. The release version '${VERSION}' may not exist."
+          exit 1
+        fi
+
+        tar xzf /tmp/repolens.tar.gz -C /tmp
+        chmod +x /tmp/repolens
+        sudo mv /tmp/repolens /usr/local/bin/repolens
+        rm -f /tmp/repolens.tar.gz
+
+        echo "RepoLens ${VERSION} installed successfully"
+        repolens --version
+
+    - name: Verify installation
+      shell: bash
+      run: |
+        if ! command -v repolens &> /dev/null; then
+          echo "::error::RepoLens binary not found in PATH"
+          exit 1
+        fi
+        repolens --version
+
+    - name: Run RepoLens audit
+      id: audit
+      shell: bash
+      env:
+        INPUT_FORMAT: ${{ inputs.format }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_PRESET: ${{ inputs.preset }}
+        INPUT_CONFIG: ${{ inputs.config }}
+      run: |
+        # Determine output file extension based on format
+        FORMAT="$INPUT_FORMAT"
+        case "${FORMAT}" in
+          json)   EXT="json" ;;
+          sarif)  EXT="sarif" ;;
+          markdown) EXT="md" ;;
+          html)   EXT="html" ;;
+          *)      EXT="txt" ;;
+        esac
+
+        REPORT_FILE="${RUNNER_TEMP}/repolens-report.${EXT}"
+        FAIL_ON="$INPUT_FAIL_ON"
+        PRESET="$INPUT_PRESET"
+        CONFIG="$INPUT_CONFIG"
+
+        # Build command arguments array
+        set +e
+        if [ "${FORMAT}" = "terminal" ]; then
+          if [ -n "${CONFIG}" ] && [ "${CONFIG}" != "" ]; then
+            repolens plan --preset "${PRESET}" --format "${FORMAT}" --config "${CONFIG}"
+          else
+            repolens plan --preset "${PRESET}" --format "${FORMAT}"
+          fi
+        else
+          if [ -n "${CONFIG}" ] && [ "${CONFIG}" != "" ]; then
+            repolens plan --preset "${PRESET}" --format "${FORMAT}" --config "${CONFIG}" --output "${REPORT_FILE}"
+          else
+            repolens plan --preset "${PRESET}" --format "${FORMAT}" --output "${REPORT_FILE}"
+          fi
+        fi
+        AUDIT_EXIT_CODE=$?
+        set -e
+
+        echo "exit-code=${AUDIT_EXIT_CODE}" >> "$GITHUB_OUTPUT"
+        echo "report-path=${REPORT_FILE}" >> "$GITHUB_OUTPUT"
+
+        # Count findings from JSON output
+        if [ "${FORMAT}" = "json" ] && [ -f "${REPORT_FILE}" ]; then
+          FINDINGS_COUNT=$(cat "${REPORT_FILE}" | python3 -c "
+        import sys, json
+        try:
+            data = json.load(sys.stdin)
+            if isinstance(data, list):
+                print(len(data))
+            elif isinstance(data, dict) and 'findings' in data:
+                print(len(data['findings']))
+            elif isinstance(data, dict) and 'results' in data:
+                print(len(data['results']))
+            else:
+                print(0)
+        except:
+            print(0)
+        " 2>/dev/null || echo "0")
+        elif [ "${FORMAT}" = "sarif" ] && [ -f "${REPORT_FILE}" ]; then
+          FINDINGS_COUNT=$(cat "${REPORT_FILE}" | python3 -c "
+        import sys, json
+        try:
+            data = json.load(sys.stdin)
+            count = 0
+            for run in data.get('runs', []):
+                count += len(run.get('results', []))
+            print(count)
+        except:
+            print(0)
+        " 2>/dev/null || echo "0")
+        else
+          FINDINGS_COUNT="0"
+        fi
+        echo "findings-count=${FINDINGS_COUNT}" >> "$GITHUB_OUTPUT"
+
+        echo "::notice::RepoLens audit completed with exit code ${AUDIT_EXIT_CODE} and ${FINDINGS_COUNT} finding(s)"
+
+        # Determine if we should fail based on fail-on severity
+        if [ "${FAIL_ON}" = "none" ]; then
+          echo "fail-on is set to 'none', ignoring exit code"
+          exit 0
+        fi
+
+        if [ ${AUDIT_EXIT_CODE} -ne 0 ]; then
+          case "${FAIL_ON}" in
+            critical)
+              if [ ${AUDIT_EXIT_CODE} -eq 1 ]; then
+                echo "::error::Critical findings detected"
+                exit 1
+              fi
+              ;;
+            high)
+              if [ ${AUDIT_EXIT_CODE} -ge 1 ]; then
+                echo "::error::High or critical findings detected"
+                exit 1
+              fi
+              ;;
+            medium|low)
+              echo "::error::Findings detected at or above '${FAIL_ON}' severity"
+              exit 1
+              ;;
+          esac
+        fi
+
+    - name: Upload report artifact
+      if: inputs.upload-artifact == 'true' && inputs.format != 'terminal' && always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.audit.outputs.report-path }}
+        retention-days: 30
+        if-no-files-found: ignore
