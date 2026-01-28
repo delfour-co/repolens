@@ -256,9 +256,15 @@ jobs:
             ---
             
             ## Installation
-            
+
+            ### From crates.io
+
+            ```bash
+            cargo install repolens
+            ```
+
             ### Download
-            
+
             - **Binary:** `repolens`
             - **Archive (tar.gz):** `repolens-linux-x86_64.tar.gz`
             - **Archive (zip):** `repolens-linux-x86_64.zip`
@@ -307,10 +313,49 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           if [ -f "changelog/CHANGELOG.md" ]; then
             cp changelog/CHANGELOG.md CHANGELOG.md
             git add CHANGELOG.md
             git commit -m "chore: update CHANGELOG for ${{ steps.version.outputs.tag }}" || exit 0
             git push || exit 0
           fi
+
+  publish-crate:
+    name: Publish to crates.io
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Update version in Cargo.toml
+        run: |
+          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" Cargo.toml
+          echo "Updated Cargo.toml version:"
+          grep '^version =' Cargo.toml
+
+      - name: Verify package
+        run: |
+          cargo package --list
+          cargo package --allow-dirty
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo publish --allow-dirty
