@@ -1,7 +1,9 @@
 //! Branch protection configuration via GitHub API
 
 use crate::error::{ActionError, ProviderError, RepoLensError};
-use std::process::Command;
+use serde_json::json;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 use super::plan::BranchProtectionSettings;
 use crate::utils::prerequisites::{get_repo_info, is_gh_available};
@@ -25,58 +27,76 @@ pub async fn configure(
         })
     })?;
 
-    // Build the API request
-    let required_pr_reviews = if settings.required_approvals > 0 {
-        format!(
-            r#"{{"required_approving_review_count":{},"dismiss_stale_reviews":true}}"#,
-            settings.required_approvals
-        )
-    } else {
-        "null".to_string()
-    };
+    // Build the JSON payload according to GitHub API specification
+    let mut payload = json!({
+        "enforce_admins": settings.enforce_admins,
+        "required_linear_history": settings.require_linear_history,
+        "allow_force_pushes": !settings.block_force_push,
+        "allow_deletions": !settings.block_deletions,
+        "required_conversation_resolution": settings.require_conversation_resolution,
+        "restrictions": null,
+    });
 
-    let required_status_checks = if settings.require_status_checks {
-        r#"{"strict":true,"contexts":[]}"#.to_string()
+    // Handle required_status_checks
+    if settings.require_status_checks {
+        payload["required_status_checks"] = json!({
+            "strict": true,
+            "contexts": []
+        });
     } else {
-        "null".to_string()
-    };
+        payload["required_status_checks"] = json!(null);
+    }
 
-    // Execute the API call
-    let output = Command::new("gh")
+    // Handle required_pull_request_reviews
+    if settings.required_approvals > 0 {
+        payload["required_pull_request_reviews"] = json!({
+            "required_approving_review_count": settings.required_approvals,
+            "dismiss_stale_reviews": true
+        });
+    } else {
+        payload["required_pull_request_reviews"] = json!(null);
+    }
+
+    // Execute the API call using --input to pass JSON via stdin
+    let mut child = Command::new("gh")
         .args([
             "api",
             &format!("repos/{}/branches/{}/protection", repo, branch),
             "--method",
             "PUT",
-            "--field",
-            &format!("required_status_checks={}", required_status_checks),
-            "--field",
-            &format!("enforce_admins={}", settings.enforce_admins),
-            "--field",
-            &format!("required_pull_request_reviews={}", required_pr_reviews),
-            "--field",
-            "restrictions=null",
-            "--field",
-            &format!(
-                "required_linear_history={}",
-                settings.require_linear_history
-            ),
-            "--field",
-            &format!("allow_force_pushes={}", !settings.block_force_push),
-            "--field",
-            &format!("allow_deletions={}", !settings.block_deletions),
-            "--field",
-            &format!(
-                "required_conversation_resolution={}",
-                settings.require_conversation_resolution
-            ),
+            "--input",
+            "-",
         ])
-        .output()
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|_| {
             RepoLensError::Provider(ProviderError::CommandFailed {
                 command: format!("gh api repos/{}/branches/{}/protection", repo, branch),
             })
         })?;
+
+    // Write JSON to stdin
+    let json_str = serde_json::to_string(&payload).map_err(|e| {
+        RepoLensError::Action(ActionError::ExecutionFailed {
+            message: format!("Failed to serialize branch protection payload: {}", e),
+        })
+    })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(json_str.as_bytes()).map_err(|e| {
+            RepoLensError::Action(ActionError::ExecutionFailed {
+                message: format!("Failed to write to gh CLI stdin: {}", e),
+            })
+        })?;
+    }
+
+    let output = child.wait_with_output().map_err(|_| {
+        RepoLensError::Provider(ProviderError::CommandFailed {
+            command: format!("gh api repos/{}/branches/{}/protection", repo, branch),
+        })
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -51,6 +51,25 @@ jobs:
       - name: Run tests with output
         run: cargo test --all-features -- --nocapture
 
+  package:
+    name: Package Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify package metadata
+        run: cargo metadata --no-deps --format-version 1 | python3 -c "
+          import sys, json;
+          meta = json.load(sys.stdin)['packages'][0];
+          required = ['description', 'license', 'repository', 'readme'];
+          missing = [f for f in required if not meta.get(f)];
+          assert not missing, f'Missing Cargo.toml fields: {missing}';
+          print('All required crates.io metadata fields are present')
+          "
+      - name: Dry-run package
+        run: cargo package --list && cargo package
+
   coverage:
     name: Test Coverage
     runs-on: ubuntu-latest

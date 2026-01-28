@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 3 outputs exploitables : `score`, `report-path`, `issues-count`
   - 3 exemples d'utilisation fournis : audit basique, audit avec publication SARIF, audit multi-presets
 
+- Cross-platform pre-built binaries for Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), and Windows (x86_64)
+- Automated release workflow that builds, archives, and publishes binaries on version tags
+- SHA256 checksum generation and consolidated `checksums.sha256` file for release verification
+- Nightly build pipeline with quality gates (CI status, code quality, coverage)
+- Installation documentation for downloading and verifying pre-built binaries
+
 ## [0.1.0] - 2026-01-24
 
 ### Added

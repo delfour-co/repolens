@@ -26,11 +26,16 @@ pub trait RuleCategory: Send + Sync {
     ) -> Result<Vec<super::Finding>, RepoLensError>;
 }
 
+/// Callback function type for progress reporting
+/// Parameters: (category_name, current_index, total_count)
+pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
+
 /// Main rules evaluation engine
 pub struct RulesEngine {
     config: Config,
     only_categories: Option<Vec<String>>,
     skip_categories: Option<Vec<String>>,
+    progress_callback: Option<ProgressCallback>,
 }
 
 impl RulesEngine {
@@ -40,7 +45,15 @@ impl RulesEngine {
             config,
             only_categories: None,
             skip_categories: None,
+            progress_callback: None,
         }
+    }
+
+    /// Set a callback function to report progress
+    ///
+    /// The callback will be called with category names as they are being processed.
+    pub fn set_progress_callback(&mut self, callback: ProgressCallback) {
+        self.progress_callback = Some(callback);
     }
 
     /// Set categories to exclusively run
@@ -86,6 +99,13 @@ impl RulesEngine {
             Box::new(CustomRules),
         ];
 
+        // Count categories that will be executed
+        let total: usize = categories
+            .iter()
+            .filter(|c| self.should_run_category(c.name()))
+            .count();
+        let mut current = 0;
+
         // Run each category
         for category in categories {
             let category_name = category.name();
@@ -93,6 +113,11 @@ impl RulesEngine {
             if !self.should_run_category(category_name) {
                 debug!(category = category_name, "Skipping category");
                 continue;
+            }
+
+            current += 1;
+            if let Some(ref callback) = self.progress_callback {
+                callback(category_name, current, total);
             }
 
             let span = span!(Level::INFO, "category", category = category_name, repository = %repo_name_ref);
