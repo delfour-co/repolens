@@ -4,8 +4,8 @@ use crate::error::RepoLensError;
 use tracing::{debug, info, span, Level};
 
 use super::categories::{
-    docs::DocsRules, files::FilesRules, quality::QualityRules, secrets::SecretsRules,
-    security::SecurityRules, workflows::WorkflowsRules,
+    custom::CustomRules, docs::DocsRules, files::FilesRules, quality::QualityRules,
+    secrets::SecretsRules, security::SecurityRules, workflows::WorkflowsRules,
 };
 use super::results::AuditResults;
 use crate::config::Config;
@@ -81,6 +81,7 @@ impl RulesEngine {
             Box::new(SecurityRules),
             Box::new(WorkflowsRules),
             Box::new(QualityRules),
+            Box::new(CustomRules),
         ];
 
         // Run each category

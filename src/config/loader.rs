@@ -8,7 +8,9 @@ use std::path::Path;
 use crate::error::{ConfigError, RepoLensError};
 
 use super::presets::Preset;
-use super::{ActionsConfig, RuleConfig, SecretsConfig, TemplatesConfig, UrlConfig};
+use super::{
+    ActionsConfig, CustomRulesConfig, RuleConfig, SecretsConfig, TemplatesConfig, UrlConfig,
+};
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
 
@@ -40,6 +42,11 @@ pub struct Config {
     /// Template configuration
     #[serde(default)]
     pub templates: TemplatesConfig,
+
+    /// Custom rules configuration
+    #[serde(default)]
+    #[serde(rename = "rules.custom")]
+    pub custom_rules: CustomRulesConfig,
 }
 
 fn default_preset() -> String {
@@ -55,6 +62,7 @@ impl Default for Config {
             urls: UrlConfig::default(),
             actions: ActionsConfig::default(),
             templates: TemplatesConfig::default(),
+            custom_rules: CustomRulesConfig::default(),
         }
     }
 }
@@ -90,7 +98,6 @@ impl Config {
             ..Default::default()
         };
 
-        // Apply preset-specific defaults
         match preset {
             Preset::OpenSource => {
                 config.actions.license.enabled = true;
@@ -168,7 +175,6 @@ impl Config {
     }
 }
 
-/// Simple glob matching (supports * and **)
 fn glob_match(pattern: &str, text: &str) -> bool {
     if pattern.contains("**") {
         return glob_match_double_star(pattern, text);
@@ -181,13 +187,10 @@ fn glob_match(pattern: &str, text: &str) -> bool {
     text == pattern
 }
 
-/// Match pattern with double star (**)
 fn glob_match_double_star(pattern: &str, text: &str) -> bool {
     let parts: Vec<&str> = pattern.split("**").collect();
 
-    // Handle patterns like "**/test/**" which split into ['', '/test/', '']
     if parts.len() == 3 && parts[0].is_empty() && parts[2].is_empty() {
-        // Pattern is **something**, check if text contains something
         let middle = parts[1].trim_matches('/');
         return text.contains(&format!("/{}", middle)) || text.starts_with(middle);
     }
@@ -205,51 +208,35 @@ fn glob_match_double_star(pattern: &str, text: &str) -> bool {
     }
 
     if suffix.is_empty() {
-        // Pattern like "**" or "prefix/**" matches everything
         return true;
     }
 
-    // Handle patterns like *.test.ts
     if suffix.starts_with('*') {
         let suffix_pattern = suffix.trim_start_matches('*');
         return text.ends_with(suffix_pattern);
     }
 
-    // For patterns like "**/test/**" or "**/test", check if suffix appears anywhere
     if prefix.is_empty() {
-        // Pattern starts with **, check if suffix appears anywhere
-        // For "**/test/**", suffix_raw is "/test/", suffix is "test/"
-        // We need to check if the path contains "/test/" anywhere
-        // Since suffix_raw had a leading slash, check for "/suffix" pattern
         if suffix_raw.starts_with('/') {
-            // Check for "/suffix" in the path (e.g., "/test/" in "src/test/file.ts")
-            // suffix is "test/" so we check for "/test/"
-            // Also handle case where path starts with "test/"
             let pattern_to_find = format!("/{}", suffix);
             if text.contains(&pattern_to_find) {
                 return true;
             }
-            // Also check if text starts with suffix (for paths like "test/file.ts")
             if text.starts_with(suffix) {
                 return true;
             }
             return false;
         }
-        // No leading slash in original, check for suffix anywhere
         return text.contains(suffix);
     }
 
-    // Pattern has both prefix and suffix
-    // Check if text starts with prefix and contains suffix after prefix
     if let Some(after_prefix) = text.strip_prefix(prefix) {
         return after_prefix.contains(suffix) || after_prefix.ends_with(suffix);
     }
 
-    // Fallback: check ends or contains
     text.ends_with(suffix) || text.contains(suffix)
 }
 
-/// Match pattern with single star (*)
 fn glob_match_single_star(pattern: &str, text: &str) -> bool {
     let parts: Vec<&str> = pattern.split('*').collect();
     let mut pos = 0;
@@ -287,10 +274,6 @@ mod tests {
         assert!(glob_match("*.ts", "file.ts"));
         assert!(glob_match("*.ts", "path/to/file.ts"));
         assert!(!glob_match("*.ts", "file.js"));
-
-        // For "**/test/**", we check if path contains "/test/" anywhere
-        // For "**/test/**", check if path contains "/test/" anywhere
-        // "src/test/file.ts" contains "/test/" so it should match
         assert!(
             glob_match("**/test/**", "src/test/file.ts"),
             "Pattern **/test/** should match src/test/file.ts"
@@ -312,5 +295,23 @@ mod tests {
         assert_eq!(config.preset, "enterprise");
         assert!(!config.actions.license.enabled);
         assert_eq!(config.actions.branch_protection.required_approvals, 2);
+    }
+
+    #[test]
+    fn test_custom_rules_config_parsing() {
+        let toml_content = r#"
+preset = "opensource"
+
+["rules.custom"."no-todo"]
+pattern = "TODO"
+severity = "warning"
+files = ["**/*.rs"]
+message = "TODO comment found"
+"#;
+        let config: Config = toml::from_str(toml_content).unwrap();
+        assert!(config.custom_rules.rules.contains_key("no-todo"));
+        let rule = config.custom_rules.rules.get("no-todo").unwrap();
+        assert_eq!(rule.pattern, "TODO");
+        assert_eq!(rule.severity, "warning");
     }
 }

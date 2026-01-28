@@ -1,5 +1,6 @@
-//! Rule categories
+//\! Rule categories
 
+pub mod custom;
 pub mod docs;
 pub mod files;
 pub mod quality;

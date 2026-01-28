@@ -1,12 +1,13 @@
 //! Configuration module
 
-mod loader;
+pub mod loader;
 pub mod presets;
 
 pub use loader::Config;
 pub use presets::Preset;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Rule configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -227,4 +228,44 @@ pub struct TemplatesConfig {
 
     /// Project description
     pub project_description: Option<String>,
+}
+
+/// Custom rule configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomRule {
+    /// Regex pattern to match
+    pub pattern: String,
+
+    /// Severity level (critical, warning, info)
+    #[serde(default = "default_custom_severity")]
+    pub severity: String,
+
+    /// File glob patterns to include
+    #[serde(default)]
+    pub files: Vec<String>,
+
+    /// Custom message for the finding
+    pub message: Option<String>,
+
+    /// Detailed description
+    pub description: Option<String>,
+
+    /// Suggested remediation
+    pub remediation: Option<String>,
+
+    /// If true, fail when pattern is NOT found (inverted matching)
+    #[serde(default)]
+    pub invert: bool,
+}
+
+fn default_custom_severity() -> String {
+    "warning".to_string()
+}
+
+/// Custom rules configuration container
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CustomRulesConfig {
+    /// Map of rule ID to rule configuration
+    #[serde(flatten)]
+    pub rules: HashMap<String, CustomRule>,
 }
