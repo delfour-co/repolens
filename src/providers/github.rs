@@ -187,6 +187,58 @@ impl GitHubProvider {
 
         Ok(Some(protection))
     }
+
+    /// Create a pull request
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - The PR title
+    /// * `body` - The PR body/description
+    /// * `head` - The branch to merge from
+    /// * `base` - The base branch to merge into (defaults to default branch)
+    ///
+    /// # Returns
+    ///
+    /// The URL of the created pull request
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the PR creation fails
+    pub fn create_pull_request(
+        &self,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: Option<&str>,
+    ) -> Result<String, RepoLensError> {
+        let mut args = vec![
+            "pr", "create", "--title", title, "--body", body, "--head", head,
+        ];
+
+        if let Some(base_branch) = base {
+            args.push("--base");
+            args.push(base_branch);
+        }
+
+        let output = Command::new("gh").args(&args).output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("gh {}", args.join(" ")),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("gh pr create: {}", stderr),
+            }));
+        }
+
+        // Extract PR URL from output
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let url = stdout.trim().to_string();
+
+        Ok(url)
+    }
 }
 
 /// Branch protection settings from GitHub API

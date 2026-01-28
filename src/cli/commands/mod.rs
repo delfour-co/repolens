@@ -66,6 +66,14 @@ pub struct ApplyArgs {
     /// Skip specific actions
     #[arg(long, value_delimiter = ',')]
     pub skip: Option<Vec<String>>,
+
+    /// Create a pull request with the changes (default: true if in a git repository)
+    #[arg(long)]
+    pub create_pr: Option<bool>,
+
+    /// Skip creating a pull request (overrides --create-pr)
+    #[arg(long)]
+    pub no_pr: bool,
 }
 
 /// Arguments for the report command

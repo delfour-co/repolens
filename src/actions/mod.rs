@@ -2,6 +2,7 @@
 
 mod branch_protection;
 pub mod executor;
+pub mod git;
 mod github_settings;
 mod gitignore;
 pub mod plan;
