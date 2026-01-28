@@ -42,10 +42,11 @@ RepoLens est un outil en ligne de commande écrit en Rust qui permet d'auditer a
 ## Démarrage rapide
 
 ```bash
-# Installation
-git clone https://github.com/delfour-co/cli--repolens.git
-cd cli--repolens
-cargo build --release
+# Installation via crates.io
+cargo install repolens
+
+# Ou télécharger le binaire pré-compilé depuis les releases :
+# https://github.com/kdelfour/repolens/releases
 
 # Initialisation
 repolens init --preset opensource
@@ -55,6 +56,14 @@ repolens plan
 
 # Application des correctifs
 repolens apply --dry-run
+```
+
+Pour l'intégration CI/CD, utilisez l'Action GitHub officielle :
+
+```yaml
+- uses: kdelfour/repolens-action@v1
+  with:
+    preset: opensource
 ```
 
 ## Fonctionnalités principales

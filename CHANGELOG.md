@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-01-28
+
+### Added
+
+#### Distribution et Installation (#34, #35)
+- **Publication sur crates.io** : RepoLens est maintenant disponible via `cargo install repolens` (#34)
+- **Binaires pre-compiles multi-plateformes** : Binaires disponibles pour 5 plateformes (#35) :
+  - Linux x86_64
+  - Linux ARM64
+  - macOS Intel (x86_64)
+  - macOS Apple Silicon (ARM64)
+  - Windows x86_64
+
+#### GitHub Action officielle (#38)
+- **Action GitHub officielle** pour integrer RepoLens dans vos workflows CI/CD (#38)
+  - 7 inputs configurables : `preset`, `format`, `output`, `categories`, `exclude`, `verbose`, `fail-on-error`
+  - 3 outputs exploitables : `score`, `report-path`, `issues-count`
+  - 3 exemples d'utilisation fournis : audit basique, audit avec publication SARIF, audit multi-presets
+
 ## [0.1.0] - 2026-01-24
 
 ### Added
@@ -81,4 +100,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secret detection patterns
 - Security policy templates
 
+[0.2.0]: https://github.com/kdelfour/repolens/releases/tag/v0.2.0
 [0.1.0]: https://github.com/kdelfour/repolens/releases/tag/v0.1.0
