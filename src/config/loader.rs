@@ -9,8 +9,8 @@ use crate::error::{ConfigError, RepoLensError};
 
 use super::presets::Preset;
 use super::{
-    ActionsConfig, CacheConfig, CustomRulesConfig, RuleConfig, SecretsConfig, TemplatesConfig,
-    UrlConfig,
+    ActionsConfig, CacheConfig, CustomRulesConfig, HooksConfig, RuleConfig, SecretsConfig,
+    TemplatesConfig, UrlConfig,
 };
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
@@ -52,6 +52,10 @@ pub struct Config {
     /// Cache configuration
     #[serde(default)]
     pub cache: CacheConfig,
+
+    /// Git hooks configuration
+    #[serde(default)]
+    pub hooks: HooksConfig,
 }
 
 fn default_preset() -> String {
@@ -69,6 +73,7 @@ impl Default for Config {
             templates: TemplatesConfig::default(),
             custom_rules: CustomRulesConfig::default(),
             cache: CacheConfig::default(),
+            hooks: HooksConfig::default(),
         }
     }
 }
@@ -295,6 +300,10 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.preset, "opensource");
         assert!(config.actions.gitignore);
+        // Verify hooks default
+        assert!(config.hooks.pre_commit);
+        assert!(config.hooks.pre_push);
+        assert!(!config.hooks.fail_on_warnings);
     }
 
     #[test]
@@ -631,5 +640,116 @@ ttl_seconds = 3600
             config.templates.project_name,
             Some("My Project".to_string())
         );
+    }
+
+    #[test]
+    fn test_config_with_hooks_section() {
+        let toml_content = r#"
+preset = "opensource"
+
+[hooks]
+pre_commit = false
+pre_push = true
+fail_on_warnings = true
+"#;
+        let config: Config = toml::from_str(toml_content).unwrap();
+        assert!(!config.hooks.pre_commit);
+        assert!(config.hooks.pre_push);
+        assert!(config.hooks.fail_on_warnings);
+    }
+
+    #[test]
+    fn test_config_without_hooks_section_uses_defaults() {
+        let toml_content = r#"
+preset = "enterprise"
+"#;
+        let config: Config = toml::from_str(toml_content).unwrap();
+        assert!(config.hooks.pre_commit);
+        assert!(config.hooks.pre_push);
+        assert!(!config.hooks.fail_on_warnings);
+    }
+
+    #[test]
+    fn test_config_to_toml_includes_hooks() {
+        let config = Config::default();
+        let toml_str = config.to_toml().unwrap();
+        assert!(toml_str.contains("pre_commit"));
+        assert!(toml_str.contains("pre_push"));
+        assert!(toml_str.contains("fail_on_warnings"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_slash_prefix_starts_with_suffix() {
+        // Tests the text.starts_with(suffix) branch in glob_match_double_star
+        // when suffix_raw starts with '/' and text starts with the suffix
+        assert!(glob_match("**/lib.rs", "lib.rs"));
+        assert!(glob_match("**/src/main.rs", "src/main.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_after_prefix_strip() {
+        // Tests the strip_prefix branch in glob_match_double_star
+        // Pattern: "src/**/test" with text that starts with "src"
+        assert!(glob_match("src/**/test", "src/deep/nested/test"));
+        assert!(glob_match("src/**/test", "src/test"));
+        assert!(!glob_match("src/**/test", "other/test"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_fallback_ends_with() {
+        // Tests the final text.ends_with(suffix) || text.contains(suffix) fallback
+        // in glob_match_double_star when prefix is set but text doesn't start with prefix
+        // This happens when prefix exists but strip_prefix fails
+        assert!(!glob_match("foo/**/bar", "baz/bar"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star_first_part_not_at_start() {
+        // Tests the branch in glob_match_single_star where i == 0 and found_pos != 0
+        assert!(!glob_match("foo*bar", "Xfoobar"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star_part_not_found() {
+        // Tests the return false branch in glob_match_single_star when part is not found
+        assert!(!glob_match("abc*xyz", "abcdef"));
+    }
+
+    #[test]
+    fn test_config_load_from_file_with_hooks() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        fs::write(
+            &config_path,
+            r#"
+preset = "enterprise"
+
+[hooks]
+pre_commit = false
+pre_push = true
+fail_on_warnings = true
+"#,
+        )
+        .unwrap();
+
+        let config = Config::load_from_file(&config_path).unwrap();
+        assert_eq!(config.preset, "enterprise");
+        assert!(!config.hooks.pre_commit);
+        assert!(config.hooks.pre_push);
+        assert!(config.hooks.fail_on_warnings);
+    }
+
+    #[test]
+    fn test_config_load_from_file_without_hooks_uses_defaults() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        fs::write(&config_path, r#"preset = "strict""#).unwrap();
+
+        let config = Config::load_from_file(&config_path).unwrap();
+        assert_eq!(config.preset, "strict");
+        // Hooks should use defaults
+        assert!(config.hooks.pre_commit);
+        assert!(config.hooks.pre_push);
+        assert!(!config.hooks.fail_on_warnings);
     }
 }
