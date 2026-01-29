@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Git Hooks Support (#6)
+- New `install-hooks` CLI command to install and remove Git hooks
+- **Pre-commit hook**: Checks for exposed secrets before each commit
+- **Pre-push hook**: Runs a full audit before pushing to a remote
+- Configurable via `[hooks]` section in `.repolens.toml`
+- Automatic backup of existing hooks before overwriting (`--force`)
+- Restore original hooks on removal
+- Support for standard repositories and git worktrees
+- 50+ unit tests covering hooks functionality
+
 ### Changed
 
 - Increased CI coverage threshold from 90% to 95%
