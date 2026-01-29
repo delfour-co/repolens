@@ -12,6 +12,9 @@ use std::collections::HashMap;
 // Re-export CacheConfig from cache module for convenience
 pub use crate::cache::CacheConfig;
 
+// Re-export HooksConfig from hooks module for convenience
+pub use crate::hooks::HooksConfig;
+
 /// Rule configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RuleConfig {

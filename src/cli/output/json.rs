@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_json_output_default() {
-        let _output = JsonOutput::default();
+        let _output: JsonOutput = Default::default();
     }
 
     #[test]

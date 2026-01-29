@@ -82,6 +82,16 @@ severity = "info"
 invert = true  # Fail if Dockerfile doesn't exist
 message = "Dockerfile not found"
 
+# Git hooks configuration
+# RepoLens can install Git hooks to automatically check your code
+[hooks]
+# Install pre-commit hook (checks for exposed secrets before commit)
+pre_commit = true
+# Install pre-push hook (runs full audit before push)
+pre_push = true
+# Whether warnings should cause hook failure
+fail_on_warnings = false
+
 # Cache configuration
 # Caching improves performance by avoiding re-auditing unchanged files
 [cache]

@@ -2,6 +2,7 @@
 
 pub mod apply;
 pub mod init;
+pub mod install_hooks;
 pub mod plan;
 pub mod report;
 pub mod schema;
@@ -135,6 +136,30 @@ pub struct SchemaArgs {
     /// Output file (defaults to stdout)
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
+}
+
+/// Arguments for the install-hooks command
+#[derive(Args, Debug)]
+pub struct InstallHooksArgs {
+    /// Install only the pre-commit hook
+    #[arg(long)]
+    pub pre_commit: bool,
+
+    /// Install only the pre-push hook
+    #[arg(long)]
+    pub pre_push: bool,
+
+    /// Install all hooks (default behavior)
+    #[arg(long)]
+    pub all: bool,
+
+    /// Remove installed hooks
+    #[arg(long)]
+    pub remove: bool,
+
+    /// Force overwrite existing hooks (backs up originals)
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Output format for plan command

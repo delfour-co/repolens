@@ -358,6 +358,56 @@ repolens plan --cache-dir /tmp/repolens-cache
 The same options are available for the `report` command.
 ```
 
+### Git Hooks
+
+RepoLens can install Git hooks to automatically check your code before commits and pushes.
+
+#### Install Hooks
+
+```bash
+# Install all configured hooks (pre-commit + pre-push)
+repolens install-hooks
+
+# Install only the pre-commit hook
+repolens install-hooks --pre-commit
+
+# Install only the pre-push hook
+repolens install-hooks --pre-push
+
+# Force overwrite existing hooks (backs up originals)
+repolens install-hooks --force
+```
+
+#### Remove Hooks
+
+```bash
+# Remove all RepoLens hooks (restores backups if they exist)
+repolens install-hooks --remove
+```
+
+#### Hook Behavior
+
+- **pre-commit**: Scans staged files for exposed secrets before each commit. If secrets are detected, the commit is aborted.
+- **pre-push**: Runs a full audit before pushing. If issues are found, the push is aborted.
+
+Both hooks can be bypassed with `--no-verify` (e.g., `git commit --no-verify`).
+
+#### Configuration
+
+Configure hooks in `.repolens.toml`:
+
+```toml
+[hooks]
+# Install pre-commit hook (checks for exposed secrets)
+pre_commit = true
+# Install pre-push hook (runs full audit)
+pre_push = true
+# Whether warnings should cause hook failure
+fail_on_warnings = false
+```
+
+When `fail_on_warnings` is `true`, hooks will also fail on warning-level findings, not just critical issues.
+
 ## Presets
 
 | Preset | Description |
