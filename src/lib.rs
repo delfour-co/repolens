@@ -9,6 +9,7 @@ pub mod cli;
 pub mod compare;
 pub mod config;
 pub mod error;
+pub mod hooks;
 pub mod providers;
 pub mod rules;
 pub mod scanner;

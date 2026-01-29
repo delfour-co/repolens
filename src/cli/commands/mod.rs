@@ -3,6 +3,7 @@
 pub mod apply;
 pub mod compare;
 pub mod init;
+pub mod install_hooks;
 pub mod plan;
 pub mod report;
 
@@ -119,6 +120,30 @@ pub struct ReportArgs {
     /// Custom cache directory path
     #[arg(long, value_name = "DIR")]
     pub cache_dir: Option<PathBuf>,
+}
+
+/// Arguments for the install-hooks command
+#[derive(Args, Debug)]
+pub struct InstallHooksArgs {
+    /// Install only the pre-commit hook
+    #[arg(long)]
+    pub pre_commit: bool,
+
+    /// Install only the pre-push hook
+    #[arg(long)]
+    pub pre_push: bool,
+
+    /// Install all hooks (default behavior)
+    #[arg(long)]
+    pub all: bool,
+
+    /// Remove installed hooks
+    #[arg(long)]
+    pub remove: bool,
+
+    /// Force overwrite existing hooks (backs up originals)
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Output format for plan command

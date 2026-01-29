@@ -472,4 +472,14 @@ mod tests {
         let md_files = scanner.files_matching_pattern("*.md");
         assert!(!md_files.is_empty()); // README.md
     }
+
+    #[test]
+    fn test_files_in_directory_with_trailing_slash() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let files = scanner.files_in_directory("src/");
+        // Should have at least main.rs and lib.rs
+        assert!(files.len() >= 2);
+    }
 }

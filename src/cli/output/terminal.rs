@@ -238,8 +238,8 @@ mod tests {
 
     #[test]
     fn test_terminal_output_default() {
-        let _output = TerminalOutput;
-        // TerminalOutput is a unit struct
+        let _output: TerminalOutput = Default::default();
+        // Verify Default trait impl works
     }
 
     #[test]

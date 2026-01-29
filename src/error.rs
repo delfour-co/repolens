@@ -532,4 +532,17 @@ mod tests {
         let provider_err = RepoLensError::Provider(ProviderError::NotAuthenticated);
         assert!(format!("{}", provider_err).contains("Provider error"));
     }
+
+    #[test]
+    fn test_repolens_error_from_toml_ser_error() {
+        // Create a toml::ser::Error by trying to serialize something that cannot be a TOML key
+        // We use a map with a non-string key to trigger this
+        use std::collections::HashMap;
+        let mut map = HashMap::new();
+        map.insert(vec![1, 2, 3], "value");
+        let ser_err = toml::to_string(&map).unwrap_err();
+        let err: RepoLensError = ser_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Config error"));
+    }
 }
