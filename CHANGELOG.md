@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Compare Command (#18)
+- **`repolens compare` command**: Compare two audit report JSON files to visualize improvements and regressions
+- **Score comparison**: Weighted score diff (Critical=10, Warning=3, Info=1) showing overall trend
+- **New issues detection**: Findings present in head but not in base (regressions)
+- **Resolved issues detection**: Findings present in base but not in head (improvements)
+- **Category breakdown**: Per-category count changes table
+- **Multiple output formats**: Terminal (colored), JSON, and Markdown
+- **`--fail-on-regression` flag**: Exit with code 1 if new issues are detected, for CI integration
+- **`--output` option**: Save comparison report to a file
+
 #### Git Hooks Support (#6)
 - New `install-hooks` CLI command to install and remove Git hooks
 - **Pre-commit hook**: Checks for exposed secrets before each commit
