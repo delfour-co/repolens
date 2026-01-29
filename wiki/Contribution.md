@@ -124,14 +124,18 @@ cargo clippy -- -D warnings
 
 ### Intermédiaire
 
-- Nouvelles règles d'audit
-- Nouveaux formats de sortie
+- Nouvelles règles d'audit (voir `src/rules/categories/`)
+- Nouveaux formats de sortie (voir `src/cli/output/`)
 - Amélioration de l'UX CLI
+- Extension du système de cache (`src/cache/`)
+- Nouveaux hooks Git (`src/hooks/`)
 
 ### Avancé
 
 - Optimisations de performance
-- Nouveaux providers
+- Nouveaux providers (voir `src/providers/`)
+- Extension du module de comparaison (`src/compare/`)
+- Nouvelles catégories de règles (licenses, dependencies, custom)
 - Refactoring de l'architecture
 
 ## Questions ?

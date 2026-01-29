@@ -44,12 +44,15 @@ Active ou désactive les catégories de règles.
 
 ```toml
 [rules]
-secrets = true      # Détection de secrets
-files = true        # Vérification des fichiers requis
-docs = true         # Qualité de la documentation
-security = true     # Bonnes pratiques de sécurité
-workflows = true    # Validation des workflows GitHub Actions
-quality = true      # Standards de qualité de code
+secrets = true        # Détection de secrets
+files = true          # Vérification des fichiers requis
+docs = true           # Qualité de la documentation
+security = true       # Bonnes pratiques de sécurité
+workflows = true      # Validation des workflows GitHub Actions
+quality = true        # Standards de qualité de code
+licenses = true       # Conformité des licences (LIC001-LIC004)
+dependencies = true   # Vulnérabilités des dépendances (DEP001-DEP002)
+custom = true         # Règles personnalisées
 ```
 
 ## Configuration des secrets
@@ -242,6 +245,62 @@ enabled = true
 branch = "main"
 required_approvals = 2  # Plus strict pour l'entreprise
 require_signed_commits = true
+```
+
+## Configuration des licences
+
+### `["rules.licenses"]`
+
+```toml
+["rules.licenses"]
+enabled = true
+allowed_licenses = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
+denied_licenses = ["GPL-3.0", "AGPL-3.0"]
+```
+
+- `allowed_licenses` : Liste blanche de licences SPDX autorisées pour les dépendances
+- `denied_licenses` : Liste noire de licences SPDX interdites
+
+## Configuration du cache
+
+### `[cache]`
+
+```toml
+[cache]
+# Activer/désactiver le cache (défaut : true)
+enabled = true
+# Durée maximale des entrées de cache en heures (défaut : 24)
+max_age_hours = 24
+# Répertoire de cache (relatif à la racine du projet ou chemin absolu)
+directory = ".repolens/cache"
+```
+
+Options CLI associées :
+- `--no-cache` : Désactiver le cache pour un audit complet
+- `--clear-cache` : Vider le cache avant l'audit
+- `--cache-dir <DIR>` : Utiliser un répertoire de cache personnalisé
+
+## Configuration des Git hooks
+
+### `[hooks]`
+
+```toml
+[hooks]
+# Installer le hook pre-commit (vérifie les secrets exposés)
+pre_commit = true
+# Installer le hook pre-push (lance un audit complet)
+pre_push = true
+# Échouer aussi sur les warnings (pas seulement les critiques)
+fail_on_warnings = false
+```
+
+Installation via CLI :
+```bash
+repolens install-hooks              # Installer tous les hooks configurés
+repolens install-hooks --pre-commit # Uniquement pre-commit
+repolens install-hooks --pre-push   # Uniquement pre-push
+repolens install-hooks --force      # Écraser les hooks existants (sauvegarde automatique)
+repolens install-hooks --remove     # Supprimer les hooks RepoLens
 ```
 
 ## Priorité de configuration

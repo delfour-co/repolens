@@ -138,6 +138,8 @@ repolens init --preset strict
 | CONTRIBUTING | ✅ | ❌ | ✅ |
 | CODE_OF_CONDUCT | ✅ | ❌ | ✅ |
 | SECURITY | ✅ | ✅ | ✅ |
+| Conformité licences | ✅ | ✅ | ✅ |
+| Scan dépendances | ✅ | ✅ | ✅ |
 | Approbations requises | 1 | 2 | 2 |
 | Commits signés | ❌ | ✅ | ✅ |
 | URLs internes | ❌ | ✅ | ❌ |

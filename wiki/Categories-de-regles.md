@@ -6,7 +6,7 @@
 
 # Catégories de règles
 
-RepoLens organise ses règles d'audit en sept catégories principales.
+RepoLens organise ses règles d'audit en neuf catégories.
 
 ## 🔒 Secrets
 
@@ -242,6 +242,80 @@ min_coverage = 80.0  # Pourcentage minimum de couverture requis
 - ✅ Tests des cas limites et des erreurs
 - ✅ Tests de performance pour les parties critiques
 
+## 📄 Licenses
+
+**Objectif** : Vérifier la conformité des licences du projet et de ses dépendances.
+
+### Règles
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| LIC001 | Warning | Aucune licence de projet détectée |
+| LIC002 | Critical/Warning | Licence de dépendance incompatible ou non autorisée |
+| LIC003 | Info | Licence de dépendance inconnue/non reconnue |
+| LIC004 | Warning | Dépendance sans licence spécifiée |
+
+### Détection de la licence du projet
+
+RepoLens détecte la licence du projet depuis :
+- Fichiers `LICENSE` / `LICENSE.md` / `LICENSE.txt`
+- Champ `license` dans `Cargo.toml`
+- Champ `license` dans `package.json`
+- Champ `license` dans `setup.cfg` / `pyproject.toml`
+
+### Analyse des dépendances
+
+Fichiers de dépendances supportés :
+- `Cargo.toml` (Rust)
+- `package.json` / `node_modules/*/package.json` (Node.js)
+- `requirements.txt` (Python)
+- `go.mod` (Go)
+
+### Matrice de compatibilité
+
+RepoLens inclut une matrice de compatibilité pour les licences SPDX courantes :
+MIT, Apache-2.0, GPL-2.0, GPL-3.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, LGPL-2.1, LGPL-3.0, AGPL-3.0, Unlicense
+
+### Configuration
+
+```toml
+["rules.licenses"]
+enabled = true
+allowed_licenses = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
+denied_licenses = ["GPL-3.0", "AGPL-3.0"]
+```
+
+### Bonnes pratiques
+
+- Toujours spécifier une licence pour le projet
+- Définir une liste de licences autorisées pour les dépendances
+- Vérifier la compatibilité des licences avant d'ajouter une dépendance
+- Surveiller les dépendances sans licence (LIC004)
+
+## 🛠️ Custom (Règles personnalisées)
+
+**Objectif** : Permettre aux utilisateurs de définir leurs propres règles d'audit via patterns regex ou commandes shell.
+
+Consultez la page [Règles personnalisées](Custom-Rules) pour la documentation complète.
+
+### Configuration
+
+```toml
+# Règle par pattern regex
+[rules.custom."no-todo"]
+pattern = "TODO"
+severity = "warning"
+files = ["**/*.rs"]
+message = "TODO comment found"
+
+# Règle par commande shell
+[rules.custom."check-git-status"]
+command = "git status --porcelain"
+severity = "warning"
+invert = true
+message = "Working directory is not clean"
+```
+
 ## Désactiver une catégorie
 
 Pour désactiver une catégorie de règles :
@@ -250,12 +324,13 @@ Pour désactiver une catégorie de règles :
 [rules]
 secrets = true
 files = true
-docs = false  # Désactiver la catégorie docs
+docs = false        # Désactiver la catégorie docs
 security = true
 workflows = true
 quality = true
-dependencies = true  # Nouvelle catégorie pour la vérification des dépendances
-custom = true  # Règles personnalisées
+licenses = true     # Conformité des licences
+dependencies = true # Vérification des dépendances
+custom = true       # Règles personnalisées
 ```
 
 ## Priorité des règles

@@ -54,8 +54,18 @@ repolens init --preset opensource
 # Audit
 repolens plan
 
-# Application des correctifs
+# Application des correctifs (mode interactif ou automatique)
+repolens apply --interactive
 repolens apply --dry-run
+
+# Générer un rapport JSON avec validation de schéma
+repolens report --format json --schema --validate
+
+# Comparer deux rapports d'audit
+repolens compare --base-file before.json --head-file after.json
+
+# Installer les git hooks (pre-commit + pre-push)
+repolens install-hooks
 ```
 
 Pour l'intégration CI/CD, utilisez l'Action GitHub officielle :
@@ -79,6 +89,11 @@ Pour l'intégration CI/CD, utilisez l'Action GitHub officielle :
 - ✅ Génération de plans d'action
 - ✅ Application automatique des correctifs
 - ✅ Formats de sortie multiples (Terminal, JSON, SARIF, Markdown, HTML)
+- ✅ **Cache d'audit** : Système de cache avec invalidation SHA256 pour des audits plus rapides
+- ✅ **Git hooks** : Hooks pre-commit (secrets) et pre-push (audit complet) intégrés
+- ✅ **Comparaison de rapports** : Comparaison de deux rapports JSON pour détecter régressions et améliorations
+- ✅ **JSON Schema** : Schéma JSON (draft-07) pour valider les rapports d'audit
+- ✅ **Conformité des licences** : Vérification de la compatibilité des licences des dépendances (LIC001-LIC004)
 - ✅ **Changelog automatique** : Génération automatique du CHANGELOG à partir des commits
 
 ## Support

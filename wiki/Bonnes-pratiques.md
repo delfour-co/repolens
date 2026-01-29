@@ -29,7 +29,17 @@ repolens apply --dry-run
 repolens apply
 ```
 
-### 2. Maintenance continue
+### 2. Installer les Git hooks
+
+```bash
+# Installer les hooks pre-commit et pre-push
+repolens install-hooks
+
+# Le hook pre-commit vérifie les secrets avant chaque commit
+# Le hook pre-push lance un audit complet avant chaque push
+```
+
+### 3. Maintenance continue
 
 ```bash
 # Intégrer dans votre workflow CI/CD
@@ -335,13 +345,80 @@ RepoLens effectue un audit complet de sécurité incluant :
 - [ ] Analyse de sécurité automatisée (Semgrep/CodeQL)
 - [ ] Vérification régulière des vulnérabilités des dépendances
 
+## Comparaison de rapports
+
+### Suivi des améliorations
+
+```bash
+# Générer un rapport de référence (baseline)
+repolens report --format json --output baseline.json
+
+# Après avoir fait des corrections, générer un nouveau rapport
+repolens report --format json --output current.json
+
+# Comparer les deux rapports
+repolens compare --base-file baseline.json --head-file current.json
+```
+
+### Intégration CI avec détection de régression
+
+```bash
+# Échouer le build si de nouveaux problèmes apparaissent
+repolens compare --base-file baseline.json --head-file current.json --fail-on-regression
+```
+
+## Validation JSON Schema
+
+### Valider les rapports JSON
+
+```bash
+# Générer un rapport avec validation automatique
+repolens report --format json --schema --validate
+
+# Exporter le schéma pour validation externe
+repolens schema --output schemas/audit-report.schema.json
+```
+
+## Cache d'audit
+
+### Bonnes pratiques de cache
+
+- Utiliser le cache en développement local pour des audits rapides
+- Utiliser `--no-cache` en CI pour des résultats toujours frais
+- Utiliser `--clear-cache` après des changements de configuration
+- Le cache est automatiquement invalidé quand le contenu d'un fichier change (hash SHA256)
+
+```bash
+# Développement local (cache activé par défaut)
+repolens plan
+
+# CI/CD (désactiver le cache)
+repolens plan --no-cache
+```
+
+## Conformité des licences
+
+### Configurer la vérification des licences
+
+```toml
+["rules.licenses"]
+enabled = true
+allowed_licenses = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
+denied_licenses = ["GPL-3.0", "AGPL-3.0"]
+```
+
+- Définir une liste blanche de licences autorisées pour vos dépendances
+- Bloquer les licences incompatibles avec votre projet
+- Surveiller les dépendances sans licence
+
 ## Performance
 
 ### Optimisations
 
-- ✅ Utiliser `--dry-run` avant `apply`
-- ✅ Filtrer par catégories si nécessaire
-- ✅ Utiliser des presets appropriés
+- Utiliser le cache pour les audits répétitifs (activé par défaut)
+- Utiliser `--dry-run` avant `apply`
+- Filtrer par catégories si nécessaire
+- Utiliser des presets appropriés
 
 ## Maintenance
 
