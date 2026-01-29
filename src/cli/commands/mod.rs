@@ -1,9 +1,12 @@
 //! CLI commands module
 
-pub mod init;
-pub mod plan;
 pub mod apply;
+pub mod compare;
+pub mod init;
+pub mod install_hooks;
+pub mod plan;
 pub mod report;
+pub mod schema;
 
 use clap::Args;
 use std::path::PathBuf;
@@ -22,6 +25,10 @@ pub struct InitArgs {
     /// Skip interactive prompts
     #[arg(long)]
     pub non_interactive: bool,
+
+    /// Skip prerequisite checks (git, gh, etc.)
+    #[arg(long)]
+    pub skip_checks: bool,
 }
 
 /// Arguments for the plan command
@@ -42,14 +49,30 @@ pub struct PlanArgs {
     /// Output file (defaults to stdout)
     #[arg(short, long, value_name = "FILE")]
     pub output: Option<PathBuf>,
+
+    /// Disable cache and force a complete re-audit
+    #[arg(long)]
+    pub no_cache: bool,
+
+    /// Clear the cache before running the audit
+    #[arg(long)]
+    pub clear_cache: bool,
+
+    /// Custom cache directory path
+    #[arg(long, value_name = "DIR")]
+    pub cache_dir: Option<PathBuf>,
 }
 
 /// Arguments for the apply command
 #[derive(Args, Debug)]
 pub struct ApplyArgs {
-    /// Skip confirmation prompts
+    /// Skip confirmation prompts and apply all actions automatically
     #[arg(short, long)]
     pub yes: bool,
+
+    /// Enable interactive mode with action selection and diff preview
+    #[arg(short, long)]
+    pub interactive: bool,
 
     /// Dry run - show what would be done without making changes
     #[arg(long)]
@@ -62,6 +85,14 @@ pub struct ApplyArgs {
     /// Skip specific actions
     #[arg(long, value_delimiter = ',')]
     pub skip: Option<Vec<String>>,
+
+    /// Create a pull request with the changes (default: true if in a git repository)
+    #[arg(long)]
+    pub create_pr: Option<bool>,
+
+    /// Skip creating a pull request (overrides --create-pr)
+    #[arg(long)]
+    pub no_pr: bool,
 }
 
 /// Arguments for the report command
@@ -78,6 +109,58 @@ pub struct ReportArgs {
     /// Include full details in report
     #[arg(long)]
     pub detailed: bool,
+
+    /// Include JSON Schema reference ($schema) in JSON output
+    #[arg(long)]
+    pub schema: bool,
+
+    /// Validate JSON output against the JSON Schema before emitting
+    #[arg(long)]
+    pub validate: bool,
+
+    /// Disable cache and force a complete re-audit
+    #[arg(long)]
+    pub no_cache: bool,
+
+    /// Clear the cache before running the audit
+    #[arg(long)]
+    pub clear_cache: bool,
+
+    /// Custom cache directory path
+    #[arg(long, value_name = "DIR")]
+    pub cache_dir: Option<PathBuf>,
+}
+
+/// Arguments for the schema command
+#[derive(Args, Debug)]
+pub struct SchemaArgs {
+    /// Output file (defaults to stdout)
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+}
+
+/// Arguments for the install-hooks command
+#[derive(Args, Debug)]
+pub struct InstallHooksArgs {
+    /// Install only the pre-commit hook
+    #[arg(long)]
+    pub pre_commit: bool,
+
+    /// Install only the pre-push hook
+    #[arg(long)]
+    pub pre_push: bool,
+
+    /// Install all hooks (default behavior)
+    #[arg(long)]
+    pub all: bool,
+
+    /// Remove installed hooks
+    #[arg(long)]
+    pub remove: bool,
+
+    /// Force overwrite existing hooks (backs up originals)
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// Output format for plan command
@@ -94,4 +177,36 @@ pub enum ReportFormat {
     Html,
     Markdown,
     Json,
+}
+
+/// Arguments for the compare command
+#[derive(Args, Debug)]
+pub struct CompareArgs {
+    /// Path to the base (before) report JSON file
+    #[arg(long, value_name = "FILE")]
+    pub base_file: PathBuf,
+
+    /// Path to the head (after) report JSON file
+    #[arg(long, value_name = "FILE")]
+    pub head_file: PathBuf,
+
+    /// Output format (terminal, json, markdown)
+    #[arg(short, long, default_value = "terminal")]
+    pub format: CompareFormat,
+
+    /// Output file (defaults to stdout)
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+
+    /// Exit with code 1 if regressions (new issues) are found
+    #[arg(long)]
+    pub fail_on_regression: bool,
+}
+
+/// Output format for compare command
+#[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
+pub enum CompareFormat {
+    Terminal,
+    Json,
+    Markdown,
 }

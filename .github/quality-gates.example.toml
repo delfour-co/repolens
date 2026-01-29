@@ -1,0 +1,49 @@
+# Exemple de configuration des Quality Gates
+# Copiez ce fichier vers .github/quality-gates.toml et ajustez selon vos besoins
+
+# Configuration pour un projet en développement (seuils plus souples)
+[coverage]
+minimum = 60.0  # Commencez bas et augmentez progressivement
+target = 80.0
+
+[clippy]
+max_warnings = 5  # Autoriser quelques warnings pendant le développement
+severity = "warn"
+strict = false  # Mode moins strict pendant le développement
+
+[security]
+max_critical_vulnerabilities = 0  # Toujours bloquer les vulnérabilités critiques
+max_high_vulnerabilities = 2  # Autoriser quelques vulnérabilités importantes temporairement
+max_medium_vulnerabilities = 10
+allow_unpatched = false
+
+[dependencies]
+max_outdated = 10  # Plus tolérant pendant le développement
+max_duplicates = 2
+check_licenses = true
+
+[code_metrics]
+max_binary_size = 15_000_000  # 15 MB
+min_tests = 10  # Minimum bas pour commencer
+min_integration_tests = 3
+max_cyclomatic_complexity = 20
+max_unsafe_percentage = 10.0
+
+[documentation]
+min_documentation_coverage = 50.0  # Commencez bas
+require_public_docs = false  # Pas strict pendant le développement
+
+[tests]
+require_all_tests_pass = true
+max_test_duration = 600  # 10 minutes
+enable_performance_tests = false
+
+[build]
+require_build_success = true
+max_build_duration = 900  # 15 minutes
+
+[nightly]
+strict_mode = false  # Mode moins strict pour nightly
+block_on_coverage_decrease = false  # Ne pas bloquer si couverture diminue légèrement
+block_on_new_vulnerabilities = true  # Toujours bloquer nouvelles vulnérabilités critiques
+block_on_new_warnings = false  # Ne pas bloquer pour nouveaux warnings mineurs

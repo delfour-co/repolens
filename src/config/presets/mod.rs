@@ -1,7 +1,5 @@
 //! Preset configurations for different use cases
 
-use anyhow::{bail, Result};
-
 /// Available presets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
@@ -15,12 +13,12 @@ pub enum Preset {
 
 impl Preset {
     /// Get preset from name
-    pub fn from_name(name: &str) -> Result<Self> {
+    pub fn from_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
-            "opensource" | "open-source" | "oss" => Ok(Self::OpenSource),
-            "enterprise" | "ent" | "internal" => Ok(Self::Enterprise),
-            "strict" | "secure" | "compliance" => Ok(Self::Strict),
-            _ => bail!("Unknown preset: {}. Valid presets: opensource, enterprise, strict", name),
+            "opensource" | "open-source" | "oss" => Some(Self::OpenSource),
+            "enterprise" | "ent" | "internal" => Some(Self::Enterprise),
+            "strict" | "secure" | "compliance" => Some(Self::Strict),
+            _ => None,
         }
     }
 
@@ -34,6 +32,7 @@ impl Preset {
     }
 
     /// Get a description of the preset
+    #[allow(dead_code)]
     pub fn description(&self) -> &'static str {
         match self {
             Self::OpenSource => "Prepare repository for public open source release",
@@ -43,6 +42,7 @@ impl Preset {
     }
 
     /// Get the rules that should be enabled for this preset
+    #[allow(dead_code)]
     pub fn enabled_rules(&self) -> Vec<&'static str> {
         match self {
             Self::OpenSource => vec![
@@ -110,18 +110,11 @@ impl Preset {
     }
 
     /// Get rules with critical severity for this preset
+    #[allow(dead_code)]
     pub fn critical_rules(&self) -> Vec<&'static str> {
         match self {
-            Self::OpenSource => vec![
-                "secrets/hardcoded",
-                "secrets/files",
-                "docs/license",
-            ],
-            Self::Enterprise => vec![
-                "secrets/hardcoded",
-                "secrets/files",
-                "security/codeowners",
-            ],
+            Self::OpenSource => vec!["secrets/hardcoded", "secrets/files", "docs/license"],
+            Self::Enterprise => vec!["secrets/hardcoded", "secrets/files", "security/codeowners"],
             Self::Strict => vec![
                 "secrets/hardcoded",
                 "secrets/files",
@@ -144,7 +137,7 @@ mod tests {
         assert_eq!(Preset::from_name("oss").unwrap(), Preset::OpenSource);
         assert_eq!(Preset::from_name("enterprise").unwrap(), Preset::Enterprise);
         assert_eq!(Preset::from_name("strict").unwrap(), Preset::Strict);
-        assert!(Preset::from_name("invalid").is_err());
+        assert!(Preset::from_name("invalid").is_none());
     }
 
     #[test]
@@ -152,5 +145,99 @@ mod tests {
         assert_eq!(Preset::OpenSource.name(), "opensource");
         assert_eq!(Preset::Enterprise.name(), "enterprise");
         assert_eq!(Preset::Strict.name(), "strict");
+    }
+
+    #[test]
+    fn test_preset_from_name_aliases() {
+        // OpenSource aliases
+        assert_eq!(
+            Preset::from_name("open-source").unwrap(),
+            Preset::OpenSource
+        );
+        assert_eq!(Preset::from_name("OPENSOURCE").unwrap(), Preset::OpenSource);
+
+        // Enterprise aliases
+        assert_eq!(Preset::from_name("ent").unwrap(), Preset::Enterprise);
+        assert_eq!(Preset::from_name("internal").unwrap(), Preset::Enterprise);
+        assert_eq!(Preset::from_name("ENTERPRISE").unwrap(), Preset::Enterprise);
+
+        // Strict aliases
+        assert_eq!(Preset::from_name("secure").unwrap(), Preset::Strict);
+        assert_eq!(Preset::from_name("compliance").unwrap(), Preset::Strict);
+        assert_eq!(Preset::from_name("STRICT").unwrap(), Preset::Strict);
+    }
+
+    #[test]
+    fn test_preset_description() {
+        assert!(Preset::OpenSource.description().contains("open source"));
+        assert!(Preset::Enterprise.description().contains("internal"));
+        assert!(Preset::Strict.description().contains("security"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_opensource() {
+        let rules = Preset::OpenSource.enabled_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"docs/readme"));
+        assert!(rules.contains(&"docs/license"));
+        assert!(rules.contains(&"docs/contributing"));
+        assert!(rules.contains(&"docs/code-of-conduct"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_enterprise() {
+        let rules = Preset::Enterprise.enabled_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"security/codeowners"));
+        assert!(rules.contains(&"security/signed-commits"));
+        // Enterprise doesn't require license
+        assert!(!rules.contains(&"docs/license"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_strict() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"secrets/history"));
+        assert!(rules.contains(&"quality/tests"));
+        assert!(rules.contains(&"quality/linting"));
+        assert!(rules.contains(&"workflows/pinned-actions"));
+    }
+
+    #[test]
+    fn test_preset_critical_rules_opensource() {
+        let rules = Preset::OpenSource.critical_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"secrets/files"));
+        assert!(rules.contains(&"docs/license"));
+    }
+
+    #[test]
+    fn test_preset_critical_rules_enterprise() {
+        let rules = Preset::Enterprise.critical_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"security/codeowners"));
+    }
+
+    #[test]
+    fn test_preset_critical_rules_strict() {
+        let rules = Preset::Strict.critical_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"secrets/history"));
+        assert!(rules.contains(&"security/signed-commits"));
+    }
+
+    #[test]
+    fn test_preset_equality() {
+        assert_eq!(Preset::OpenSource, Preset::OpenSource);
+        assert_ne!(Preset::OpenSource, Preset::Enterprise);
+        assert_ne!(Preset::Enterprise, Preset::Strict);
+    }
+
+    #[test]
+    fn test_preset_copy() {
+        let preset = Preset::OpenSource;
+        let copied = preset;
+        assert_eq!(preset, copied);
     }
 }

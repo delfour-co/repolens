@@ -1,6 +1,5 @@
 //! Init command - Initialize a new configuration file
 
-use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::{Confirm, Select};
 use std::fs;
@@ -8,11 +7,54 @@ use std::path::Path;
 
 use super::InitArgs;
 use crate::config::{Config, Preset};
+use crate::error::{ActionError, RepoLensError};
+use crate::utils::prerequisites::{
+    display_error_summary, display_report, display_warnings, run_all_checks, CheckOptions,
+};
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
 
-pub async fn execute(args: InitArgs) -> Result<i32> {
+pub async fn execute(args: InitArgs) -> Result<i32, RepoLensError> {
+    let root = std::env::current_dir().map_err(|e| {
+        RepoLensError::Action(ActionError::ExecutionFailed {
+            message: format!("Failed to get current directory: {}", e),
+        })
+    })?;
     let config_path = Path::new(CONFIG_FILENAME);
+
+    // Run prerequisite checks unless skipped
+    if !args.skip_checks {
+        let options = CheckOptions::default();
+        let report = run_all_checks(&root, &options);
+        display_report(&report, false);
+
+        if !report.all_required_passed() {
+            display_error_summary(&report);
+
+            if args.non_interactive {
+                return Ok(crate::exit_codes::ERROR);
+            }
+
+            // Ask if user wants to continue anyway
+            let continue_anyway = Confirm::new()
+                .with_prompt("Continue anyway?")
+                .default(false)
+                .interact()
+                .map_err(|e| {
+                    RepoLensError::Action(ActionError::ExecutionFailed {
+                        message: format!("Failed to get user input: {}", e),
+                    })
+                })?;
+
+            if !continue_anyway {
+                return Ok(crate::exit_codes::ERROR);
+            }
+
+            println!();
+        } else if report.has_warnings() {
+            display_warnings(&report);
+        }
+    }
 
     // Check if config already exists
     if config_path.exists() && !args.force {
@@ -27,7 +69,12 @@ pub async fn execute(args: InitArgs) -> Result<i32> {
         let overwrite = Confirm::new()
             .with_prompt("Configuration file already exists. Overwrite?")
             .default(false)
-            .interact()?;
+            .interact()
+            .map_err(|e| {
+                RepoLensError::Action(ActionError::ExecutionFailed {
+                    message: format!("Failed to get user input: {}", e),
+                })
+            })?;
 
         if !overwrite {
             println!("{}", "Aborted.".yellow());
@@ -37,7 +84,9 @@ pub async fn execute(args: InitArgs) -> Result<i32> {
 
     // Determine preset
     let preset = if let Some(preset_name) = args.preset {
-        Preset::from_name(&preset_name).context("Invalid preset name")?
+        Preset::from_name(&preset_name).ok_or(RepoLensError::Config(
+            crate::error::ConfigError::InvalidPreset { name: preset_name },
+        ))?
     } else if args.non_interactive {
         Preset::OpenSource
     } else {
@@ -49,8 +98,12 @@ pub async fn execute(args: InitArgs) -> Result<i32> {
 
     // Write configuration file
     let config_content = config.to_toml()?;
-    fs::write(config_path, &config_content)
-        .context("Failed to write configuration file")?;
+    fs::write(config_path, &config_content).map_err(|e| {
+        RepoLensError::Action(ActionError::FileWrite {
+            path: config_path.display().to_string(),
+            source: e,
+        })
+    })?;
 
     println!(
         "{} Created {} with preset '{}'",
@@ -67,9 +120,12 @@ pub async fn execute(args: InitArgs) -> Result<i32> {
     Ok(0)
 }
 
-fn select_preset() -> Result<Preset> {
-    let presets = vec![
-        ("opensource", "Open Source - Prepare repository for public release"),
+fn select_preset() -> Result<Preset, RepoLensError> {
+    let presets = [
+        (
+            "opensource",
+            "Open Source - Prepare repository for public release",
+        ),
         ("enterprise", "Enterprise - Internal company standards"),
         ("strict", "Strict - Maximum security and compliance checks"),
     ];
@@ -78,7 +134,12 @@ fn select_preset() -> Result<Preset> {
         .with_prompt("Select a preset")
         .items(&presets.iter().map(|(_, desc)| *desc).collect::<Vec<_>>())
         .default(0)
-        .interact()?;
+        .interact()
+        .map_err(|e| {
+            RepoLensError::Action(ActionError::ExecutionFailed {
+                message: format!("Failed to get user input: {}", e),
+            })
+        })?;
 
     Ok(match selection {
         0 => Preset::OpenSource,

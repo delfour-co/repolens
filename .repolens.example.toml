@@ -45,3 +45,60 @@ require_tests = true
 # [severity]
 # "missing-readme" = "critical"
 # "missing-tests" = "warning"
+
+# Custom rules
+# Define your own audit rules using regex patterns or shell commands
+[rules.custom]
+
+# Example: Detect TODO comments
+[rules.custom."no-todo"]
+pattern = "TODO"
+severity = "warning"
+files = ["**/*.rs", "**/*.ts"]
+message = "TODO comment found"
+remediation = "Address or remove the TODO comment"
+
+# Example: Require module documentation (inverted pattern)
+[rules.custom."require-module-doc"]
+pattern = "^//!"
+severity = "info"
+files = ["**/lib.rs"]
+invert = true  # Fail if pattern NOT found
+message = "Missing module documentation"
+remediation = "Add module-level documentation with //!"
+
+# Example: Check git status (shell command)
+[rules.custom."check-git-status"]
+command = "git status --porcelain"
+severity = "warning"
+invert = true  # Fail if command returns non-zero (uncommitted changes)
+message = "Working directory is not clean"
+remediation = "Commit or stash your changes"
+
+# Example: Check if Dockerfile exists (shell command)
+[rules.custom."check-dockerfile"]
+command = "test -f Dockerfile"
+severity = "info"
+invert = true  # Fail if Dockerfile doesn't exist
+message = "Dockerfile not found"
+
+# Git hooks configuration
+# RepoLens can install Git hooks to automatically check your code
+[hooks]
+# Install pre-commit hook (checks for exposed secrets before commit)
+pre_commit = true
+# Install pre-push hook (runs full audit before push)
+pre_push = true
+# Whether warnings should cause hook failure
+fail_on_warnings = false
+
+# Cache configuration
+# Caching improves performance by avoiding re-auditing unchanged files
+[cache]
+# Enable/disable caching (default: true)
+enabled = true
+# Maximum age for cache entries in hours (default: 24)
+max_age_hours = 24
+# Cache directory (relative to project root or absolute path)
+# Can also use ~ for home directory, e.g., "~/.cache/repolens"
+directory = ".repolens/cache"

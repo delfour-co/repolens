@@ -1,6 +1,6 @@
 //! Template file creation
 
-use anyhow::{Context, Result, bail};
+use crate::error::{ActionError, RepoLensError};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -10,7 +10,7 @@ pub fn create_file_from_template(
     path: &str,
     template_name: &str,
     variables: &HashMap<String, String>,
-) -> Result<()> {
+) -> Result<(), RepoLensError> {
     let template_content = get_template(template_name)?;
 
     // Replace variables in template
@@ -26,19 +26,27 @@ pub fn create_file_from_template(
     // Create parent directories if needed
     if let Some(parent) = file_path.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .context("Failed to create parent directories")?;
+            fs::create_dir_all(parent).map_err(|e| {
+                RepoLensError::Action(ActionError::DirectoryCreate {
+                    path: parent.display().to_string(),
+                    source: e,
+                })
+            })?;
         }
     }
 
-    fs::write(file_path, content)
-        .context(format!("Failed to write file: {}", path))?;
+    fs::write(file_path, content).map_err(|e| {
+        RepoLensError::Action(ActionError::FileWrite {
+            path: path.to_string(),
+            source: e,
+        })
+    })?;
 
     Ok(())
 }
 
 /// Get template content by name
-fn get_template(name: &str) -> Result<String> {
+fn get_template(name: &str) -> Result<String, RepoLensError> {
     match name {
         "LICENSE/MIT" => Ok(MIT_LICENSE.to_string()),
         "LICENSE/Apache-2.0" => Ok(APACHE_LICENSE.to_string()),
@@ -46,7 +54,12 @@ fn get_template(name: &str) -> Result<String> {
         "CONTRIBUTING.md" => Ok(CONTRIBUTING_TEMPLATE.to_string()),
         "CODE_OF_CONDUCT.md" => Ok(CODE_OF_CONDUCT_TEMPLATE.to_string()),
         "SECURITY.md" => Ok(SECURITY_TEMPLATE.to_string()),
-        _ => bail!("Unknown template: {}", name),
+        "ISSUE_TEMPLATE/bug_report.md" => Ok(BUG_REPORT_TEMPLATE.to_string()),
+        "ISSUE_TEMPLATE/feature_request.md" => Ok(FEATURE_REQUEST_TEMPLATE.to_string()),
+        "PULL_REQUEST_TEMPLATE/pull_request_template.md" => Ok(PULL_REQUEST_TEMPLATE.to_string()),
+        _ => Err(RepoLensError::Action(ActionError::UnknownTemplate {
+            name: name.to_string(),
+        })),
     }
 }
 
@@ -239,3 +252,329 @@ When using this project:
 
 Thank you for helping keep this project secure!
 "#;
+
+const BUG_REPORT_TEMPLATE: &str = r#"---
+name: Bug Report
+about: Create a report to help us improve
+title: ''
+labels: bug
+assignees: ''
+---
+
+## Description
+
+A clear and concise description of what the bug is.
+
+## Steps to Reproduce
+
+1. Go to '...'
+2. Click on '....'
+3. Scroll down to '....'
+4. See error
+
+## Expected Behavior
+
+A clear and concise description of what you expected to happen.
+
+## Actual Behavior
+
+A clear and concise description of what actually happened.
+
+## Environment
+
+- OS: [e.g. Ubuntu 22.04, macOS 13.0, Windows 11]
+- Version: [e.g. 0.1.0]
+- Rust version: [e.g. 1.70.0]
+
+## Additional Context
+
+Add any other context about the problem here.
+
+## Screenshots
+
+If applicable, add screenshots to help explain your problem.
+"#;
+
+const FEATURE_REQUEST_TEMPLATE: &str = r#"---
+name: Feature Request
+about: Suggest an idea for this project
+title: ''
+labels: enhancement
+assignees: ''
+---
+
+## Problem Statement
+
+A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+
+## Proposed Solution
+
+A clear and concise description of what you want to happen.
+
+## Alternatives Considered
+
+A clear and concise description of any alternative solutions or features you've considered.
+
+## Use Cases
+
+Describe the use cases for this feature:
+
+1. Use case 1
+2. Use case 2
+3. Use case 3
+
+## Additional Context
+
+Add any other context, mockups, or examples about the feature request here.
+
+## Implementation Notes (Optional)
+
+If you have ideas about how this could be implemented, please share them here.
+"#;
+
+const PULL_REQUEST_TEMPLATE: &str = r#"## Description
+
+Brief description of changes.
+
+## Type of Change
+
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Documentation update
+- [ ] Refactoring
+
+## Checklist
+
+- [ ] Code compiles without errors
+- [ ] Tests pass
+- [ ] Code follows project style guidelines
+- [ ] Documentation updated if needed
+"#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_get_template_mit() {
+        let template = get_template("LICENSE/MIT").unwrap();
+        assert!(template.contains("MIT License"));
+        assert!(template.contains("{{ year }}"));
+        assert!(template.contains("{{ author }}"));
+    }
+
+    #[test]
+    fn test_get_template_apache() {
+        let template = get_template("LICENSE/Apache-2.0").unwrap();
+        assert!(template.contains("Apache License"));
+    }
+
+    #[test]
+    fn test_get_template_gpl() {
+        let template = get_template("LICENSE/GPL-3.0").unwrap();
+        assert!(template.contains("GNU General Public License"));
+    }
+
+    #[test]
+    fn test_get_template_contributing() {
+        let template = get_template("CONTRIBUTING.md").unwrap();
+        assert!(template.contains("Contributing"));
+        assert!(template.contains("Pull Request"));
+    }
+
+    #[test]
+    fn test_get_template_code_of_conduct() {
+        let template = get_template("CODE_OF_CONDUCT.md").unwrap();
+        assert!(template.contains("Code of Conduct"));
+        assert!(template.contains("harassment-free"));
+    }
+
+    #[test]
+    fn test_get_template_security() {
+        let template = get_template("SECURITY.md").unwrap();
+        assert!(template.contains("Security Policy"));
+        assert!(template.contains("Vulnerability"));
+    }
+
+    #[test]
+    fn test_get_template_bug_report() {
+        let template = get_template("ISSUE_TEMPLATE/bug_report.md").unwrap();
+        assert!(template.contains("Bug Report"));
+        assert!(template.contains("Steps to Reproduce"));
+    }
+
+    #[test]
+    fn test_get_template_feature_request() {
+        let template = get_template("ISSUE_TEMPLATE/feature_request.md").unwrap();
+        assert!(template.contains("Feature Request"));
+        assert!(template.contains("Proposed Solution"));
+    }
+
+    #[test]
+    fn test_get_template_pull_request() {
+        let template = get_template("PULL_REQUEST_TEMPLATE/pull_request_template.md").unwrap();
+        assert!(template.contains("Description"));
+        assert!(template.contains("Checklist"));
+    }
+
+    #[test]
+    fn test_get_template_unknown() {
+        let result = get_template("UNKNOWN_TEMPLATE");
+        assert!(result.is_err());
+        match result {
+            Err(RepoLensError::Action(ActionError::UnknownTemplate { name })) => {
+                assert_eq!(name, "UNKNOWN_TEMPLATE");
+            }
+            _ => panic!("Expected UnknownTemplate error"),
+        }
+    }
+
+    #[test]
+    fn test_create_file_from_template() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("LICENSE");
+
+        let mut variables = HashMap::new();
+        variables.insert("year".to_string(), "2024".to_string());
+        variables.insert("author".to_string(), "Test Author".to_string());
+
+        create_file_from_template(file_path.to_str().unwrap(), "LICENSE/MIT", &variables).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("MIT License"));
+        assert!(content.contains("2024"));
+        assert!(content.contains("Test Author"));
+        assert!(!content.contains("{{ year }}"));
+        assert!(!content.contains("{{ author }}"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_with_nested_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join(".github/ISSUE_TEMPLATE/bug_report.md");
+
+        let variables = HashMap::new();
+
+        create_file_from_template(
+            file_path.to_str().unwrap(),
+            "ISSUE_TEMPLATE/bug_report.md",
+            &variables,
+        )
+        .unwrap();
+
+        assert!(file_path.exists());
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("Bug Report"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_variable_replacement() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("LICENSE");
+
+        let mut variables = HashMap::new();
+        variables.insert("year".to_string(), "2025".to_string());
+        variables.insert("author".to_string(), "My Company Inc.".to_string());
+
+        create_file_from_template(
+            file_path.to_str().unwrap(),
+            "LICENSE/Apache-2.0",
+            &variables,
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("2025"));
+        assert!(content.contains("My Company Inc."));
+    }
+
+    #[test]
+    fn test_create_file_from_template_unknown_template() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("UNKNOWN");
+
+        let variables = HashMap::new();
+        let result = create_file_from_template(file_path.to_str().unwrap(), "UNKNOWN", &variables);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_file_from_template_invalid_path() {
+        let variables = HashMap::new();
+        let result = create_file_from_template(
+            "/nonexistent/deeply/nested/path/that/does/not/exist/FILE",
+            "CONTRIBUTING.md",
+            &variables,
+        );
+
+        // Creating dirs in /nonexistent should fail on most systems
+        // unless the filesystem allows it
+        let _ = result; // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_create_file_from_template_gpl_license() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("LICENSE");
+
+        let mut variables = HashMap::new();
+        variables.insert("year".to_string(), "2024".to_string());
+        variables.insert("author".to_string(), "GPL Author".to_string());
+
+        create_file_from_template(file_path.to_str().unwrap(), "LICENSE/GPL-3.0", &variables)
+            .unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("GNU General Public License"));
+        assert!(content.contains("2024"));
+        assert!(content.contains("GPL Author"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_pr_template() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("PULL_REQUEST_TEMPLATE.md");
+
+        let variables = HashMap::new();
+        create_file_from_template(
+            file_path.to_str().unwrap(),
+            "PULL_REQUEST_TEMPLATE/pull_request_template.md",
+            &variables,
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("Description"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_security() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("SECURITY.md");
+
+        let variables = HashMap::new();
+        create_file_from_template(file_path.to_str().unwrap(), "SECURITY.md", &variables).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("Security Policy"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_code_of_conduct() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("CODE_OF_CONDUCT.md");
+
+        let variables = HashMap::new();
+        create_file_from_template(
+            file_path.to_str().unwrap(),
+            "CODE_OF_CONDUCT.md",
+            &variables,
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("Code of Conduct"));
+    }
+}

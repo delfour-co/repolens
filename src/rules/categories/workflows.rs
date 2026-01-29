@@ -1,6 +1,11 @@
 //! GitHub Actions workflow rules
+//!
+//! This module provides rules for checking GitHub Actions workflows, including:
+//! - Hardcoded secrets in workflow files
+//! - Explicit permissions configuration
+//! - Pinned action versions for security
 
-use anyhow::Result;
+use crate::error::RepoLensError;
 use regex::Regex;
 
 use crate::config::Config;
@@ -8,15 +13,27 @@ use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
 
+/// Rules for checking GitHub Actions workflows
 pub struct WorkflowsRules;
 
 #[async_trait::async_trait]
 impl RuleCategory for WorkflowsRules {
+    /// Get the category name
     fn name(&self) -> &'static str {
         "workflows"
     }
 
-    async fn run(&self, scanner: &Scanner, config: &Config) -> Result<Vec<Finding>> {
+    /// Run all workflow-related rules
+    ///
+    /// # Arguments
+    ///
+    /// * `scanner` - The scanner to access repository files
+    /// * `config` - The configuration with enabled rules
+    ///
+    /// # Returns
+    ///
+    /// A vector of findings for workflow issues
+    async fn run(&self, scanner: &Scanner, config: &Config) -> Result<Vec<Finding>, RepoLensError> {
         let mut findings = Vec::new();
 
         // Check for workflows directory
@@ -43,7 +60,19 @@ impl RuleCategory for WorkflowsRules {
     }
 }
 
-async fn check_workflow_secrets(scanner: &Scanner) -> Result<Vec<Finding>> {
+/// Check for hardcoded secrets in workflow files
+///
+/// Detects patterns that suggest hardcoded passwords, tokens, API keys,
+/// or secrets in GitHub Actions workflow files.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for hardcoded secrets in workflows
+async fn check_workflow_secrets(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     // Patterns that suggest hardcoded secrets in workflows
@@ -61,7 +90,13 @@ async fn check_workflow_secrets(scanner: &Scanner) -> Result<Vec<Finding>> {
 
         if let Ok(content) = scanner.read_file(&file.path) {
             for (pattern, description) in &secret_patterns {
-                let regex = Regex::new(pattern).unwrap();
+                let regex = match Regex::new(pattern) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::warn!("Invalid regex pattern '{}': {}", pattern, e);
+                        continue;
+                    }
+                };
                 if regex.is_match(&content) {
                     // Find line number
                     let line_num = content
@@ -79,12 +114,10 @@ async fn check_workflow_secrets(scanner: &Scanner) -> Result<Vec<Finding>> {
                             format!("Potential {} in workflow", description),
                         )
                         .with_location(format!("{}:{}", file.path, line_num))
-                        .with_description(
-                            "Secrets should never be hardcoded in workflow files."
-                        )
+                        .with_description("Secrets should never be hardcoded in workflow files.")
                         .with_remediation(
-                            "Use GitHub Secrets (secrets.SECRET_NAME) instead of hardcoded values."
-                        )
+                            "Use GitHub Secrets (secrets.SECRET_NAME) instead of hardcoded values.",
+                        ),
                     );
                 }
             }
@@ -94,7 +127,19 @@ async fn check_workflow_secrets(scanner: &Scanner) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-async fn check_workflow_permissions(scanner: &Scanner) -> Result<Vec<Finding>> {
+/// Check for explicit permissions in workflow files
+///
+/// Verifies that workflows define explicit permissions to follow
+/// the principle of least privilege.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for missing permissions
+async fn check_workflow_permissions(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     for file in scanner.files_in_directory(".github/workflows") {
@@ -127,7 +172,23 @@ async fn check_workflow_permissions(scanner: &Scanner) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-async fn check_pinned_actions(scanner: &Scanner, config: &Config) -> Result<Vec<Finding>> {
+/// Check for pinned action versions
+///
+/// In strict mode, verifies that actions are pinned to specific versions
+/// instead of using @main, @master, or @latest.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+/// * `config` - The configuration (used to check preset)
+///
+/// # Returns
+///
+/// A vector of findings for unpinned actions
+async fn check_pinned_actions(
+    scanner: &Scanner,
+    config: &Config,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     // Only check in strict mode
@@ -148,7 +209,13 @@ async fn check_pinned_actions(scanner: &Scanner, config: &Config) -> Result<Vec<
 
         if let Ok(content) = scanner.read_file(&file.path) {
             for pattern in &unpinned_patterns {
-                let regex = Regex::new(pattern).unwrap();
+                let regex = match Regex::new(pattern) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::warn!("Invalid regex pattern '{}': {}", pattern, e);
+                        continue;
+                    }
+                };
                 for (line_num, line) in content.lines().enumerate() {
                     if regex.is_match(line) {
                         findings.push(
@@ -173,4 +240,338 @@ async fn check_pinned_actions(scanner: &Scanner, config: &Config) -> Result<Vec<
     }
 
     Ok(findings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::scanner::Scanner;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_check_workflow_secrets_detects_hardcoded_password() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        let workflow_file = workflows_dir.join("ci.yml");
+        fs::write(
+            &workflow_file,
+            "name: CI\non: push\njobs:\n  test:\n    password: 'secret123'",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_workflow_secrets(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "WF001"));
+    }
+
+    #[tokio::test]
+    async fn test_check_workflow_permissions_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        let workflow_file = workflows_dir.join("ci.yml");
+        fs::write(
+            &workflow_file,
+            "name: CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_workflow_permissions(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "WF002"));
+    }
+
+    #[tokio::test]
+    async fn test_check_pinned_actions_detects_unpinned() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        let workflow_file = workflows_dir.join("ci.yml");
+        fs::write(
+            &workflow_file,
+            "name: CI\njobs:\n  test:\n    uses: actions/checkout@main",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config {
+            preset: "strict".to_string(),
+            ..Default::default()
+        };
+        let findings = check_pinned_actions(&scanner, &config).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "WF003"));
+    }
+
+    #[tokio::test]
+    async fn test_check_pinned_actions_not_strict() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        let workflow_file = workflows_dir.join("ci.yml");
+        fs::write(
+            &workflow_file,
+            "name: CI\njobs:\n  test:\n    uses: actions/checkout@main",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default(); // "opensource" preset, not strict
+
+        let findings = check_pinned_actions(&scanner, &config).await.unwrap();
+
+        // Should not check for unpinned actions in non-strict mode
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_workflow_secrets_no_workflows_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        // No .github/workflows directory
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+        let rules = WorkflowsRules;
+
+        let findings = rules.run(&scanner, &config).await.unwrap();
+
+        // No workflows directory means no findings
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_workflows_rules_name() {
+        let rules = WorkflowsRules;
+        assert_eq!(rules.name(), "workflows");
+    }
+
+    #[tokio::test]
+    async fn test_check_workflow_secrets_no_secrets() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        let workflow_file = workflows_dir.join("ci.yml");
+        fs::write(
+            &workflow_file,
+            "name: CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_workflow_secrets(&scanner).await.unwrap();
+
+        // Clean workflow file - no hardcoded secrets
+        assert!(findings.iter().all(|f| f.rule_id != "WF001"));
+    }
+
+    #[tokio::test]
+    async fn test_check_workflow_secrets_detects_token() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        let workflow_file = workflows_dir.join("deploy.yaml");
+        fs::write(
+            &workflow_file,
+            "name: Deploy\njobs:\n  deploy:\n    token: 'ghp_1234567890abcdef'",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_workflow_secrets(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "WF001"));
+    }
+
+    #[tokio::test]
+    async fn test_check_workflow_permissions_present() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        let workflow_file = workflows_dir.join("ci.yml");
+        fs::write(
+            &workflow_file,
+            "name: CI\non: push\npermissions:\n  contents: read\njobs:\n  test:\n    runs-on: ubuntu-latest",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_workflow_permissions(&scanner).await.unwrap();
+
+        // Has permissions block, so no WF002 finding
+        assert!(findings.iter().all(|f| f.rule_id != "WF002"));
+    }
+
+    #[tokio::test]
+    async fn test_check_workflow_non_yaml_ignored() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        // Non-YAML file should be ignored
+        fs::write(
+            workflows_dir.join("README.md"),
+            "# Workflows\npassword: 'secret123'",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_workflow_secrets(&scanner).await.unwrap();
+
+        // Non-YAML file should not trigger findings
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_pinned_actions_detects_master() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        fs::write(
+            workflows_dir.join("ci.yml"),
+            "name: CI\njobs:\n  test:\n    uses: actions/setup-node@master",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config {
+            preset: "strict".to_string(),
+            ..Default::default()
+        };
+        let findings = check_pinned_actions(&scanner, &config).await.unwrap();
+
+        assert!(!findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_pinned_actions_detects_latest() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        fs::write(
+            workflows_dir.join("ci.yml"),
+            "name: CI\njobs:\n  test:\n    uses: actions/checkout@latest",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config {
+            preset: "strict".to_string(),
+            ..Default::default()
+        };
+        let findings = check_pinned_actions(&scanner, &config).await.unwrap();
+
+        assert!(!findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_workflows_rules_run_with_workflows() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        // Create a workflow file with issues
+        fs::write(
+            workflows_dir.join("ci.yml"),
+            "name: CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    password: 'hardcoded123'",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+
+        // Run the full WorkflowsRules::run which dispatches to all sub-checks
+        let findings = WorkflowsRules.run(&scanner, &config).await.unwrap();
+
+        // Should find WF001 (hardcoded password) and WF002 (missing permissions)
+        assert!(findings.iter().any(|f| f.rule_id == "WF001"));
+        assert!(findings.iter().any(|f| f.rule_id == "WF002"));
+    }
+
+    #[tokio::test]
+    async fn test_workflows_rules_run_strict_with_unpinned() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        fs::write(
+            workflows_dir.join("ci.yml"),
+            "name: CI\non: push\npermissions:\n  contents: read\njobs:\n  test:\n    uses: actions/checkout@main",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config {
+            preset: "strict".to_string(),
+            ..Default::default()
+        };
+
+        // Run the full WorkflowsRules::run - should trigger pinned actions check
+        let findings = WorkflowsRules.run(&scanner, &config).await.unwrap();
+
+        // Should find WF003 (unpinned action)
+        assert!(findings.iter().any(|f| f.rule_id == "WF003"));
+    }
+
+    #[tokio::test]
+    async fn test_workflows_rules_run_with_disabled_rules() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let workflows_dir = root.join(".github").join("workflows");
+        fs::create_dir_all(&workflows_dir).unwrap();
+
+        fs::write(
+            workflows_dir.join("ci.yml"),
+            "name: CI\non: push\njobs:\n  test:\n    password: 'secret'",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut config = Config::default();
+        // Disable the secrets check
+        config.rules.insert(
+            "workflows/secrets".to_string(),
+            crate::config::RuleConfig {
+                enabled: false,
+                severity: None,
+            },
+        );
+
+        let findings = WorkflowsRules.run(&scanner, &config).await.unwrap();
+
+        // WF001 should NOT be found because the rule is disabled
+        assert!(findings.iter().all(|f| f.rule_id != "WF001"));
+        // WF002 should still be found
+        assert!(findings.iter().any(|f| f.rule_id == "WF002"));
+    }
 }

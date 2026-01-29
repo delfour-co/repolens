@@ -2,13 +2,37 @@
 name = "repolens"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.74"
 authors = ["Kevin Delfour"]
 description = "A CLI tool to audit and prepare repositories for open source or enterprise standards"
 license = "MIT"
 repository = "https://github.com/kdelfour/repolens"
+homepage = "https://github.com/kdelfour/repolens"
+documentation = "https://docs.rs/repolens"
 keywords = ["cli", "audit", "github", "opensource", "security"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
+exclude = [
+    ".github/",
+    ".gitignore",
+    ".repolens.toml",
+    ".claude/",
+    "coverage/",
+    "scripts/",
+    "wiki/",
+    "docs/",
+    "CLAUDE.md",
+    "DEVELOPMENT.md",
+    "RELEASE.md",
+    "TEST.md",
+    "TODO.md",
+    "deny.toml",
+    "tests/",
+    "benches/",
+]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
 
 [dependencies]
 # CLI framework
@@ -44,12 +68,25 @@ dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 anyhow = "1"
 thiserror = "1"
 
+# URL parsing for validation
+url = "2"
+
+# SHA256 hashing for cache
+sha2 = "0.10"
+
+# Home directory resolution
+dirs = "5"
+
 # GitHub API (via gh CLI wrapper initially, octocrab for direct API later)
 which = "6"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Metrics
+metrics = "0.22"
+metrics-prometheus = "0.3"
 
 # Template rendering
 tera = "1"
@@ -60,14 +97,32 @@ chrono = { version = "0.4", features = ["serde"] }
 # SARIF output format (using serde for manual SARIF generation)
 serde-sarif = { version = "0.6", optional = true }
 
+# HTTP client for OSV API
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
 # HTML report generation
 minijinja = "2"
+
+# Text diff for interactive mode
+similar = "2"
+
+# Parallel processing
+rayon = "1.8"
+
+# JSON Schema validation
+jsonschema = "0.29"
 
 [dev-dependencies]
 tempfile = "3"
 assert_cmd = "2"
 predicates = "3"
 pretty_assertions = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+futures = "0.3"
+
+[[bench]]
+name = "parse_benchmark"
+harness = false
 
 [profile.release]
 lto = true

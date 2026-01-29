@@ -15,7 +15,8 @@ src/
 ├── rules/            - Audit rules engine and categories
 ├── actions/          - Action planning and execution
 ├── providers/        - GitHub API integration
-└── scanner/          - File system and git scanning
+├── scanner/          - File system and git scanning
+└── utils/            - Shared utilities (prerequisites checks, etc.)
 ```
 
 ## Key Commands

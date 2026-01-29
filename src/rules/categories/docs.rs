@@ -1,21 +1,40 @@
 //! Documentation rules
+//!
+//! This module provides rules for checking repository documentation, including:
+//! - README files and their quality
+//! - LICENSE files
+//! - CONTRIBUTING guidelines
+//! - CODE_OF_CONDUCT files
+//! - SECURITY policy files
 
-use anyhow::Result;
+use crate::error::RepoLensError;
 
 use crate::config::Config;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
 
+/// Rules for checking repository documentation
 pub struct DocsRules;
 
 #[async_trait::async_trait]
 impl RuleCategory for DocsRules {
+    /// Get the category name
     fn name(&self) -> &'static str {
         "docs"
     }
 
-    async fn run(&self, scanner: &Scanner, config: &Config) -> Result<Vec<Finding>> {
+    /// Run all documentation-related rules
+    ///
+    /// # Arguments
+    ///
+    /// * `scanner` - The scanner to access repository files
+    /// * `config` - The configuration with enabled rules
+    ///
+    /// # Returns
+    ///
+    /// A vector of findings for documentation issues
+    async fn run(&self, scanner: &Scanner, config: &Config) -> Result<Vec<Finding>, RepoLensError> {
         let mut findings = Vec::new();
 
         // Check README
@@ -47,7 +66,19 @@ impl RuleCategory for DocsRules {
     }
 }
 
-async fn check_readme(scanner: &Scanner) -> Result<Vec<Finding>> {
+/// Check for README file and assess its quality
+///
+/// Verifies README existence and checks for recommended sections like
+/// installation, usage, and license information.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for README issues
+async fn check_readme(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     let readme_files = ["README.md", "README", "README.txt", "README.rst"];
@@ -98,14 +129,12 @@ async fn check_readme(scanner: &Scanner) -> Result<Vec<Finding>> {
 
         for (keyword, description) in sections {
             if !content.to_lowercase().contains(keyword) {
-                findings.push(
-                    Finding::new(
-                        "DOC003",
-                        "docs",
-                        Severity::Info,
-                        format!("README missing section: {}", description),
-                    )
-                );
+                findings.push(Finding::new(
+                    "DOC003",
+                    "docs",
+                    Severity::Info,
+                    format!("README missing section: {}", description),
+                ));
             }
         }
     }
@@ -113,7 +142,19 @@ async fn check_readme(scanner: &Scanner) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-async fn check_license(scanner: &Scanner, config: &Config) -> Result<Vec<Finding>> {
+/// Check for LICENSE file
+///
+/// Verifies that a LICENSE file exists. For enterprise preset, LICENSE is optional.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+/// * `config` - The configuration (used to check preset)
+///
+/// # Returns
+///
+/// A vector of findings for LICENSE issues
+async fn check_license(scanner: &Scanner, config: &Config) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     let license_files = ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"];
@@ -144,7 +185,18 @@ async fn check_license(scanner: &Scanner, config: &Config) -> Result<Vec<Finding
     Ok(findings)
 }
 
-async fn check_contributing(scanner: &Scanner) -> Result<Vec<Finding>> {
+/// Check for CONTRIBUTING file
+///
+/// Verifies that a CONTRIBUTING file exists to guide contributors.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for CONTRIBUTING issues
+async fn check_contributing(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     let contributing_files = ["CONTRIBUTING.md", "CONTRIBUTING", ".github/CONTRIBUTING.md"];
@@ -170,10 +222,25 @@ async fn check_contributing(scanner: &Scanner) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-async fn check_code_of_conduct(scanner: &Scanner) -> Result<Vec<Finding>> {
+/// Check for CODE_OF_CONDUCT file
+///
+/// Verifies that a CODE_OF_CONDUCT file exists to establish community standards.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for CODE_OF_CONDUCT issues
+async fn check_code_of_conduct(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
-    let coc_files = ["CODE_OF_CONDUCT.md", "CODE_OF_CONDUCT", ".github/CODE_OF_CONDUCT.md"];
+    let coc_files = [
+        "CODE_OF_CONDUCT.md",
+        "CODE_OF_CONDUCT",
+        ".github/CODE_OF_CONDUCT.md",
+    ];
     let has_coc = coc_files.iter().any(|f| scanner.file_exists(f));
 
     if !has_coc {
@@ -196,7 +263,18 @@ async fn check_code_of_conduct(scanner: &Scanner) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-async fn check_security(scanner: &Scanner) -> Result<Vec<Finding>> {
+/// Check for SECURITY policy file
+///
+/// Verifies that a SECURITY.md file exists for reporting vulnerabilities.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for SECURITY policy issues
+async fn check_security(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     let security_files = ["SECURITY.md", ".github/SECURITY.md"];
@@ -220,4 +298,117 @@ async fn check_security(scanner: &Scanner) -> Result<Vec<Finding>> {
     }
 
     Ok(findings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::scanner::Scanner;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_check_readme_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_readme(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "DOC001"));
+    }
+
+    #[tokio::test]
+    async fn test_check_readme_too_short() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let readme = root.join("README.md");
+
+        fs::write(&readme, "# Test\n\nShort.").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_readme(&scanner).await.unwrap();
+
+        assert!(findings.iter().any(|f| f.rule_id == "DOC002"));
+    }
+
+    #[tokio::test]
+    async fn test_check_readme_missing_sections() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let readme = root.join("README.md");
+
+        fs::write(&readme, "# Project\n\nDescription here.\n\nMore content.\n\nEven more.\n\nAnd more.\n\nAnd more.\n\nAnd more.\n\nAnd more.\n\nAnd more.\n\nAnd more.\n\nAnd more.").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_readme(&scanner).await.unwrap();
+
+        assert!(findings.iter().any(|f| f.rule_id == "DOC003"));
+    }
+
+    #[tokio::test]
+    async fn test_check_license_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+        let findings = check_license(&scanner, &config).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "DOC004"));
+    }
+
+    #[tokio::test]
+    async fn test_check_license_enterprise_optional() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config {
+            preset: "enterprise".to_string(),
+            ..Default::default()
+        };
+        let findings = check_license(&scanner, &config).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_contributing_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_contributing(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "DOC005"));
+    }
+
+    #[tokio::test]
+    async fn test_check_code_of_conduct_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_code_of_conduct(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "DOC006"));
+    }
+
+    #[tokio::test]
+    async fn test_check_security_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_security(&scanner).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "DOC007"));
+    }
 }

@@ -9,7 +9,7 @@ Cargo.lock
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
 *.swp
 *.swo
 *~
@@ -21,6 +21,7 @@ Thumbs.db
 # Test artifacts
 *.profraw
 *.profdata
+coverage/
 
 # Local config
 .env
@@ -29,3 +30,21 @@ Thumbs.db
 
 # Auto Claude data directory
 .auto-claude/
+
+# Auto Claude generated files
+.auto-claude-security.json
+.auto-claude-status
+.claude_settings.json
+.worktrees/
+.security-key
+logs/security/
+
+# Temprary files
+*.tmp
+.scripts/*
+
+# Added by repolens
+*.key
+
+# RepoLens cache directory
+.repolens/

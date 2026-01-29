@@ -2,16 +2,22 @@
 //!
 //! This is the main entry point for the CLI application.
 
-use anyhow::Result;
 use clap::Parser;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-mod cli;
-mod config;
-mod rules;
 mod actions;
+mod cache;
+mod cli;
+mod compare;
+mod config;
+mod error;
+mod hooks;
 mod providers;
+mod rules;
 mod scanner;
+mod utils;
+
+use error::RepoLensError;
 
 /// Exit codes for the CLI
 pub mod exit_codes {
@@ -28,7 +34,7 @@ pub mod exit_codes {
 use cli::{Cli, Commands};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), RepoLensError> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
@@ -41,13 +47,16 @@ async fn main() -> Result<()> {
         Commands::Plan(args) => cli::commands::plan::execute(args).await,
         Commands::Apply(args) => cli::commands::apply::execute(args).await,
         Commands::Report(args) => cli::commands::report::execute(args).await,
+        Commands::Schema(args) => cli::commands::schema::execute(args).await,
+        Commands::Compare(args) => cli::commands::compare::execute(args).await,
+        Commands::InstallHooks(args) => cli::commands::install_hooks::execute(args).await,
     };
 
     // Handle exit codes for CI integration
     match result {
         Ok(exit_code) => std::process::exit(exit_code),
         Err(e) => {
-            eprintln!("Error: {e:?}");
+            eprintln!("Error: {}", e);
             std::process::exit(1);
         }
     }

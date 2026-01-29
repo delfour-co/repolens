@@ -3,12 +3,19 @@
 //! This crate provides the core functionality for auditing repositories
 //! and preparing them for open source or enterprise standards.
 
-pub mod cli;
-pub mod config;
-pub mod rules;
 pub mod actions;
+pub mod cache;
+pub mod cli;
+pub mod compare;
+pub mod config;
+pub mod error;
+pub mod hooks;
 pub mod providers;
+pub mod rules;
 pub mod scanner;
+pub mod utils;
+
+pub use error::RepoLensError;
 
 /// Exit codes for the CLI
 pub mod exit_codes {

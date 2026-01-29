@@ -1,9 +1,8 @@
 //! Rules module - Audit rules and evaluation engine
 
-pub mod engine;
-pub mod results;
 pub mod categories;
+pub mod engine;
 pub mod patterns;
+pub mod results;
 
-pub use engine::RulesEngine;
-pub use results::{AuditResults, Finding, Severity};
+pub use results::{Finding, Severity};
