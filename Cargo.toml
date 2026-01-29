@@ -106,6 +106,9 @@ similar = "2"
 # Parallel processing
 rayon = "1.8"
 
+# JSON Schema validation
+jsonschema = "0.29"
+
 [dev-dependencies]
 tempfile = "3"
 assert_cmd = "2"

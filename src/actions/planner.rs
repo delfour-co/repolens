@@ -684,7 +684,7 @@ mod tests {
             "CODE_OF_CONDUCT file is missing",
         ));
 
-        let plan = planner.create_plan(&results);
+        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
 
         assert!(plan.actions().iter().any(|a| a.id() == "coc-create"));
     }
@@ -702,7 +702,7 @@ mod tests {
             "SECURITY.md is missing",
         ));
 
-        let plan = planner.create_plan(&results);
+        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
 
         assert!(plan.actions().iter().any(|a| a.id() == "security-create"));
     }
@@ -713,7 +713,7 @@ mod tests {
         let planner = ActionPlanner::new(config);
         let results = AuditResults::new("test-repo", "opensource");
 
-        let plan = planner.create_plan(&results);
+        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
 
         assert!(plan.actions().iter().any(|a| a.id() == "branch-protection"));
     }
@@ -724,7 +724,7 @@ mod tests {
         let planner = ActionPlanner::new(config);
         let results = AuditResults::new("test-repo", "opensource");
 
-        let plan = planner.create_plan(&results);
+        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
 
         assert!(plan.actions().iter().any(|a| a.id() == "github-settings"));
     }
@@ -735,7 +735,7 @@ mod tests {
         let planner = ActionPlanner::new(config);
         let results = AuditResults::new("test-repo", "opensource");
 
-        let plan = planner.create_plan(&results);
+        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
 
         // No FILE003 findings, so no gitignore update
         assert!(!plan.actions().iter().any(|a| a.id() == "gitignore-update"));
@@ -757,7 +757,7 @@ mod tests {
             "LICENSE file is missing",
         ));
 
-        let plan = planner.create_plan(&results);
+        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
 
         assert!(plan.actions().iter().any(|a| a.id() == "license-create"));
     }
@@ -770,7 +770,7 @@ mod tests {
         let planner = ActionPlanner::new(config);
         let results = AuditResults::new("test-repo", "opensource");
 
-        let plan = planner.create_plan(&results);
+        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
 
         let bp_action = plan
             .actions()

@@ -243,7 +243,42 @@ repolens report
 
 # Export report
 repolens report --format html --output report.html
+
+# JSON report with JSON Schema reference
+repolens report --format json --schema
+
+# JSON report with schema validation
+repolens report --format json --schema --validate
 ```
+
+### JSON Schema
+
+RepoLens provides a JSON Schema (draft-07) that describes the structure of the JSON audit report output. This enables validation of report output and integration with tools that consume JSON Schema.
+
+```bash
+# Display the JSON Schema on stdout
+repolens schema
+
+# Save the JSON Schema to a file
+repolens schema --output schemas/audit-report.schema.json
+```
+
+The schema defines the following structure:
+
+- **repository_name**: Name of the audited repository
+- **preset**: Audit preset used (opensource, enterprise, strict)
+- **findings**: Array of audit findings, each with:
+  - `rule_id`: Unique rule identifier (e.g., SEC001)
+  - `category`: Finding category (secrets, files, docs, security, workflows, quality)
+  - `severity`: Severity level (critical, warning, info)
+  - `message`: Description of the finding
+  - `location`: Optional file location
+  - `description`: Optional detailed description
+  - `remediation`: Optional suggested fix
+- **metadata**: Report metadata (version, timestamp, schema_version)
+- **summary**: Aggregated counts by severity and category
+
+When using `--schema`, the JSON output includes a `$schema` field referencing the schema URI. When using `--validate`, the output is validated against the schema before being emitted.
 
 ## Configuration
 

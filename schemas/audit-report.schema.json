@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/kdelfour/repolens/schemas/audit-report.schema.json",
+  "title": "RepoLens Audit Report",
+  "description": "Schema for RepoLens audit report JSON output",
+  "type": "object",
+  "required": ["repository_name", "preset", "findings"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to the JSON Schema used for validation"
+    },
+    "repository_name": {
+      "type": "string",
+      "description": "Name of the audited repository"
+    },
+    "preset": {
+      "type": "string",
+      "description": "Audit preset used (e.g., opensource, enterprise, strict)",
+      "enum": ["opensource", "enterprise", "strict"]
+    },
+    "findings": {
+      "type": "array",
+      "description": "List of audit findings",
+      "items": {
+        "$ref": "#/definitions/Finding"
+      }
+    },
+    "metadata": {
+      "$ref": "#/definitions/Metadata"
+    },
+    "summary": {
+      "$ref": "#/definitions/Summary"
+    }
+  },
+  "definitions": {
+    "Finding": {
+      "type": "object",
+      "required": ["rule_id", "category", "severity", "message"],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "description": "Unique rule identifier (e.g., SEC001, DOC001)",
+          "pattern": "^[A-Z]{2,10}[0-9]{3}$"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of the finding",
+          "enum": ["secrets", "files", "docs", "security", "workflows", "quality", "dependencies", "custom"]
+        },
+        "severity": {
+          "$ref": "#/definitions/Severity"
+        },
+        "message": {
+          "type": "string",
+          "description": "Short message describing the finding"
+        },
+        "location": {
+          "type": ["string", "null"],
+          "description": "Optional file location (e.g., src/config.ts:42)"
+        },
+        "description": {
+          "type": ["string", "null"],
+          "description": "Detailed description of the issue"
+        },
+        "remediation": {
+          "type": ["string", "null"],
+          "description": "Suggested remediation steps"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Severity": {
+      "type": "string",
+      "description": "Severity level of a finding",
+      "enum": ["critical", "warning", "info"]
+    },
+    "Metadata": {
+      "type": "object",
+      "description": "Report metadata",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "RepoLens version that generated the report"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when the report was generated",
+          "format": "date-time"
+        },
+        "schema_version": {
+          "type": "string",
+          "description": "Version of this JSON Schema",
+          "const": "1.0.0"
+        }
+      },
+      "required": ["version", "timestamp", "schema_version"],
+      "additionalProperties": false
+    },
+    "Summary": {
+      "type": "object",
+      "description": "Summary of audit findings",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "description": "Total number of findings",
+          "minimum": 0
+        },
+        "by_severity": {
+          "$ref": "#/definitions/SeverityCounts"
+        },
+        "by_category": {
+          "type": "object",
+          "description": "Findings count grouped by category",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "required": ["total", "by_severity", "by_category"],
+      "additionalProperties": false
+    },
+    "SeverityCounts": {
+      "type": "object",
+      "description": "Findings count grouped by severity",
+      "properties": {
+        "critical": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "info": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["critical", "warning", "info"],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

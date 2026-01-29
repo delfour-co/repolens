@@ -45,6 +45,7 @@ async fn main() -> Result<(), RepoLensError> {
         Commands::Plan(args) => cli::commands::plan::execute(args).await,
         Commands::Apply(args) => cli::commands::apply::execute(args).await,
         Commands::Report(args) => cli::commands::report::execute(args).await,
+        Commands::Schema(args) => cli::commands::schema::execute(args).await,
     };
 
     // Handle exit codes for CI integration

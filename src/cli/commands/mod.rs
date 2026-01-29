@@ -4,6 +4,7 @@ pub mod apply;
 pub mod init;
 pub mod plan;
 pub mod report;
+pub mod schema;
 
 use clap::Args;
 use std::path::PathBuf;
@@ -107,6 +108,14 @@ pub struct ReportArgs {
     #[arg(long)]
     pub detailed: bool,
 
+    /// Include JSON Schema reference ($schema) in JSON output
+    #[arg(long)]
+    pub schema: bool,
+
+    /// Validate JSON output against the JSON Schema before emitting
+    #[arg(long)]
+    pub validate: bool,
+
     /// Disable cache and force a complete re-audit
     #[arg(long)]
     pub no_cache: bool,
@@ -118,6 +127,14 @@ pub struct ReportArgs {
     /// Custom cache directory path
     #[arg(long, value_name = "DIR")]
     pub cache_dir: Option<PathBuf>,
+}
+
+/// Arguments for the schema command
+#[derive(Args, Debug)]
+pub struct SchemaArgs {
+    /// Output file (defaults to stdout)
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
 }
 
 /// Output format for plan command
