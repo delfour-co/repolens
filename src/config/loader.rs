@@ -479,6 +479,91 @@ message = "TODO comment found"
     }
 
     #[test]
+    fn test_glob_match_double_star_with_prefix_and_suffix() {
+        // Pattern with prefix and suffix: "src/**/test"
+        assert!(glob_match("src/**/test", "src/sub/test"));
+        assert!(glob_match("src/**/test", "src/a/b/test"));
+        assert!(!glob_match("src/**/test", "other/sub/test"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_prefix_only_with_suffix_wildcard() {
+        // Pattern like "**/*.test.ts"
+        assert!(glob_match("**/*.test.ts", "src/file.test.ts"));
+        assert!(glob_match("**/*.test.ts", "file.test.ts"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_slash_prefix() {
+        // Pattern like "**/src/file.txt"
+        assert!(glob_match("**/src/file.txt", "a/b/src/file.txt"));
+        assert!(glob_match("**/src/file.txt", "src/file.txt"));
+    }
+
+    #[test]
+    fn test_glob_match_many_double_stars() {
+        // Pattern with more than 2 double-star segments should return false
+        assert!(!glob_match("a/**/b/**/c", "a/x/b/y/c"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star_in_middle() {
+        assert!(glob_match("test_*.rs", "test_file.rs"));
+        assert!(glob_match("*.min.*", "file.min.js"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star_no_match() {
+        assert!(!glob_match("foo*bar", "foobaz"));
+    }
+
+    #[test]
+    fn test_load_from_file_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        fs::write(&config_path, "invalid [[[toml content").unwrap();
+
+        let result = Config::load_from_file(&config_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_glob_match_double_star_no_suffix_no_prefix() {
+        // Pattern: "**" should match anything
+        assert!(glob_match("**", "any/path"));
+        assert!(glob_match("**", "file.txt"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_empty_parts() {
+        // Pattern where double star results in empty prefix
+        assert!(glob_match("**/file.txt", "some/path/file.txt"));
+        assert!(glob_match("**/file.txt", "file.txt"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star_complex() {
+        // Complex patterns with multiple single stars
+        assert!(glob_match("*.test.*", "file.test.js"));
+        assert!(glob_match("src/*.rs", "src/main.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_with_wildcard_suffix() {
+        // Pattern like "src/**/*.rs" - prefix with double star and wildcard suffix
+        // This tests the suffix.starts_with('*') branch
+        assert!(glob_match("src/**/*.rs", "src/main.rs"));
+        assert!(glob_match("src/**/*.rs", "src/nested/lib.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_three_parts() {
+        // Three parts pattern like "**/test/**" - handled by the 3-part branch
+        assert!(glob_match("**/test/**", "src/test/file.rs"));
+        assert!(glob_match("**/test/**", "test/file.rs"));
+    }
+
+    #[test]
     fn test_config_full_deserialization() {
         let toml_content = r#"
 preset = "strict"

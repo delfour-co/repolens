@@ -390,4 +390,86 @@ mod tests {
         let files = scanner.all_files();
         assert!(files.len() >= 6); // We created at least 6 files
     }
+
+    #[test]
+    fn test_files_matching_pattern_no_wildcard() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        // Pattern without wildcard should match via contains
+        let pattern = scanner.files_matching_pattern("README.md");
+        assert!(!pattern.is_empty());
+    }
+
+    #[test]
+    fn test_glob_match_no_match() {
+        assert!(!glob_match("*.rs", "main.txt"));
+        assert!(!glob_match("src/**", "other/file.txt"));
+    }
+
+    #[test]
+    fn test_files_in_directory_consistency() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let files = scanner.files_in_directory("src");
+        // Should have at least main.rs and lib.rs
+        assert!(files.len() >= 2);
+    }
+
+    #[test]
+    fn test_files_larger_than_zero() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let files = scanner.files_larger_than(0);
+        // Most files have content, so should have results
+        assert!(!files.is_empty());
+    }
+
+    #[test]
+    fn test_files_with_multiple_extensions() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let files = scanner.files_with_extensions(&["yml", "yaml"]);
+        assert!(!files.is_empty()); // We have ci.yml
+    }
+
+    #[test]
+    fn test_glob_match_empty_prefix() {
+        // Test with empty prefix in double star pattern
+        assert!(glob_match("**/workflows", ".github/workflows"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_empty_suffix() {
+        // Pattern "src/**" should match files inside src
+        assert!(glob_match("src/**", "src/main.rs"));
+        assert!(glob_match("src/**", "src/sub/file.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_all() {
+        assert!(glob_match("**", "any/path/file.txt"));
+    }
+
+    #[test]
+    fn test_files_matching_pattern_with_contains() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        // Pattern "main" should match via contains
+        let result = scanner.files_matching_pattern("main");
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_files_matching_exact_extension() {
+        let temp_dir = create_test_repo();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+
+        let md_files = scanner.files_matching_pattern("*.md");
+        assert!(!md_files.is_empty()); // README.md
+    }
 }

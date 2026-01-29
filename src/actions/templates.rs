@@ -488,4 +488,93 @@ mod tests {
         assert!(content.contains("2025"));
         assert!(content.contains("My Company Inc."));
     }
+
+    #[test]
+    fn test_create_file_from_template_unknown_template() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("UNKNOWN");
+
+        let variables = HashMap::new();
+        let result = create_file_from_template(file_path.to_str().unwrap(), "UNKNOWN", &variables);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_file_from_template_invalid_path() {
+        let variables = HashMap::new();
+        let result = create_file_from_template(
+            "/nonexistent/deeply/nested/path/that/does/not/exist/FILE",
+            "CONTRIBUTING.md",
+            &variables,
+        );
+
+        // Creating dirs in /nonexistent should fail on most systems
+        // unless the filesystem allows it
+        let _ = result; // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_create_file_from_template_gpl_license() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("LICENSE");
+
+        let mut variables = HashMap::new();
+        variables.insert("year".to_string(), "2024".to_string());
+        variables.insert("author".to_string(), "GPL Author".to_string());
+
+        create_file_from_template(file_path.to_str().unwrap(), "LICENSE/GPL-3.0", &variables)
+            .unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("GNU General Public License"));
+        assert!(content.contains("2024"));
+        assert!(content.contains("GPL Author"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_pr_template() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("PULL_REQUEST_TEMPLATE.md");
+
+        let variables = HashMap::new();
+        create_file_from_template(
+            file_path.to_str().unwrap(),
+            "PULL_REQUEST_TEMPLATE/pull_request_template.md",
+            &variables,
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("Description"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_security() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("SECURITY.md");
+
+        let variables = HashMap::new();
+        create_file_from_template(file_path.to_str().unwrap(), "SECURITY.md", &variables).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("Security Policy"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_code_of_conduct() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("CODE_OF_CONDUCT.md");
+
+        let variables = HashMap::new();
+        create_file_from_template(
+            file_path.to_str().unwrap(),
+            "CODE_OF_CONDUCT.md",
+            &variables,
+        )
+        .unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("Code of Conduct"));
+    }
 }

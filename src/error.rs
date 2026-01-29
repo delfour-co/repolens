@@ -488,4 +488,48 @@ mod tests {
         let msg = format!("{}", err);
         assert!(msg.contains("Scan error"));
     }
+
+    #[test]
+    fn test_repolens_error_from_toml_de_error() {
+        let toml_err = toml::from_str::<toml::Value>("invalid [[[toml").unwrap_err();
+        let err: RepoLensError = toml_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Config error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_serde_json_error() {
+        let json_err = serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err();
+        let err: RepoLensError = json_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Provider error"));
+    }
+
+    #[test]
+    fn test_action_error_file_create_display() {
+        let err = ActionError::FileCreate {
+            path: "new_file.txt".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::AlreadyExists, "already exists"),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("new_file.txt"));
+        assert!(msg.contains("Failed to create file"));
+    }
+
+    #[test]
+    fn test_repolens_error_display_variants() {
+        let scan_err = RepoLensError::Scan(ScanError::FileRead {
+            path: "test.rs".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        });
+        assert!(format!("{}", scan_err).contains("Scan error"));
+
+        let rule_err = RepoLensError::Rule(RuleError::ExecutionFailed {
+            message: "test failure".to_string(),
+        });
+        assert!(format!("{}", rule_err).contains("Rule error"));
+
+        let provider_err = RepoLensError::Provider(ProviderError::NotAuthenticated);
+        assert!(format!("{}", provider_err).contains("Provider error"));
+    }
 }

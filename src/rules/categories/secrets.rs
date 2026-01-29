@@ -406,4 +406,130 @@ mod tests {
 
         assert!(findings.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_check_env_files_allows_template() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(root.join(".env.template"), "API_KEY=your_key_here").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+
+        let findings = check_env_files(&scanner, &config).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_env_files_allows_sample() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(root.join(".env.sample"), "API_KEY=your_key_here").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+
+        let findings = check_env_files(&scanner, &config).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_sensitive_files_detects_ssh_key() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(root.join("id_rsa"), "-----BEGIN RSA PRIVATE KEY-----").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+
+        let findings = check_sensitive_files(&scanner, &config).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.rule_id == "SEC002"));
+    }
+
+    #[tokio::test]
+    async fn test_check_sensitive_files_detects_credentials_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(root.join("credentials.json"), "{}").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+
+        let findings = check_sensitive_files(&scanner, &config).await.unwrap();
+
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| f.message.contains("Credentials")));
+    }
+
+    #[tokio::test]
+    async fn test_secrets_rules_name() {
+        let rules = SecretsRules;
+        assert_eq!(rules.name(), "secrets");
+    }
+
+    #[tokio::test]
+    async fn test_check_hardcoded_secrets_ignores_pattern() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(
+            root.join("test_config.js"),
+            "const apiKey = 'sk_test_1234567890abcdef';",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut config = Config::default();
+        config
+            .secrets
+            .ignore_patterns
+            .push("test_config.js".to_string());
+
+        let findings = check_hardcoded_secrets(&scanner, &config).await.unwrap();
+
+        // File matches ignore pattern, so findings should be suppressed
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_hardcoded_secrets_no_secrets() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        fs::write(root.join("clean.js"), "const x = 42;").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+
+        let findings = check_hardcoded_secrets(&scanner, &config).await.unwrap();
+
+        // No secrets in clean file
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn test_find_line_number() {
+        let content = "line1\nline2\nline3\n";
+        let pattern = regex::Regex::new("line2").unwrap();
+        let captures = pattern.captures(content).unwrap();
+        let line_num = find_line_number(content, &captures).unwrap();
+        assert_eq!(line_num, 2);
+    }
+
+    #[test]
+    fn test_find_line_number_first_line() {
+        let content = "line1\nline2\nline3\n";
+        let pattern = regex::Regex::new("line1").unwrap();
+        let captures = pattern.captures(content).unwrap();
+        let line_num = find_line_number(content, &captures).unwrap();
+        assert_eq!(line_num, 1);
+    }
 }

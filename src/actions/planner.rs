@@ -463,4 +463,112 @@ mod tests {
             .iter()
             .any(|a| a.id() == "contributing-create"));
     }
+
+    #[test]
+    fn test_create_plan_includes_code_of_conduct() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC006",
+            "docs",
+            Severity::Warning,
+            "CODE_OF_CONDUCT file is missing",
+        ));
+
+        let plan = planner.create_plan(&results);
+
+        assert!(plan.actions().iter().any(|a| a.id() == "coc-create"));
+    }
+
+    #[test]
+    fn test_create_plan_includes_security_policy() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC007",
+            "docs",
+            Severity::Warning,
+            "SECURITY.md is missing",
+        ));
+
+        let plan = planner.create_plan(&results);
+
+        assert!(plan.actions().iter().any(|a| a.id() == "security-create"));
+    }
+
+    #[test]
+    fn test_create_plan_includes_branch_protection() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        let plan = planner.create_plan(&results);
+
+        assert!(plan.actions().iter().any(|a| a.id() == "branch-protection"));
+    }
+
+    #[test]
+    fn test_create_plan_includes_github_settings() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        let plan = planner.create_plan(&results);
+
+        assert!(plan.actions().iter().any(|a| a.id() == "github-settings"));
+    }
+
+    #[test]
+    fn test_create_plan_no_gitignore_needed() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        let plan = planner.create_plan(&results);
+
+        // No FILE003 findings, so no gitignore update
+        assert!(!plan.actions().iter().any(|a| a.id() == "gitignore-update"));
+    }
+
+    #[test]
+    fn test_create_plan_license_with_author_and_year() {
+        let mut config = Config::default();
+        config.actions.license.author = Some("Test Author".to_string());
+        config.actions.license.year = Some("2024".to_string());
+
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC004",
+            "docs",
+            Severity::Critical,
+            "LICENSE file is missing",
+        ));
+
+        let plan = planner.create_plan(&results);
+
+        assert!(plan.actions().iter().any(|a| a.id() == "license-create"));
+    }
+
+    #[test]
+    fn test_branch_protection_with_signed_commits() {
+        let mut config = Config::default();
+        config.actions.branch_protection.require_signed_commits = true;
+
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        let plan = planner.create_plan(&results);
+
+        let bp_action = plan
+            .actions()
+            .iter()
+            .find(|a| a.id() == "branch-protection");
+        assert!(bp_action.is_some());
+    }
 }

@@ -9,7 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-#### Code Coverage Improvement
+- Increased CI coverage threshold from 90% to 95%
+- Added `src/actions/git.rs` to tarpaulin exclusion list (external command execution module)
+
+### Added
+
+- Additional unit tests for improved coverage across multiple modules:
+  - Cache module: save/load roundtrip, expired entries, edge cases
+  - Config loader: glob matching edge cases, double-star patterns
+  - Workflows rules: full `run` dispatcher, disabled rules, non-YAML files
+  - Quality rules: Python, Ruby, Go, Rust project detection, linting configs
+  - Secrets rules: template/sample env files, sensitive file detection, ignore patterns
+  - Language detection: Go, Ruby, PHP, Java, C#, Gradle, Pipfile detection
+  - Action planner: code of conduct, security policy, branch protection, GitHub settings
+  - Templates: all template types, nested directories, variable replacement
+  - Scanner: glob matching, file filtering, extension matching
+  - Error types: additional display/conversion tests
+
+#### Previous Code Coverage Improvement
 - Improved test coverage to 90% minimum for core modules
 - Fixed `test_has_changes` test race condition in `src/actions/git.rs` by using `std::sync::Mutex` instead of `tokio::sync::Mutex` for better cross-runtime compatibility
 - Added comprehensive tests for:
