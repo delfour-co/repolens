@@ -9,8 +9,8 @@ use crate::error::{ConfigError, RepoLensError};
 
 use super::presets::Preset;
 use super::{
-    ActionsConfig, CacheConfig, CustomRulesConfig, HooksConfig, RuleConfig, SecretsConfig,
-    TemplatesConfig, UrlConfig,
+    ActionsConfig, CacheConfig, CustomRulesConfig, HooksConfig, LicenseComplianceConfig,
+    RuleConfig, SecretsConfig, TemplatesConfig, UrlConfig,
 };
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
@@ -49,6 +49,11 @@ pub struct Config {
     #[serde(rename = "rules.custom")]
     pub custom_rules: CustomRulesConfig,
 
+    /// License compliance configuration
+    #[serde(default)]
+    #[serde(rename = "rules.licenses")]
+    pub license_compliance: LicenseComplianceConfig,
+
     /// Cache configuration
     #[serde(default)]
     pub cache: CacheConfig,
@@ -72,6 +77,7 @@ impl Default for Config {
             actions: ActionsConfig::default(),
             templates: TemplatesConfig::default(),
             custom_rules: CustomRulesConfig::default(),
+            license_compliance: LicenseComplianceConfig::default(),
             cache: CacheConfig::default(),
             hooks: HooksConfig::default(),
         }
@@ -643,6 +649,32 @@ ttl_seconds = 3600
     }
 
     #[test]
+    fn test_config_with_license_compliance() {
+        let toml_content = r#"
+preset = "opensource"
+
+["rules.licenses"]
+enabled = true
+allowed_licenses = ["MIT", "Apache-2.0", "BSD-3-Clause"]
+denied_licenses = ["GPL-3.0", "AGPL-3.0"]
+"#;
+        let config: Config = toml::from_str(toml_content).unwrap();
+        assert!(config.license_compliance.enabled);
+        assert_eq!(config.license_compliance.allowed_licenses.len(), 3);
+        assert_eq!(config.license_compliance.denied_licenses.len(), 2);
+        assert_eq!(config.license_compliance.allowed_licenses[0], "MIT");
+        assert_eq!(config.license_compliance.denied_licenses[0], "GPL-3.0");
+    }
+
+    #[test]
+    fn test_config_default_license_compliance() {
+        let config = Config::default();
+        assert!(config.license_compliance.enabled);
+        assert!(config.license_compliance.allowed_licenses.is_empty());
+        assert!(config.license_compliance.denied_licenses.is_empty());
+    }
+
+    #[test]
     fn test_config_with_hooks_section() {
         let toml_content = r#"
 preset = "opensource"
@@ -680,16 +712,12 @@ preset = "enterprise"
 
     #[test]
     fn test_glob_match_double_star_slash_prefix_starts_with_suffix() {
-        // Tests the text.starts_with(suffix) branch in glob_match_double_star
-        // when suffix_raw starts with '/' and text starts with the suffix
         assert!(glob_match("**/lib.rs", "lib.rs"));
         assert!(glob_match("**/src/main.rs", "src/main.rs"));
     }
 
     #[test]
     fn test_glob_match_double_star_after_prefix_strip() {
-        // Tests the strip_prefix branch in glob_match_double_star
-        // Pattern: "src/**/test" with text that starts with "src"
         assert!(glob_match("src/**/test", "src/deep/nested/test"));
         assert!(glob_match("src/**/test", "src/test"));
         assert!(!glob_match("src/**/test", "other/test"));
@@ -697,21 +725,16 @@ preset = "enterprise"
 
     #[test]
     fn test_glob_match_double_star_fallback_ends_with() {
-        // Tests the final text.ends_with(suffix) || text.contains(suffix) fallback
-        // in glob_match_double_star when prefix is set but text doesn't start with prefix
-        // This happens when prefix exists but strip_prefix fails
         assert!(!glob_match("foo/**/bar", "baz/bar"));
     }
 
     #[test]
     fn test_glob_match_single_star_first_part_not_at_start() {
-        // Tests the branch in glob_match_single_star where i == 0 and found_pos != 0
         assert!(!glob_match("foo*bar", "Xfoobar"));
     }
 
     #[test]
     fn test_glob_match_single_star_part_not_found() {
-        // Tests the return false branch in glob_match_single_star when part is not found
         assert!(!glob_match("abc*xyz", "abcdef"));
     }
 
@@ -747,7 +770,6 @@ fail_on_warnings = true
 
         let config = Config::load_from_file(&config_path).unwrap();
         assert_eq!(config.preset, "strict");
-        // Hooks should use defaults
         assert!(config.hooks.pre_commit);
         assert!(config.hooks.pre_push);
         assert!(!config.hooks.fail_on_warnings);

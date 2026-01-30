@@ -37,4 +37,9 @@ automated_security_fixes = true
 
 [templates]
 
+["rules.licenses"]
+enabled = true
+allowed_licenses = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
+denied_licenses = ["GPL-3.0", "AGPL-3.0"]
+
 ["rules.custom"]

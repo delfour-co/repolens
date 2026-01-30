@@ -362,4 +362,13 @@ mod tests {
         assert!(rendered.contains("test-repo"));
         assert!(rendered.contains("SEC001"));
     }
+
+    #[test]
+    fn test_terminal_output_default_impl() {
+        let output: TerminalOutput = Default::default();
+        let results = create_test_results();
+        let plan = ActionPlan::new();
+        let rendered = output.render_plan(&results, &plan).unwrap();
+        assert!(rendered.contains("test-repo"));
+    }
 }

@@ -6,7 +6,7 @@ use tracing::{debug, info, span, Level};
 
 use super::categories::{
     custom::CustomRules, dependencies::DependencyRules, docs::DocsRules, files::FilesRules,
-    quality::QualityRules, secrets::SecretsRules, security::SecurityRules,
+    licenses::LicenseRules, quality::QualityRules, secrets::SecretsRules, security::SecurityRules,
     workflows::WorkflowsRules,
 };
 use super::results::AuditResults;
@@ -121,6 +121,7 @@ impl RulesEngine {
             Box::new(WorkflowsRules),
             Box::new(QualityRules),
             Box::new(DependencyRules),
+            Box::new(LicenseRules),
             Box::new(CustomRules),
         ];
 

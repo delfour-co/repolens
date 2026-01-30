@@ -479,7 +479,15 @@ mod tests {
         let scanner = Scanner::new(temp_dir.path().to_path_buf());
 
         let files = scanner.files_in_directory("src/");
-        // Should have at least main.rs and lib.rs
         assert!(files.len() >= 2);
+    }
+
+    #[test]
+    fn test_repository_name_without_git_remote() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("test.txt"), "content").unwrap();
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+        let name = scanner.repository_name();
+        assert!(!name.is_empty());
     }
 }

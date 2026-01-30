@@ -282,6 +282,33 @@ pub struct CustomRulesConfig {
     pub rules: HashMap<String, CustomRule>,
 }
 
+/// License compliance configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LicenseComplianceConfig {
+    /// Whether license compliance checking is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// List of allowed SPDX license identifiers
+    /// If empty, all known licenses are allowed (unless denied)
+    #[serde(default)]
+    pub allowed_licenses: Vec<String>,
+
+    /// List of denied SPDX license identifiers
+    #[serde(default)]
+    pub denied_licenses: Vec<String>,
+}
+
+impl Default for LicenseComplianceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            allowed_licenses: Vec::new(),
+            denied_licenses: Vec::new(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -427,5 +454,37 @@ mod tests {
     #[test]
     fn test_default_custom_severity_function() {
         assert_eq!(default_custom_severity(), "warning");
+    }
+
+    #[test]
+    fn test_license_compliance_config_default() {
+        let config = LicenseComplianceConfig::default();
+        assert!(config.enabled);
+        assert!(config.allowed_licenses.is_empty());
+        assert!(config.denied_licenses.is_empty());
+    }
+
+    #[test]
+    fn test_license_compliance_config_deserialize() {
+        let toml_str = r#"
+            enabled = true
+            allowed_licenses = ["MIT", "Apache-2.0"]
+            denied_licenses = ["GPL-3.0"]
+        "#;
+        let config: LicenseComplianceConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.allowed_licenses.len(), 2);
+        assert_eq!(config.denied_licenses.len(), 1);
+        assert_eq!(config.allowed_licenses[0], "MIT");
+        assert_eq!(config.denied_licenses[0], "GPL-3.0");
+    }
+
+    #[test]
+    fn test_license_compliance_config_deserialize_defaults() {
+        let toml_str = r#""#;
+        let config: LicenseComplianceConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.enabled);
+        assert!(config.allowed_licenses.is_empty());
+        assert!(config.denied_licenses.is_empty());
     }
 }
