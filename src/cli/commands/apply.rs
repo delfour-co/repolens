@@ -373,9 +373,16 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
         action_plan.filter_skip(skip);
     }
 
-    // Check if there are any actions to perform
-    if action_plan.is_empty() {
+    // Check if there are any actions or warning issues to create
+    let has_warnings = audit_results.has_warnings();
+    if action_plan.is_empty() && (!has_warnings || args.no_issues) {
         println!("{}", "No actions to perform.".green());
+        return Ok(exit_codes::SUCCESS);
+    }
+
+    // If only warning issues to create (no plan actions), handle that directly
+    if action_plan.is_empty() && has_warnings && !args.no_issues {
+        create_warning_issues(&audit_results);
         return Ok(exit_codes::SUCCESS);
     }
 
