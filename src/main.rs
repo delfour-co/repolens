@@ -6,6 +6,7 @@ use clap::Parser;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 mod actions;
+mod cache;
 mod cli;
 mod config;
 mod error;
