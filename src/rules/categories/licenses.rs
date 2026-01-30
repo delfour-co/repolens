@@ -11,6 +11,7 @@ use crate::error::RepoLensError;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
+use regex::Regex;
 use std::collections::HashMap;
 
 /// Rules for checking license compliance
@@ -378,6 +379,8 @@ pub fn collect_dependency_licenses(scanner: &Scanner) -> Vec<DependencyLicense> 
     licenses.extend(parse_package_json_licenses(scanner));
     licenses.extend(parse_requirements_txt_licenses(scanner));
     licenses.extend(parse_go_mod_licenses(scanner));
+    licenses.extend(parse_pom_xml_licenses(scanner));
+    licenses.extend(parse_composer_json_licenses(scanner));
 
     licenses
 }
@@ -613,6 +616,143 @@ fn parse_go_mod_licenses(scanner: &Scanner) -> Vec<DependencyLicense> {
                     name: parts[0].to_string(),
                     license: None,
                     source_file: "go.mod".to_string(),
+                });
+            }
+        }
+    }
+
+    licenses
+}
+
+/// Parse dependency licenses from pom.xml (Maven)
+fn parse_pom_xml_licenses(scanner: &Scanner) -> Vec<DependencyLicense> {
+    let mut licenses = Vec::new();
+
+    if !scanner.file_exists("pom.xml") {
+        return licenses;
+    }
+
+    let content = match scanner.read_file("pom.xml") {
+        Ok(c) => c,
+        Err(_) => return licenses,
+    };
+
+    // Try to extract project-level license from <licenses> block
+    let project_license = {
+        let lic_block_re = Regex::new(r"(?s)<licenses>(.*?)</licenses>").unwrap();
+        let lic_name_re = Regex::new(r"<name>\s*([^<]+?)\s*</name>").unwrap();
+        lic_block_re.captures(&content).and_then(|cap| {
+            lic_name_re
+                .captures(&cap[1])
+                .map(|c| normalize_license(&c[1]))
+        })
+    };
+
+    // Remove <dependencyManagement> sections
+    let mgmt_re = Regex::new(r"(?s)<dependencyManagement>.*?</dependencyManagement>").unwrap();
+    let content = mgmt_re.replace_all(&content, "");
+
+    // Extract dependencies
+    let deps_block_re = Regex::new(r"(?s)<dependencies>(.*?)</dependencies>").unwrap();
+    let dep_re = Regex::new(r"(?s)<dependency>(.*?)</dependency>").unwrap();
+    let group_re = Regex::new(r"<groupId>\s*([^<]+?)\s*</groupId>").unwrap();
+    let artifact_re = Regex::new(r"<artifactId>\s*([^<]+?)\s*</artifactId>").unwrap();
+
+    for block_cap in deps_block_re.captures_iter(&content) {
+        let block = &block_cap[1];
+        for dep_cap in dep_re.captures_iter(block) {
+            let dep_content = &dep_cap[1];
+            let group = group_re.captures(dep_content).map(|c| c[1].to_string());
+            let artifact = artifact_re.captures(dep_content).map(|c| c[1].to_string());
+
+            if let (Some(g), Some(a)) = (group, artifact) {
+                licenses.push(DependencyLicense {
+                    name: format!("{}:{}", g, a),
+                    license: project_license.clone(),
+                    source_file: "pom.xml".to_string(),
+                });
+            }
+        }
+    }
+
+    licenses
+}
+
+/// Parse dependency licenses from composer.json / composer.lock (PHP)
+fn parse_composer_json_licenses(scanner: &Scanner) -> Vec<DependencyLicense> {
+    let mut licenses = Vec::new();
+
+    // Try composer.lock first for richer license data
+    if scanner.file_exists("composer.lock") {
+        let content = match scanner.read_file("composer.lock") {
+            Ok(c) => c,
+            Err(_) => return licenses,
+        };
+        let lock: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(v) => v,
+            Err(_) => return licenses,
+        };
+
+        for key in &["packages", "packages-dev"] {
+            if let Some(packages) = lock.get(*key).and_then(|p| p.as_array()) {
+                for pkg in packages {
+                    let name = match pkg.get("name").and_then(|n| n.as_str()) {
+                        Some(n) => n.to_string(),
+                        None => continue,
+                    };
+                    let license = pkg
+                        .get("license")
+                        .and_then(|l| l.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|v| v.as_str())
+                        .map(normalize_license);
+                    licenses.push(DependencyLicense {
+                        name,
+                        license,
+                        source_file: "composer.lock".to_string(),
+                    });
+                }
+            }
+        }
+        return licenses;
+    }
+
+    // Fallback to composer.json
+    if !scanner.file_exists("composer.json") {
+        return licenses;
+    }
+
+    let content = match scanner.read_file("composer.json") {
+        Ok(c) => c,
+        Err(_) => return licenses,
+    };
+
+    let parsed: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return licenses,
+    };
+
+    // Extract project license
+    let project_license = parsed.get("license").and_then(|l| {
+        if let Some(s) = l.as_str() {
+            Some(normalize_license(s))
+        } else if let Some(arr) = l.as_array() {
+            arr.first().and_then(|v| v.as_str()).map(normalize_license)
+        } else {
+            None
+        }
+    });
+
+    for section in &["require", "require-dev"] {
+        if let Some(reqs) = parsed.get(*section).and_then(|r| r.as_object()) {
+            for (name, _) in reqs {
+                if name == "php" || name.starts_with("ext-") {
+                    continue;
+                }
+                licenses.push(DependencyLicense {
+                    name: name.clone(),
+                    license: project_license.clone(),
+                    source_file: "composer.json".to_string(),
                 });
             }
         }
@@ -1788,5 +1928,93 @@ cc = "1.0"
     #[test]
     fn test_normalize_license_bsl() {
         assert_eq!(normalize_license("bsl-1.0"), "BSL-1.0");
+    }
+
+    // ===== Maven (pom.xml) License Tests =====
+
+    #[test]
+    fn test_parse_pom_xml_licenses_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("pom.xml"),
+            r#"<project>
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+    </license>
+  </licenses>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>5.3.21</version>
+    </dependency>
+  </dependencies>
+</project>"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let licenses = parse_pom_xml_licenses(&scanner);
+        assert_eq!(licenses.len(), 1);
+        assert_eq!(licenses[0].name, "org.springframework:spring-core");
+        assert_eq!(licenses[0].license, Some("Apache-2.0".to_string()));
+        assert_eq!(licenses[0].source_file, "pom.xml");
+    }
+
+    #[test]
+    fn test_parse_pom_xml_licenses_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let licenses = parse_pom_xml_licenses(&scanner);
+        assert!(licenses.is_empty());
+    }
+
+    // ===== Composer License Tests =====
+
+    #[test]
+    fn test_parse_composer_json_licenses_from_lock() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("composer.lock"),
+            r#"{
+    "packages": [
+        {
+            "name": "monolog/monolog",
+            "version": "2.8.0",
+            "license": ["MIT"]
+        }
+    ],
+    "packages-dev": []
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let licenses = parse_composer_json_licenses(&scanner);
+        assert_eq!(licenses.len(), 1);
+        assert_eq!(licenses[0].name, "monolog/monolog");
+        assert_eq!(licenses[0].license, Some("MIT".to_string()));
+        assert_eq!(licenses[0].source_file, "composer.lock");
+    }
+
+    #[test]
+    fn test_parse_composer_json_licenses_from_json_fallback() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("composer.json"),
+            r#"{
+    "license": "MIT",
+    "require": {
+        "php": ">=8.0",
+        "monolog/monolog": "^2.8"
+    }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let licenses = parse_composer_json_licenses(&scanner);
+        assert_eq!(licenses.len(), 1);
+        assert_eq!(licenses[0].name, "monolog/monolog");
+        assert_eq!(licenses[0].license, Some("MIT".to_string()));
+        assert_eq!(licenses[0].source_file, "composer.json");
     }
 }
