@@ -323,7 +323,7 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
 
     // Generate action plan
     let planner = ActionPlanner::new(config.clone());
-    let mut action_plan = planner.create_plan(&audit_results);
+    let mut action_plan = planner.create_plan(&audit_results).await?;
 
     // Apply filters if specified
     if let Some(only) = &args.only {

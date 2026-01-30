@@ -5,24 +5,23 @@ use serde::Deserialize;
 use std::process::Command;
 
 /// GitHub provider for repository operations
-#[allow(dead_code)]
 pub struct GitHubProvider {
     repo_owner: String,
     repo_name: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct RepoInfo {
+pub struct RepoInfo {
+    #[allow(dead_code)]
     name: String,
+    #[allow(dead_code)]
     owner: RepoOwner,
-    visibility: String,
     #[serde(rename = "hasIssuesEnabled")]
-    has_issues_enabled: bool,
+    pub has_issues_enabled: bool,
     #[serde(rename = "hasDiscussionsEnabled")]
-    has_discussions_enabled: bool,
+    pub has_discussions_enabled: bool,
     #[serde(rename = "hasWikiEnabled")]
-    has_wiki_enabled: bool,
+    pub has_wiki_enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -33,7 +32,6 @@ struct RepoOwner {
 
 impl GitHubProvider {
     /// Create a new GitHub provider for the current repository
-    #[allow(dead_code)]
     pub fn new() -> Result<Self, RepoLensError> {
         let (owner, name) = Self::get_repo_info()?;
         Ok(Self {
@@ -88,7 +86,6 @@ impl GitHubProvider {
     }
 
     /// Get the full repository name (owner/name)
-    #[allow(dead_code)]
     pub fn full_name(&self) -> String {
         format!("{}/{}", self.repo_owner, self.repo_name)
     }
@@ -157,7 +154,6 @@ impl GitHubProvider {
     }
 
     /// Get branch protection status
-    #[allow(dead_code)]
     pub fn get_branch_protection(
         &self,
         branch: &str,
@@ -186,6 +182,72 @@ impl GitHubProvider {
         let protection: BranchProtection = serde_json::from_slice(&output.stdout)?;
 
         Ok(Some(protection))
+    }
+
+    /// Get repository settings (discussions, issues, wiki, etc.)
+    pub fn get_repo_settings(&self) -> Result<RepoInfo, RepoLensError> {
+        let output = Command::new("gh")
+            .args([
+                "repo",
+                "view",
+                "--json",
+                "name,owner,hasIssuesEnabled,hasDiscussionsEnabled,hasWikiEnabled",
+            ])
+            .output()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: "gh repo view".to_string(),
+                })
+            })?;
+
+        if !output.status.success() {
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: "gh repo view".to_string(),
+            }));
+        }
+
+        let repo_info: RepoInfo = serde_json::from_slice(&output.stdout)?;
+        Ok(repo_info)
+    }
+
+    /// Check if vulnerability alerts are enabled
+    pub fn has_vulnerability_alerts(&self) -> Result<bool, RepoLensError> {
+        let output = Command::new("gh")
+            .args([
+                "api",
+                &format!("repos/{}/vulnerability-alerts", self.full_name()),
+            ])
+            .output()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api repos/{}/vulnerability-alerts", self.full_name()),
+                })
+            })?;
+
+        // 204 means enabled, 404 means disabled
+        // Some APIs might return 200 OK when enabled
+        let status_code = output.status.code();
+        Ok(status_code == Some(204) || status_code == Some(200))
+    }
+
+    /// Check if automated security fixes are enabled
+    pub fn has_automated_security_fixes(&self) -> Result<bool, RepoLensError> {
+        let output = Command::new("gh")
+            .args([
+                "api",
+                &format!("repos/{}/automated-security-fixes", self.full_name()),
+            ])
+            .output()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api repos/{}/automated-security-fixes", self.full_name()),
+                })
+            })?;
+
+        // 204 means enabled, 404 means disabled
+        // Some APIs might return 200 OK when enabled
+        let status_code = output.status.code();
+        Ok(status_code == Some(204) || status_code == Some(200))
     }
 
     /// Create a pull request
@@ -243,61 +305,62 @@ impl GitHubProvider {
 
 /// Branch protection settings from GitHub API
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct BranchProtection {
     #[serde(rename = "required_status_checks")]
     pub required_status_checks: Option<StatusChecks>,
 
     #[serde(rename = "enforce_admins")]
+    #[allow(dead_code)]
     pub enforce_admins: Option<EnforceAdmins>,
 
     #[serde(rename = "required_pull_request_reviews")]
     pub required_pull_request_reviews: Option<PullRequestReviews>,
 
     #[serde(rename = "required_linear_history")]
+    #[allow(dead_code)]
     pub required_linear_history: Option<RequiredLinearHistory>,
 
     #[serde(rename = "allow_force_pushes")]
     pub allow_force_pushes: Option<AllowForcePushes>,
 
     #[serde(rename = "allow_deletions")]
+    #[allow(dead_code)]
     pub allow_deletions: Option<AllowDeletions>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct StatusChecks {
+    #[allow(dead_code)]
     pub strict: bool,
+    #[allow(dead_code)]
     pub contexts: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct EnforceAdmins {
+    #[allow(dead_code)]
     pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct PullRequestReviews {
     #[serde(rename = "required_approving_review_count")]
     pub required_approving_review_count: u32,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct RequiredLinearHistory {
+    #[allow(dead_code)]
     pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct AllowForcePushes {
     pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct AllowDeletions {
+    #[allow(dead_code)]
     pub enabled: bool,
 }

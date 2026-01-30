@@ -243,3 +243,293 @@ impl From<serde_json::Error> for RepoLensError {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scan_error_display() {
+        let err = ScanError::FileRead {
+            path: "test.txt".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("test.txt"));
+        assert!(msg.contains("Failed to read file"));
+    }
+
+    #[test]
+    fn test_config_error_file_read_display() {
+        let err = ConfigError::FileRead {
+            path: "config.toml".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("config.toml"));
+    }
+
+    #[test]
+    fn test_config_error_parse_display() {
+        let err = ConfigError::Parse {
+            message: "invalid syntax".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("invalid syntax"));
+    }
+
+    #[test]
+    fn test_config_error_serialize_display() {
+        let err = ConfigError::Serialize {
+            message: "serialization failed".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("serialization failed"));
+    }
+
+    #[test]
+    fn test_config_error_invalid_preset_display() {
+        let err = ConfigError::InvalidPreset {
+            name: "unknown".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("unknown"));
+    }
+
+    #[test]
+    fn test_provider_error_command_failed_display() {
+        let err = ProviderError::CommandFailed {
+            command: "gh pr list".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("gh pr list"));
+    }
+
+    #[test]
+    fn test_provider_error_json_parse_display() {
+        let err = ProviderError::JsonParse {
+            message: "unexpected token".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("unexpected token"));
+    }
+
+    #[test]
+    fn test_provider_error_not_authenticated_display() {
+        let err = ProviderError::NotAuthenticated;
+        let msg = format!("{}", err);
+        assert!(msg.contains("not authenticated") || msg.contains("Not in a GitHub repository"));
+    }
+
+    #[test]
+    fn test_provider_error_invalid_repo_name_display() {
+        let err = ProviderError::InvalidRepoName {
+            name: "invalid-name".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("invalid-name"));
+    }
+
+    #[test]
+    fn test_provider_error_github_cli_not_available_display() {
+        let err = ProviderError::GitHubCliNotAvailable;
+        let msg = format!("{}", err);
+        assert!(msg.contains("GitHub CLI") || msg.contains("gh"));
+    }
+
+    #[test]
+    fn test_action_error_file_write_display() {
+        let err = ActionError::FileWrite {
+            path: "output.txt".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("output.txt"));
+    }
+
+    #[test]
+    fn test_action_error_directory_create_display() {
+        let err = ActionError::DirectoryCreate {
+            path: "/some/dir".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("/some/dir"));
+    }
+
+    #[test]
+    fn test_action_error_unknown_template_display() {
+        let err = ActionError::UnknownTemplate {
+            name: "my-template".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("my-template"));
+    }
+
+    #[test]
+    fn test_action_error_execution_failed_display() {
+        let err = ActionError::ExecutionFailed {
+            message: "action failed".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("action failed"));
+    }
+
+    #[test]
+    fn test_rule_error_execution_failed_display() {
+        let err = RuleError::ExecutionFailed {
+            message: "rule failed".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("rule failed"));
+    }
+
+    #[test]
+    fn test_cache_error_file_read_display() {
+        let err = CacheError::FileRead {
+            path: "cache.json".to_string(),
+            message: "read error".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("cache.json"));
+    }
+
+    #[test]
+    fn test_cache_error_file_write_display() {
+        let err = CacheError::FileWrite {
+            path: "cache.json".to_string(),
+            message: "write error".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("cache.json"));
+    }
+
+    #[test]
+    fn test_cache_error_parse_display() {
+        let err = CacheError::Parse {
+            message: "parse error".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("parse error"));
+    }
+
+    #[test]
+    fn test_cache_error_delete_display() {
+        let err = CacheError::Delete {
+            message: "delete error".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("delete error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_scan_error() {
+        let scan_err = ScanError::FileRead {
+            path: "test.txt".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        };
+        let err: RepoLensError = scan_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Scan error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_config_error() {
+        let config_err = ConfigError::Parse {
+            message: "parse error".to_string(),
+        };
+        let err: RepoLensError = config_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Config error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_provider_error() {
+        let provider_err = ProviderError::NotAuthenticated;
+        let err: RepoLensError = provider_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Provider error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_action_error() {
+        let action_err = ActionError::ExecutionFailed {
+            message: "failed".to_string(),
+        };
+        let err: RepoLensError = action_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Action error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_rule_error() {
+        let rule_err = RuleError::ExecutionFailed {
+            message: "failed".to_string(),
+        };
+        let err: RepoLensError = rule_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Rule error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_cache_error() {
+        let cache_err = CacheError::Parse {
+            message: "failed".to_string(),
+        };
+        let err: RepoLensError = cache_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Cache error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        let err: RepoLensError = io_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Scan error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_toml_de_error() {
+        let toml_err = toml::from_str::<toml::Value>("invalid [[[toml").unwrap_err();
+        let err: RepoLensError = toml_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Config error"));
+    }
+
+    #[test]
+    fn test_repolens_error_from_serde_json_error() {
+        let json_err = serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err();
+        let err: RepoLensError = json_err.into();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Provider error"));
+    }
+
+    #[test]
+    fn test_action_error_file_create_display() {
+        let err = ActionError::FileCreate {
+            path: "new_file.txt".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::AlreadyExists, "already exists"),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("new_file.txt"));
+        assert!(msg.contains("Failed to create file"));
+    }
+
+    #[test]
+    fn test_repolens_error_display_variants() {
+        let scan_err = RepoLensError::Scan(ScanError::FileRead {
+            path: "test.rs".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        });
+        assert!(format!("{}", scan_err).contains("Scan error"));
+
+        let rule_err = RepoLensError::Rule(RuleError::ExecutionFailed {
+            message: "test failure".to_string(),
+        });
+        assert!(format!("{}", rule_err).contains("Rule error"));
+
+        let provider_err = RepoLensError::Provider(ProviderError::NotAuthenticated);
+        assert!(format!("{}", provider_err).contains("Provider error"));
+    }
+}

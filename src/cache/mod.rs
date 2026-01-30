@@ -641,4 +641,199 @@ mod tests {
         let stats = cache.stats();
         assert_eq!(stats.total_entries, 2);
     }
+
+    #[test]
+    fn test_cache_save_not_dirty() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+        let cache = AuditCache::new(temp_dir.path(), config);
+
+        // Save when not dirty should be a no-op
+        let result = cache.save();
+        assert!(result.is_ok());
+
+        // Cache file should not exist
+        let cache_file = temp_dir.path().join(".repolens/cache/audit_cache.json");
+        assert!(!cache_file.exists());
+    }
+
+    #[test]
+    fn test_cache_load_invalid_json() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().join(".repolens/cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::write(cache_dir.join("audit_cache.json"), "invalid json content").unwrap();
+
+        let config = CacheConfig::default();
+        let cache = AuditCache::load(temp_dir.path(), config);
+
+        // Should load empty cache on parse error
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_load_expired_entries_filtered() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache_dir = temp_dir.path().join(".repolens/cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+
+        // Create a cache entry with very old timestamp
+        let old_entry = CacheEntry {
+            file_path: "old.rs".to_string(),
+            content_hash: "abc".to_string(),
+            findings: vec![],
+            timestamp: 1000, // Very old timestamp
+        };
+        let content = serde_json::to_string_pretty(&vec![old_entry]).unwrap();
+        fs::write(cache_dir.join("audit_cache.json"), content).unwrap();
+
+        let config = CacheConfig {
+            max_age_hours: 1, // 1 hour
+            ..Default::default()
+        };
+        let cache = AuditCache::load(temp_dir.path(), config);
+
+        // Expired entry should be filtered out
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_load_nonexistent_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig {
+            directory: "nonexistent/path".to_string(),
+            ..Default::default()
+        };
+        let cache = AuditCache::load(temp_dir.path(), config);
+
+        // Should load empty cache when directory doesn't exist
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_cache_dir_absolute() {
+        let config_dir = "/tmp/test-cache";
+        let resolved = AuditCache::resolve_cache_dir(Path::new("/project"), config_dir);
+        assert_eq!(resolved, PathBuf::from("/tmp/test-cache"));
+    }
+
+    #[test]
+    fn test_resolve_cache_dir_home() {
+        let resolved = AuditCache::resolve_cache_dir(Path::new("/project"), "~/.cache/repolens");
+        // Should expand home directory
+        assert!(!resolved.starts_with("~"));
+    }
+
+    #[test]
+    fn test_cache_is_enabled_false() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let cache = AuditCache::new(temp_dir.path(), config);
+        assert!(!cache.is_enabled());
+    }
+
+    #[test]
+    fn test_cache_clear_empty() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+        let mut cache = AuditCache::new(temp_dir.path(), config);
+
+        // Clear on empty cache should be no-op
+        cache.clear();
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_invalidate_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+        let mut cache = AuditCache::new(temp_dir.path(), config);
+
+        // Invalidating non-existent entry should be no-op
+        cache.invalidate(Path::new("nonexistent.rs"));
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_delete_cache_directory_nonexistent() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+
+        // Deleting non-existent cache should succeed
+        let result = delete_cache_directory(temp_dir.path(), &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cache_get_wrong_hash() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+        let mut cache = AuditCache::new(temp_dir.path(), config);
+
+        cache.insert(PathBuf::from("test.rs"), "abc123".to_string(), vec![]);
+
+        // Should return None because hash doesn't match
+        assert!(cache.get(Path::new("test.rs"), "different_hash").is_none());
+    }
+
+    #[test]
+    fn test_cache_save_dirty() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+        let mut cache = AuditCache::new(temp_dir.path(), config);
+
+        cache.insert(PathBuf::from("test.rs"), "abc123".to_string(), vec![]);
+
+        // Should save when dirty
+        let result = cache.save();
+        assert!(result.is_ok());
+
+        // Cache file should exist
+        let cache_file = temp_dir.path().join(".repolens/cache/audit_cache.json");
+        assert!(cache_file.exists());
+    }
+
+    #[test]
+    fn test_cache_save_and_load_roundtrip() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+        let mut cache = AuditCache::new(temp_dir.path(), config.clone());
+
+        let finding = create_test_finding("TEST001", Some("test.rs:1"));
+        cache.insert(
+            PathBuf::from("test.rs"),
+            "abc123".to_string(),
+            vec![finding],
+        );
+
+        cache.save().unwrap();
+
+        // Load and verify
+        let loaded = AuditCache::load(temp_dir.path(), config);
+        assert!(!loaded.is_empty());
+        assert!(loaded.get(Path::new("test.rs"), "abc123").is_some());
+    }
+
+    #[test]
+    fn test_cache_delete_existing_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = CacheConfig::default();
+        let cache_dir = temp_dir.path().join(".repolens/cache");
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::write(cache_dir.join("audit_cache.json"), "[]").unwrap();
+
+        let result = delete_cache_directory(temp_dir.path(), &config);
+        assert!(result.is_ok());
+        assert!(!cache_dir.exists());
+    }
+
+    #[test]
+    fn test_cache_entry_matches_hash() {
+        let entry = CacheEntry::new("test.rs".to_string(), "abc123".to_string(), vec![]);
+        assert!(entry.matches_hash("abc123"));
+        assert!(!entry.matches_hash("other"));
+    }
 }

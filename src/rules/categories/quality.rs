@@ -308,4 +308,129 @@ mod tests {
         assert!(!findings.is_empty());
         assert!(findings.iter().any(|f| f.rule_id == "QUALITY004"));
     }
+
+    #[tokio::test]
+    async fn test_check_editorconfig_present() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join(".editorconfig"), "root = true").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_editorconfig(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_tests_with_test_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::create_dir_all(root.join("tests")).unwrap();
+        fs::write(root.join("tests/test.rs"), "fn test() {}").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_tests(&scanner).await.unwrap();
+
+        // Has test directory, so no QUALITY001 finding
+        assert!(findings.iter().all(|f| f.rule_id != "QUALITY001"));
+    }
+
+    #[tokio::test]
+    async fn test_check_tests_package_json_with_proper_test_script() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(
+            root.join("package.json"),
+            r#"{"name": "test", "scripts": {"test": "jest"}}"#,
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_tests(&scanner).await.unwrap();
+
+        // Has proper test script, so no QUALITY002 finding
+        assert!(findings.iter().all(|f| f.rule_id != "QUALITY002"));
+    }
+
+    #[tokio::test]
+    async fn test_check_linting_python_project() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("requirements.txt"), "flask==2.0").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_linting(&scanner).await.unwrap();
+
+        assert!(findings.iter().any(|f| f.rule_id == "QUALITY003"));
+    }
+
+    #[tokio::test]
+    async fn test_check_linting_ruby_project() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("Gemfile"), "source 'https://rubygems.org'").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_linting(&scanner).await.unwrap();
+
+        assert!(findings.iter().any(|f| f.rule_id == "QUALITY003"));
+    }
+
+    #[tokio::test]
+    async fn test_check_linting_go_project() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("go.mod"), "module example.com/foo").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_linting(&scanner).await.unwrap();
+
+        assert!(findings.iter().any(|f| f.rule_id == "QUALITY003"));
+    }
+
+    #[tokio::test]
+    async fn test_check_linting_rust_project() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_linting(&scanner).await.unwrap();
+
+        assert!(findings.iter().any(|f| f.rule_id == "QUALITY003"));
+    }
+
+    #[tokio::test]
+    async fn test_check_linting_with_config_present() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("package.json"), "{}").unwrap();
+        fs::write(root.join(".eslintrc.json"), "{}").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_linting(&scanner).await.unwrap();
+
+        // Has ESLint config, so no QUALITY003 finding
+        assert!(findings.iter().all(|f| f.rule_id != "QUALITY003"));
+    }
+
+    #[tokio::test]
+    async fn test_quality_rules_name() {
+        let rules = QualityRules;
+        assert_eq!(rules.name(), "quality");
+    }
+
+    #[tokio::test]
+    async fn test_quality_rules_run() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+
+        let findings = QualityRules.run(&scanner, &config).await.unwrap();
+
+        // Should have findings for missing tests and editorconfig
+        assert!(!findings.is_empty());
+    }
 }

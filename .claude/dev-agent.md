@@ -104,7 +104,27 @@ cargo tarpaulin --out Stdout --skip-clean 2>/dev/null || echo "Coverage: install
 **Ne commiter QUE si:**
 - Tous les tests passent (0 failures)
 - Pas de warnings clippy
-- Couverture acceptable (pas de régression)
+- Couverture >= seuil CI (vérifier `--fail-under` dans `.github/workflows/ci.yml`)
+
+## Contrôle de Couverture
+
+**OBLIGATOIRE avant chaque PR:**
+
+```bash
+# 1. Récupérer le seuil actuel du CI
+THRESHOLD=$(grep -oP 'fail-under \K[0-9]+' .github/workflows/ci.yml)
+echo "Seuil CI actuel: ${THRESHOLD}%"
+
+# 2. Lancer la couverture avec les mêmes exclusions que le CI
+cargo tarpaulin --all-features --out Stdout \
+  --exclude-files 'src/main.rs' --exclude-files 'src/lib.rs' --exclude-files 'tests/**' \
+  --skip-clean --fail-under "$THRESHOLD"
+
+# 3. Si la couverture est sous le seuil: ajouter des tests AVANT de commiter
+```
+
+**Règle stricte:** La PR ne peut être créée que si la couverture est >= au seuil défini dans le CI.
+Si le code ajouté fait baisser la couverture sous le seuil, écrire des tests supplémentaires dans la même PR.
 
 ## Documentation Obligatoire
 
@@ -130,7 +150,7 @@ Après chaque implémentation, avant de créer la PR:
 - [ ] cargo fmt --check
 - [ ] cargo clippy -- -D warnings
 - [ ] cargo test --all-features (100% pass)
-- [ ] Couverture vérifiée
+- [ ] Couverture >= seuil CI (`--fail-under` dans ci.yml)
 - [ ] README.md mis à jour
 - [ ] CHANGELOG.md mis à jour
 - [ ] Wiki mis à jour (si applicable)

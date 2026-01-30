@@ -146,4 +146,98 @@ mod tests {
         assert_eq!(Preset::Enterprise.name(), "enterprise");
         assert_eq!(Preset::Strict.name(), "strict");
     }
+
+    #[test]
+    fn test_preset_from_name_aliases() {
+        // OpenSource aliases
+        assert_eq!(
+            Preset::from_name("open-source").unwrap(),
+            Preset::OpenSource
+        );
+        assert_eq!(Preset::from_name("OPENSOURCE").unwrap(), Preset::OpenSource);
+
+        // Enterprise aliases
+        assert_eq!(Preset::from_name("ent").unwrap(), Preset::Enterprise);
+        assert_eq!(Preset::from_name("internal").unwrap(), Preset::Enterprise);
+        assert_eq!(Preset::from_name("ENTERPRISE").unwrap(), Preset::Enterprise);
+
+        // Strict aliases
+        assert_eq!(Preset::from_name("secure").unwrap(), Preset::Strict);
+        assert_eq!(Preset::from_name("compliance").unwrap(), Preset::Strict);
+        assert_eq!(Preset::from_name("STRICT").unwrap(), Preset::Strict);
+    }
+
+    #[test]
+    fn test_preset_description() {
+        assert!(Preset::OpenSource.description().contains("open source"));
+        assert!(Preset::Enterprise.description().contains("internal"));
+        assert!(Preset::Strict.description().contains("security"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_opensource() {
+        let rules = Preset::OpenSource.enabled_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"docs/readme"));
+        assert!(rules.contains(&"docs/license"));
+        assert!(rules.contains(&"docs/contributing"));
+        assert!(rules.contains(&"docs/code-of-conduct"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_enterprise() {
+        let rules = Preset::Enterprise.enabled_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"security/codeowners"));
+        assert!(rules.contains(&"security/signed-commits"));
+        // Enterprise doesn't require license
+        assert!(!rules.contains(&"docs/license"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_strict() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"secrets/history"));
+        assert!(rules.contains(&"quality/tests"));
+        assert!(rules.contains(&"quality/linting"));
+        assert!(rules.contains(&"workflows/pinned-actions"));
+    }
+
+    #[test]
+    fn test_preset_critical_rules_opensource() {
+        let rules = Preset::OpenSource.critical_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"secrets/files"));
+        assert!(rules.contains(&"docs/license"));
+    }
+
+    #[test]
+    fn test_preset_critical_rules_enterprise() {
+        let rules = Preset::Enterprise.critical_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"security/codeowners"));
+    }
+
+    #[test]
+    fn test_preset_critical_rules_strict() {
+        let rules = Preset::Strict.critical_rules();
+        assert!(rules.contains(&"secrets/hardcoded"));
+        assert!(rules.contains(&"secrets/history"));
+        assert!(rules.contains(&"security/signed-commits"));
+    }
+
+    #[test]
+    fn test_preset_equality() {
+        assert_eq!(Preset::OpenSource, Preset::OpenSource);
+        assert_ne!(Preset::OpenSource, Preset::Enterprise);
+        assert_ne!(Preset::Enterprise, Preset::Strict);
+    }
+
+    #[test]
+    fn test_preset_copy() {
+        let preset = Preset::OpenSource;
+        let copied = preset;
+        assert_eq!(preset, copied);
+    }
 }

@@ -123,7 +123,7 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
     eprintln!("{}", "Génération du plan d'action...".dimmed());
     // Generate action plan
     let planner = ActionPlanner::new(config);
-    let action_plan = planner.create_plan(&audit_results);
+    let action_plan = planner.create_plan(&audit_results).await?;
 
     eprintln!("{}", "Génération du rapport...".dimmed());
     // Render output

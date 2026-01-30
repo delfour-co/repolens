@@ -213,4 +213,122 @@ mod tests {
         assert!(results.has_warnings());
         assert_eq!(results.count_by_severity(Severity::Critical), 1);
     }
+
+    #[test]
+    fn test_severity_from_string() {
+        assert_eq!(Severity::from_string("critical"), Some(Severity::Critical));
+        assert_eq!(Severity::from_string("error"), Some(Severity::Critical));
+        assert_eq!(Severity::from_string("CRITICAL"), Some(Severity::Critical));
+
+        assert_eq!(Severity::from_string("warning"), Some(Severity::Warning));
+        assert_eq!(Severity::from_string("warn"), Some(Severity::Warning));
+        assert_eq!(Severity::from_string("WARNING"), Some(Severity::Warning));
+
+        assert_eq!(Severity::from_string("info"), Some(Severity::Info));
+        assert_eq!(Severity::from_string("information"), Some(Severity::Info));
+        assert_eq!(Severity::from_string("note"), Some(Severity::Info));
+        assert_eq!(Severity::from_string("INFO"), Some(Severity::Info));
+
+        assert_eq!(Severity::from_string("unknown"), None);
+        assert_eq!(Severity::from_string(""), None);
+    }
+
+    #[test]
+    fn test_finding_new() {
+        let finding = Finding::new("TEST001", "test", Severity::Info, "Test message");
+
+        assert_eq!(finding.rule_id, "TEST001");
+        assert_eq!(finding.category, "test");
+        assert_eq!(finding.severity, Severity::Info);
+        assert_eq!(finding.message, "Test message");
+        assert!(finding.location.is_none());
+        assert!(finding.description.is_none());
+        assert!(finding.remediation.is_none());
+    }
+
+    #[test]
+    fn test_finding_with_all_fields() {
+        let finding = Finding::new("TEST001", "test", Severity::Warning, "Test")
+            .with_location("file.rs:10")
+            .with_description("Test description")
+            .with_remediation("Test remediation");
+
+        assert_eq!(finding.location, Some("file.rs:10".to_string()));
+        assert_eq!(finding.description, Some("Test description".to_string()));
+        assert_eq!(finding.remediation, Some("Test remediation".to_string()));
+    }
+
+    #[test]
+    fn test_audit_results_add_findings() {
+        let mut results = AuditResults::new("test-repo", "opensource");
+
+        let findings = vec![
+            Finding::new("TEST001", "test", Severity::Info, "Info 1"),
+            Finding::new("TEST002", "test", Severity::Warning, "Warning 1"),
+        ];
+
+        results.add_findings(findings);
+        assert_eq!(results.total_count(), 2);
+    }
+
+    #[test]
+    fn test_audit_results_findings_by_category() {
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "SEC001",
+            "secrets",
+            Severity::Critical,
+            "Secret",
+        ));
+        results.add_finding(Finding::new("DOC001", "docs", Severity::Warning, "Doc"));
+        results.add_finding(Finding::new(
+            "SEC002",
+            "secrets",
+            Severity::Warning,
+            "Another secret",
+        ));
+
+        let secrets: Vec<_> = results.findings_by_category("secrets").collect();
+        assert_eq!(secrets.len(), 2);
+
+        let docs: Vec<_> = results.findings_by_category("docs").collect();
+        assert_eq!(docs.len(), 1);
+
+        let other: Vec<_> = results.findings_by_category("other").collect();
+        assert_eq!(other.len(), 0);
+    }
+
+    #[test]
+    fn test_audit_results_is_clean() {
+        let results = AuditResults::new("test-repo", "opensource");
+        assert!(results.is_clean());
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new("TEST", "test", Severity::Info, "Test"));
+        assert!(!results.is_clean());
+    }
+
+    #[test]
+    fn test_audit_results_no_critical_or_warnings() {
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new("INFO", "info", Severity::Info, "Info only"));
+
+        assert!(!results.has_critical());
+        assert!(!results.has_warnings());
+    }
+
+    #[test]
+    fn test_audit_results_count_by_severity() {
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new("C1", "test", Severity::Critical, "C1"));
+        results.add_finding(Finding::new("C2", "test", Severity::Critical, "C2"));
+        results.add_finding(Finding::new("W1", "test", Severity::Warning, "W1"));
+        results.add_finding(Finding::new("I1", "test", Severity::Info, "I1"));
+        results.add_finding(Finding::new("I2", "test", Severity::Info, "I2"));
+        results.add_finding(Finding::new("I3", "test", Severity::Info, "I3"));
+
+        assert_eq!(results.count_by_severity(Severity::Critical), 2);
+        assert_eq!(results.count_by_severity(Severity::Warning), 1);
+        assert_eq!(results.count_by_severity(Severity::Info), 3);
+    }
 }

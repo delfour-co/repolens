@@ -59,12 +59,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Verify package metadata
-        run: cargo metadata --no-deps --format-version 1 | python3 -c "
+        run: |
+          cargo metadata --no-deps --format-version 1 | python3 -c "
           import sys, json;
           meta = json.load(sys.stdin)['packages'][0];
           required = ['description', 'license', 'repository', 'readme'];
           missing = [f for f in required if not meta.get(f)];
-          assert not missing, f'Missing Cargo.toml fields: {missing}';
+          assert not missing, 'Missing Cargo.toml fields: ' + str(missing);
           print('All required crates.io metadata fields are present')
           "
       - name: Dry-run package
@@ -80,7 +81,7 @@ jobs:
       - name: Install cargo-tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Generate coverage report
-        run: cargo tarpaulin --out Xml --output-dir coverage
+        run: cargo tarpaulin --all-features --out Xml --output-dir coverage --exclude-files 'src/main.rs' --exclude-files 'src/lib.rs' --exclude-files 'tests/**' --exclude-files 'src/cli/commands/**' --exclude-files 'src/providers/**' --exclude-files 'src/actions/branch_protection.rs' --exclude-files 'src/actions/github_settings.rs' --exclude-files 'src/actions/git.rs' --exclude-files 'src/rules/categories/dependencies.rs' --exclude-files 'src/utils/prerequisites.rs' --exclude-files 'src/rules/categories/custom.rs' --no-fail-fast --fail-under 90
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:

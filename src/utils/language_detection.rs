@@ -426,4 +426,182 @@ mod tests {
         assert!(universal_entry.is_some());
         assert_eq!(universal_entry.unwrap().1, "Environment files");
     }
+
+    #[test]
+    fn test_detect_go() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("go.mod"), "module example.com/app").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::Go));
+    }
+
+    #[test]
+    fn test_detect_ruby() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("Gemfile"), "source 'https://rubygems.org'").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::Ruby));
+    }
+
+    #[test]
+    fn test_detect_php() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("composer.json"), "{}").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::Php));
+    }
+
+    #[test]
+    fn test_detect_java() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("pom.xml"), "<project></project>").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::Java));
+    }
+
+    #[test]
+    fn test_detect_csharp() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("App.csproj"), "<Project></Project>").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::CSharp));
+    }
+
+    #[test]
+    fn test_get_gitignore_entries_go() {
+        let mut languages = HashSet::new();
+        languages.insert(Language::Go);
+
+        let entries = get_gitignore_entries_for_languages(&languages);
+        assert!(entries.contains(&"vendor/".to_string()));
+    }
+
+    #[test]
+    fn test_get_gitignore_entries_python() {
+        let mut languages = HashSet::new();
+        languages.insert(Language::Python);
+
+        let entries = get_gitignore_entries_for_languages(&languages);
+        assert!(entries.contains(&"__pycache__/".to_string()));
+        assert!(entries.contains(&"venv/".to_string()));
+    }
+
+    #[test]
+    fn test_get_gitignore_entries_ruby() {
+        let mut languages = HashSet::new();
+        languages.insert(Language::Ruby);
+
+        let entries = get_gitignore_entries_for_languages(&languages);
+        assert!(entries.contains(&"vendor/bundle/".to_string()));
+    }
+
+    #[test]
+    fn test_get_gitignore_entries_php() {
+        let mut languages = HashSet::new();
+        languages.insert(Language::Php);
+
+        let entries = get_gitignore_entries_for_languages(&languages);
+        assert!(entries.contains(&"vendor/".to_string()));
+    }
+
+    #[test]
+    fn test_get_gitignore_entries_java() {
+        let mut languages = HashSet::new();
+        languages.insert(Language::Java);
+
+        let entries = get_gitignore_entries_for_languages(&languages);
+        assert!(entries.contains(&"target/".to_string()));
+        assert!(entries.contains(&"*.class".to_string()));
+    }
+
+    #[test]
+    fn test_get_gitignore_entries_csharp() {
+        let mut languages = HashSet::new();
+        languages.insert(Language::CSharp);
+
+        let entries = get_gitignore_entries_for_languages(&languages);
+        assert!(entries.contains(&"bin/".to_string()));
+        assert!(entries.contains(&"obj/".to_string()));
+    }
+
+    #[test]
+    fn test_get_gitignore_entries_with_descriptions_multiple() {
+        let mut languages = HashSet::new();
+        languages.insert(Language::JavaScript);
+        languages.insert(Language::Python);
+
+        let entries = get_gitignore_entries_with_descriptions(&languages);
+
+        // Should contain entries for both languages
+        assert!(entries.iter().any(|(p, _)| p == "node_modules/"));
+        assert!(entries.iter().any(|(p, _)| p == "__pycache__/"));
+    }
+
+    #[test]
+    fn test_detect_no_languages() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        // Empty directory, no language markers
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.is_empty());
+    }
+
+    #[test]
+    fn test_detect_typescript() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("tsconfig.json"), "{}").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::JavaScript));
+    }
+
+    #[test]
+    fn test_detect_python_pipfile() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("Pipfile"), "[packages]").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::Python));
+    }
+
+    #[test]
+    fn test_detect_java_gradle() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("build.gradle"), "apply plugin: 'java'").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let languages = detect_languages(&scanner);
+
+        assert!(languages.contains(&Language::Java));
+    }
 }

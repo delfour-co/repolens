@@ -278,3 +278,151 @@ pub struct CustomRulesConfig {
     #[serde(flatten)]
     pub rules: HashMap<String, CustomRule>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rule_config_default() {
+        let config = RuleConfig::default();
+        assert!(!config.enabled); // Default for bool is false
+        assert!(config.severity.is_none());
+    }
+
+    #[test]
+    fn test_rule_config_deserialize() {
+        let toml_str = r#"
+            enabled = true
+            severity = "critical"
+        "#;
+        let config: RuleConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.enabled);
+        assert_eq!(config.severity, Some("critical".to_string()));
+    }
+
+    #[test]
+    fn test_secrets_config_default() {
+        let config = SecretsConfig::default();
+        assert!(config.ignore_patterns.is_empty());
+        assert!(config.ignore_files.is_empty());
+        assert!(config.custom_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_url_config_default() {
+        let config = UrlConfig::default();
+        assert!(config.allowed_internal.is_empty());
+    }
+
+    #[test]
+    fn test_actions_config_default() {
+        let config = ActionsConfig::default();
+        assert!(config.gitignore);
+        assert!(config.contributing);
+        assert!(config.code_of_conduct);
+        assert!(config.security_policy);
+    }
+
+    #[test]
+    fn test_license_config_default() {
+        let config = LicenseConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.license_type, "MIT");
+        assert!(config.author.is_none());
+        assert!(config.year.is_none());
+    }
+
+    #[test]
+    fn test_branch_protection_config_default() {
+        let config = BranchProtectionConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.branch, "main");
+        assert_eq!(config.required_approvals, 1);
+        assert!(config.require_status_checks);
+        assert!(config.block_force_push);
+        assert!(!config.require_signed_commits);
+    }
+
+    #[test]
+    fn test_github_settings_config_default() {
+        let config = GitHubSettingsConfig::default();
+        assert!(config.discussions);
+        assert!(config.issues);
+        assert!(!config.wiki);
+        assert!(config.vulnerability_alerts);
+        assert!(config.automated_security_fixes);
+    }
+
+    #[test]
+    fn test_templates_config_default() {
+        let config = TemplatesConfig::default();
+        assert!(config.license_author.is_none());
+        assert!(config.license_year.is_none());
+        assert!(config.project_name.is_none());
+        assert!(config.project_description.is_none());
+    }
+
+    #[test]
+    fn test_custom_rule_deserialize() {
+        let toml_str = r#"
+            pattern = "TODO|FIXME"
+            severity = "warning"
+            files = ["*.rs", "*.py"]
+            message = "Found TODO comment"
+            description = "TODO comments should be addressed"
+            remediation = "Complete the task or remove the comment"
+            invert = false
+        "#;
+        let rule: CustomRule = toml::from_str(toml_str).unwrap();
+        assert_eq!(rule.pattern, Some("TODO|FIXME".to_string()));
+        assert_eq!(rule.severity, "warning");
+        assert_eq!(rule.files.len(), 2);
+        assert!(!rule.invert);
+    }
+
+    #[test]
+    fn test_custom_rule_with_command() {
+        let toml_str = r#"
+            command = "test -f Makefile"
+            severity = "info"
+            message = "Makefile not found"
+            invert = true
+        "#;
+        let rule: CustomRule = toml::from_str(toml_str).unwrap();
+        assert!(rule.pattern.is_none());
+        assert_eq!(rule.command, Some("test -f Makefile".to_string()));
+        assert!(rule.invert);
+    }
+
+    #[test]
+    fn test_custom_rules_config_default() {
+        let config = CustomRulesConfig::default();
+        assert!(config.rules.is_empty());
+    }
+
+    #[test]
+    fn test_default_true_function() {
+        assert!(default_true());
+    }
+
+    #[test]
+    fn test_default_license_type_function() {
+        assert_eq!(default_license_type(), "MIT");
+    }
+
+    #[test]
+    fn test_default_branch_function() {
+        assert_eq!(default_branch(), "main");
+    }
+
+    #[test]
+    fn test_default_approvals_function() {
+        assert_eq!(default_approvals(), 1);
+    }
+
+    #[test]
+    fn test_default_custom_severity_function() {
+        assert_eq!(default_custom_severity(), "warning");
+    }
+}
