@@ -63,9 +63,13 @@ pub struct PlanArgs {
 /// Arguments for the apply command
 #[derive(Args, Debug)]
 pub struct ApplyArgs {
-    /// Skip confirmation prompts
+    /// Skip confirmation prompts and apply all actions automatically
     #[arg(short, long)]
     pub yes: bool,
+
+    /// Enable interactive mode with action selection and diff preview
+    #[arg(short, long)]
+    pub interactive: bool,
 
     /// Dry run - show what would be done without making changes
     #[arg(long)]
