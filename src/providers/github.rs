@@ -261,12 +261,45 @@ impl GitHubProvider {
     /// # Errors
     ///
     /// Returns an error if the issue creation fails
+    /// Ensure a label exists in the repository, creating it if necessary
+    pub fn ensure_label(&self, label: &str, color: &str, description: &str) {
+        // Check if label exists by trying to view it
+        let check = Command::new("gh")
+            .args(["label", "list", "--search", label, "--json", "name"])
+            .output();
+
+        if let Ok(output) = check {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains(label) {
+                return;
+            }
+        }
+
+        // Create the label
+        let _ = Command::new("gh")
+            .args([
+                "label",
+                "create",
+                label,
+                "--color",
+                color,
+                "--description",
+                description,
+            ])
+            .output();
+    }
+
     pub fn create_issue(
         &self,
         title: &str,
         body: &str,
         labels: &[&str],
     ) -> Result<String, RepoLensError> {
+        // Ensure all labels exist before creating the issue
+        for label in labels {
+            self.ensure_label(label, "d73a4a", "Created by RepoLens audit");
+        }
+
         let mut args = vec!["issue", "create", "--title", title, "--body", body];
         for label in labels {
             args.push("--label");
