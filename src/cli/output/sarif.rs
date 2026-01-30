@@ -225,8 +225,8 @@ mod tests {
 
     #[test]
     fn test_sarif_output_default() {
-        let _output = SarifOutput;
-        // SarifOutput is a unit struct
+        let _output: SarifOutput = Default::default();
+        // Verify Default trait impl works
     }
 
     #[test]

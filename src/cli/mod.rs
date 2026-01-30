@@ -6,7 +6,7 @@ pub mod output;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use commands::{ApplyArgs, InitArgs, PlanArgs, ReportArgs};
+use commands::{ApplyArgs, InitArgs, InstallHooksArgs, PlanArgs, ReportArgs};
 
 /// RepoLens - Audit and prepare repositories for open source or enterprise standards
 #[derive(Parser, Debug)]
@@ -43,4 +43,7 @@ pub enum Commands {
 
     /// Generate an audit report
     Report(ReportArgs),
+
+    /// Install or remove Git hooks (pre-commit, pre-push)
+    InstallHooks(InstallHooksArgs),
 }
