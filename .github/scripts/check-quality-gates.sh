@@ -57,51 +57,34 @@ COVERAGE_FILE="${1:-coverage/cobertura.xml}"
 MIN_COVERAGE=$(extract_toml_value "coverage" "minimum" "80.0")
 
 if [ -f "$COVERAGE_FILE" ]; then
-    # Extraire le pourcentage de couverture depuis le fichier XML
-    if command -v xmllint &> /dev/null; then
-        # Calculer la couverture depuis le XML
-        TOTAL_LINES=$(xmllint --xpath "sum(//@lines)" "$COVERAGE_FILE" 2>/dev/null || echo "0")
-        COVERED_LINES=$(xmllint --xpath "sum(//@covered)" "$COVERAGE_FILE" 2>/dev/null || echo "0")
-        
-        if [ "$TOTAL_LINES" != "0" ] && [ "$TOTAL_LINES" != "" ]; then
+    COVERAGE=""
+
+    # Method 1: Extract line-rate from root <coverage> element (standard cobertura format)
+    LINE_RATE=$(grep -oP '<coverage[^>]+line-rate="\K[0-9.]+' "$COVERAGE_FILE" 2>/dev/null | head -1 || true)
+    if [ -n "$LINE_RATE" ] && [ "$LINE_RATE" != "0" ]; then
+        COVERAGE=$(awk "BEGIN {printf \"%.2f\", $LINE_RATE * 100}")
+    fi
+
+    # Method 2: Use lines-valid and lines-covered attributes via xmllint
+    if [ -z "$COVERAGE" ] && command -v xmllint &> /dev/null; then
+        TOTAL_LINES=$(xmllint --xpath "string(//coverage/@lines-valid)" "$COVERAGE_FILE" 2>/dev/null || true)
+        COVERED_LINES=$(xmllint --xpath "string(//coverage/@lines-covered)" "$COVERAGE_FILE" 2>/dev/null || true)
+
+        if [ -n "$TOTAL_LINES" ] && [ "$TOTAL_LINES" != "0" ] && [ -n "$COVERED_LINES" ]; then
             COVERAGE=$(awk "BEGIN {printf \"%.2f\", ($COVERED_LINES / $TOTAL_LINES) * 100}")
-            
-            if compare_float "$COVERAGE" ">=" "$MIN_COVERAGE"; then
-                check_result "Couverture de code" true "$COVERAGE% (minimum: $MIN_COVERAGE%)"
-            else
-                check_result "Couverture de code" false "$COVERAGE% (minimum requis: $MIN_COVERAGE%)"
-                FAILED_CHECKS=$((FAILED_CHECKS + 1))
-            fi
-        else
-            # Essayer une autre méthode d'extraction
-            COVERAGE=$(grep -oP 'line-rate="[0-9.]+"' "$COVERAGE_FILE" | head -1 | grep -oP '[0-9.]+' | awk '{print $1 * 100}' || echo "0")
-            if [ "$COVERAGE" != "0" ]; then
-                if compare_float "$COVERAGE" ">=" "$MIN_COVERAGE"; then
-                    check_result "Couverture de code" true "$COVERAGE% (minimum: $MIN_COVERAGE%)"
-                else
-                    check_result "Couverture de code" false "$COVERAGE% (minimum requis: $MIN_COVERAGE%)"
-                    FAILED_CHECKS=$((FAILED_CHECKS + 1))
-                fi
-            else
-                echo -e "${YELLOW}⚠️  Impossible de calculer la couverture depuis le fichier XML${NC}"
-            fi
         fi
-    elif command -v cargo-tarpaulin &> /dev/null; then
-        # Alternative: utiliser cargo-tarpaulin directement
-        COVERAGE_OUTPUT=$(cargo tarpaulin --out Xml --output-dir /tmp 2>&1)
-        COVERAGE=$(echo "$COVERAGE_OUTPUT" | grep -oP '\d+\.\d+%' | head -1 | tr -d '%' || echo "0")
-        if [ "$COVERAGE" != "0" ]; then
-            if compare_float "$COVERAGE" ">=" "$MIN_COVERAGE"; then
-                check_result "Couverture de code" true "$COVERAGE% (minimum: $MIN_COVERAGE%)"
-            else
-                check_result "Couverture de code" false "$COVERAGE% (minimum requis: $MIN_COVERAGE%)"
-                FAILED_CHECKS=$((FAILED_CHECKS + 1))
-            fi
+    fi
+
+    # Evaluate result
+    if [ -n "$COVERAGE" ]; then
+        if compare_float "$COVERAGE" ">=" "$MIN_COVERAGE"; then
+            check_result "Couverture de code" true "$COVERAGE% (minimum: $MIN_COVERAGE%)"
         else
-            echo -e "${YELLOW}⚠️  Impossible d'extraire la couverture depuis cargo-tarpaulin${NC}"
+            check_result "Couverture de code" false "$COVERAGE% (minimum requis: $MIN_COVERAGE%)"
+            FAILED_CHECKS=$((FAILED_CHECKS + 1))
         fi
     else
-        echo -e "${YELLOW}⚠️  xmllint et cargo-tarpaulin non disponibles, vérification de couverture ignorée${NC}"
+        echo -e "${YELLOW}⚠️  Impossible de calculer la couverture depuis le fichier XML${NC}"
     fi
 else
     echo -e "${YELLOW}⚠️  Fichier de couverture non trouvé ($COVERAGE_FILE), vérification ignorée${NC}"

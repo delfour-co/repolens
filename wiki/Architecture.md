@@ -39,6 +39,29 @@ RepoLens est construit en Rust avec une architecture modulaire qui sépare les p
 └─────────────────────────────────────────┘
 ```
 
+## Structure des modules
+
+```
+src/
+├── main.rs              # Point d'entrée
+├── lib.rs               # Exports de la bibliothèque
+├── cli/                 # Commandes CLI et formats de sortie
+│   ├── commands/        # init, plan, apply, report, schema, compare, install_hooks
+│   └── output/          # terminal, JSON, SARIF, Markdown, HTML
+├── cache/               # Système de cache d'audit (invalidation SHA256)
+├── compare/             # Comparaison de rapports (score diff, régressions, améliorations)
+├── config/              # Chargement de configuration et presets
+├── hooks/               # Gestion des Git hooks (pre-commit, pre-push)
+├── rules/               # Moteur d'audit et règles
+│   ├── categories/      # secrets, files, docs, security, workflows, quality, licenses, dependencies, custom
+│   ├── patterns/        # Patterns de détection (secrets)
+│   └── engine.rs        # Moteur d'exécution
+├── actions/             # Planification et exécution des correctifs
+├── providers/           # Intégration APIs externes (GitHub via gh CLI)
+├── scanner/             # Scan du système de fichiers et Git
+└── utils/               # Utilitaires (vérification des prérequis)
+```
+
 ## Modules principaux
 
 ### CLI (`src/cli/`)
@@ -53,8 +76,11 @@ Gère l'interface en ligne de commande et le routage des commandes.
 **Commandes** :
 - `init` : Initialisation de la configuration
 - `plan` : Génération du plan d'audit
-- `apply` : Application des correctifs
-- `report` : Génération de rapports
+- `apply` : Application des correctifs (mode interactif supporté)
+- `report` : Génération de rapports (avec validation JSON Schema)
+- `schema` : Affichage/export du JSON Schema pour les rapports d'audit
+- `compare` : Comparaison de deux rapports d'audit JSON
+- `install-hooks` : Installation/suppression des Git hooks (pre-commit, pre-push)
 
 ### Configuration (`src/config/`)
 
@@ -101,6 +127,9 @@ Moteur d'exécution des règles d'audit.
   - `security.rs` : Bonnes pratiques de sécurité
   - `workflows.rs` : Validation des workflows
   - `quality.rs` : Standards de qualité
+  - `licenses.rs` : Conformité des licences (LIC001-LIC004)
+  - `dependencies.rs` : Vulnérabilités des dépendances via OSV API (DEP001-DEP002)
+  - `custom.rs` : Règles personnalisées (regex/shell)
 - `patterns/` : Patterns de détection
   - `secrets.rs` : Patterns de secrets
 
@@ -120,6 +149,42 @@ Planification et exécution des actions correctives.
 - `github_settings.rs` : Configuration GitHub
 - `branch_protection.rs` : Protection des branches
 - `gitignore.rs` : Mise à jour de .gitignore
+
+### Cache (`src/cache/`)
+
+Système de mise en cache des résultats d'audit.
+
+**Responsabilités** :
+- Mise en cache des résultats d'audit avec hashing SHA256
+- Invalidation automatique lors de changements de contenu
+- Gestion de l'expiration (max_age_hours configurable)
+
+**Options CLI** :
+- `--no-cache` : Désactiver le cache
+- `--clear-cache` : Vider le cache avant l'audit
+- `--cache-dir` : Répertoire de cache personnalisé
+
+### Compare (`src/compare/`)
+
+Comparaison de rapports d'audit pour détecter les régressions et améliorations.
+
+**Responsabilités** :
+- Calcul du score pondéré (Critical=10, Warning=3, Info=1)
+- Détection des nouveaux findings (régressions)
+- Détection des findings résolus (améliorations)
+- Ventilation par catégorie
+
+**Formats de sortie** : Terminal (coloré), JSON, Markdown
+
+### Hooks (`src/hooks/`)
+
+Gestion des Git hooks pour l'intégration dans le workflow de développement.
+
+**Responsabilités** :
+- Génération et installation de hooks pre-commit (scan de secrets)
+- Génération et installation de hooks pre-push (audit complet)
+- Sauvegarde automatique des hooks existants
+- Restauration des hooks originaux à la suppression
 
 ### Providers (`src/providers/`)
 
@@ -306,11 +371,17 @@ tests/
 
 - **clap** : CLI framework
 - **tokio** : Runtime async
-- **serde** : Sérialisation
+- **serde** / **serde_json** : Sérialisation
 - **toml** : Parsing TOML
 - **regex** : Pattern matching
 - **tracing** : Logging
-- **tera** : Templates
+- **tera** / **minijinja** : Templates
+- **jsonschema** : Validation JSON Schema
+- **reqwest** : Client HTTP (OSV API)
+- **similar** : Calcul de diff (mode interactif)
+- **dialoguer** : Prompts interactifs
+- **indicatif** : Barres de progression
+- **chrono** : Gestion date/heure pour les rapports
 
 ## Prochaines étapes
 

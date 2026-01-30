@@ -10,12 +10,15 @@ Ce guide vous explique comment utiliser RepoLens pour auditer vos dépôts GitHu
 
 ## Commandes principales
 
-RepoLens propose quatre commandes principales :
+RepoLens propose sept commandes :
 
 - `init` : Initialiser la configuration
 - `plan` : Générer un plan d'audit
-- `apply` : Appliquer les correctifs
-- `report` : Générer un rapport d'audit
+- `apply` : Appliquer les correctifs (mode interactif supporté)
+- `report` : Générer un rapport d'audit (avec validation JSON Schema)
+- `schema` : Afficher ou exporter le JSON Schema des rapports d'audit
+- `compare` : Comparer deux rapports d'audit JSON
+- `install-hooks` : Installer ou supprimer les Git hooks
 
 ## Initialisation
 
@@ -126,15 +129,24 @@ repolens apply --only files
 repolens apply --only files,docs
 ```
 
-### Options interactives
+### Mode interactif
 
 ```bash
-# Confirmer chaque action
+# Sélection interactive des actions avec aperçu diff
 repolens apply --interactive
+repolens apply -i
 
-# Forcer l'application (sans confirmation)
-repolens apply --force
+# Accepter toutes les actions sans confirmation
+repolens apply --yes
+repolens apply -y
 ```
+
+Le mode interactif offre :
+1. **Résumé visuel** des actions par catégorie
+2. **Sélection multi-choix** (Espace pour toggle, Entrée pour confirmer)
+3. **Aperçu diff** coloré pour chaque action (vert = ajouts, rouge = suppressions)
+4. **Barre de progression** pendant l'exécution
+5. **Résumé d'exécution** avec compteurs succès/échec
 
 ## Génération de rapports
 
@@ -157,7 +169,101 @@ repolens report --format markdown --output audit-report.md
 
 # Rapport JSON
 repolens report --format json --output audit-report.json
+
+# Rapport JSON avec référence au JSON Schema
+repolens report --format json --schema
+
+# Rapport JSON avec validation contre le schéma
+repolens report --format json --schema --validate
 ```
+
+## JSON Schema
+
+RepoLens fournit un JSON Schema (draft-07) décrivant la structure du rapport JSON.
+
+```bash
+# Afficher le schéma sur stdout
+repolens schema
+
+# Exporter le schéma dans un fichier
+repolens schema --output schemas/audit-report.schema.json
+```
+
+## Comparaison de rapports
+
+Comparez deux rapports JSON pour détecter les régressions et améliorations.
+
+```bash
+# Générer deux rapports à des moments différents
+repolens report --format json --output before.json
+# ... faire des changements ...
+repolens report --format json --output after.json
+
+# Comparer (sortie terminal colorée)
+repolens compare --base-file before.json --head-file after.json
+
+# Comparer en JSON
+repolens compare --base-file before.json --head-file after.json --format json
+
+# Comparer en Markdown
+repolens compare --base-file before.json --head-file after.json --format markdown
+
+# Sauvegarder la comparaison
+repolens compare --base-file before.json --head-file after.json --output comparison.md --format markdown
+
+# Échouer si des régressions sont détectées (CI)
+repolens compare --base-file baseline.json --head-file current.json --fail-on-regression
+```
+
+La comparaison inclut :
+- **Score pondéré** : Critical=10, Warning=3, Info=1 avec diff
+- **Nouveaux findings** : Régressions (présents dans head, absents dans base)
+- **Findings résolus** : Améliorations (présents dans base, absents dans head)
+- **Ventilation par catégorie** : Changements de comptage par catégorie
+
+## Git Hooks
+
+RepoLens peut installer des Git hooks pour automatiser les vérifications.
+
+```bash
+# Installer tous les hooks configurés
+repolens install-hooks
+
+# Installer uniquement le pre-commit
+repolens install-hooks --pre-commit
+
+# Installer uniquement le pre-push
+repolens install-hooks --pre-push
+
+# Écraser les hooks existants (sauvegarde automatique)
+repolens install-hooks --force
+
+# Supprimer les hooks RepoLens (restaure les sauvegardes)
+repolens install-hooks --remove
+```
+
+**Comportement des hooks** :
+- **pre-commit** : Scanne les fichiers staged pour détecter les secrets. Si des secrets sont détectés, le commit est annulé.
+- **pre-push** : Lance un audit complet avant le push. Si des problèmes sont trouvés, le push est annulé.
+
+Les hooks peuvent être contournés avec `--no-verify` (ex: `git commit --no-verify`).
+
+## Cache d'audit
+
+RepoLens inclut un système de cache pour accélérer les audits répétés.
+
+```bash
+# Désactiver le cache
+repolens plan --no-cache
+
+# Vider le cache avant l'audit
+repolens plan --clear-cache
+
+# Utiliser un répertoire de cache personnalisé
+repolens plan --cache-dir /tmp/repolens-cache
+```
+
+Ces options sont aussi disponibles pour la commande `report`.
 
 ## Exemples d'utilisation
 

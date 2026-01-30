@@ -42,23 +42,28 @@ src/
 ├── main.rs              # Point d'entrée du CLI
 ├── lib.rs               # Exports de la bibliothèque
 ├── cli/                 # Commandes CLI
-│   ├── commands/        # Implémentation des commandes (init, plan, apply, report)
+│   ├── commands/        # Implémentation des commandes (init, plan, apply, report, schema, compare, install_hooks)
 │   └── output/          # Formats de sortie (terminal, JSON, SARIF, Markdown, HTML)
+├── cache/               # Système de cache d'audit (invalidation par SHA256)
+├── compare/             # Comparaison de rapports d'audit (score diff, régressions, améliorations)
 ├── config/              # Chargement et gestion de la configuration
 │   └── presets/         # Presets de configuration (opensource, enterprise, strict)
+├── hooks/               # Gestion des Git hooks (pre-commit, pre-push)
 ├── rules/               # Moteur d'audit et règles
-│   ├── categories/      # Catégories de règles (secrets, files, docs, security, workflows, quality)
+│   ├── categories/      # Catégories de règles (secrets, files, docs, security, workflows, quality, licenses, dependencies, custom)
 │   ├── patterns/        # Patterns de détection (secrets, etc.)
 │   └── engine.rs        # Moteur d'exécution des règles
 ├── actions/             # Planification et exécution des actions
 │   ├── planner.rs       # Planification des actions à partir des résultats
-│   ├── executor.rs      # Exécution des actions
+│   ├── executor.rs      # Exécution des actions (mode interactif supporté)
 │   └── templates.rs     # Génération de fichiers à partir de templates
 ├── providers/           # Intégration avec les APIs externes
 │   └── github.rs        # Provider GitHub (via gh CLI)
-└── scanner/             # Scan du système de fichiers et Git
-    ├── filesystem.rs    # Scan du système de fichiers
-    └── git.rs           # Informations Git
+├── scanner/             # Scan du système de fichiers et Git
+│   ├── filesystem.rs    # Scan du système de fichiers
+│   └── git.rs           # Informations Git
+└── utils/               # Utilitaires partagés
+    └── prerequisites.rs # Vérification des prérequis (git, gh, etc.)
 ```
 
 ## Commandes de Développement
@@ -84,6 +89,11 @@ cargo run -- --help
 cargo run -- init
 cargo run -- plan -vv
 cargo run -- apply --dry-run
+cargo run -- apply --interactive      # Mode interactif avec sélection d'actions
+cargo run -- report --format json     # Rapport JSON
+cargo run -- schema                   # Afficher le JSON Schema
+cargo run -- compare --base-file a.json --head-file b.json  # Comparer deux rapports
+cargo run -- install-hooks            # Installer les git hooks
 
 # Avec logs détaillés
 cargo run -- plan -vvv  # Trace level
