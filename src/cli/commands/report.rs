@@ -65,7 +65,11 @@ pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
     let renderer: Box<dyn ReportRenderer> = match args.format {
         ReportFormat::Html => Box::new(HtmlReport::new(args.detailed)),
         ReportFormat::Markdown => Box::new(MarkdownReport::new(args.detailed)),
-        ReportFormat::Json => Box::new(JsonOutput::new()),
+        ReportFormat::Json => Box::new(
+            JsonOutput::new()
+                .with_schema(args.schema)
+                .with_validation(args.validate),
+        ),
     };
 
     let report = renderer.render_report(&audit_results)?;

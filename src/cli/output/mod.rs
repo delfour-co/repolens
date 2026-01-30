@@ -1,7 +1,7 @@
 //! Output formatting module for CLI
 
 mod html;
-mod json;
+pub mod json;
 mod markdown;
 mod sarif;
 mod terminal;

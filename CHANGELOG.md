@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### JSON Schema for Audit Report Output (#15)
+- **JSON Schema (draft-07)** for the audit report JSON output (`schemas/audit-report.schema.json`)
+- **`schema` subcommand** to display or export the JSON Schema (`repolens schema`)
+- **`--schema` flag** on `report` command to include a `$schema` reference in JSON output
+- **`--validate` flag** on `report` command to validate JSON output against the schema before emitting
+- **Enhanced JSON report** with metadata (version, timestamp, schema_version), summary (total, by_severity, by_category), and optional schema reference
+- **Schema validation function** (`validate_against_schema`) for programmatic validation of JSON output
+- Schema documentation in `schemas/README.md`
+
 #### License Compliance Checking (#9)
 - **New rule category `licenses`** with four rules:
   - `LIC001`: No project license detected

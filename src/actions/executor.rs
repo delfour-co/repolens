@@ -152,6 +152,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(tarpaulin, ignore)]
     async fn test_execute_action_update_gitignore() {
         let _guard = get_dir_mutex().lock().await;
 
