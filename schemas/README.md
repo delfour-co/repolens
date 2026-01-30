@@ -94,7 +94,7 @@ repolens schema
     }
   ],
   "metadata": {
-    "version": "0.1.0",
+    "version": "1.0.0",
     "timestamp": "2026-01-29T12:00:00Z",
     "schema_version": "1.0.0"
   },

@@ -283,7 +283,7 @@ A clear and concise description of what actually happened.
 ## Environment
 
 - OS: [e.g. Ubuntu 22.04, macOS 13.0, Windows 11]
-- Version: [e.g. 0.1.0]
+- Version: [e.g. 1.0.0]
 - Rust version: [e.g. 1.70.0]
 
 ## Additional Context

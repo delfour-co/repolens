@@ -24,7 +24,7 @@ inputs:
     required: false
     default: ''
   version:
-    description: 'RepoLens version to install (e.g. "0.1.0", or "latest")'
+    description: 'RepoLens version to install (e.g. "1.0.0", or "latest")'
     required: false
     default: 'latest'
   upload-artifact:

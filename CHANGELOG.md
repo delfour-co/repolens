@@ -7,122 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-#### JSON Schema for Audit Report Output (#15)
-- **JSON Schema (draft-07)** for the audit report JSON output (`schemas/audit-report.schema.json`)
-- **`schema` subcommand** to display or export the JSON Schema (`repolens schema`)
-- **`--schema` flag** on `report` command to include a `$schema` reference in JSON output
-- **`--validate` flag** on `report` command to validate JSON output against the schema before emitting
-- **Enhanced JSON report** with metadata (version, timestamp, schema_version), summary (total, by_severity, by_category), and optional schema reference
-- **Schema validation function** (`validate_against_schema`) for programmatic validation of JSON output
-- Schema documentation in `schemas/README.md`
-
-#### License Compliance Checking (#9)
-- **New rule category `licenses`** with four rules:
-  - `LIC001`: No project license detected
-  - `LIC002`: Dependency license incompatible with project or not in allowed list
-  - `LIC003`: Dependency uses unknown/unrecognized license
-  - `LIC004`: Dependency has no license specified
-- **Project license detection** from LICENSE files, Cargo.toml, package.json, setup.cfg, pyproject.toml
-- **Dependency license parsing** from Cargo.toml, package.json (with node_modules), requirements.txt, go.mod
-- **License compatibility matrix** for common SPDX licenses (MIT, Apache-2.0, GPL-2.0, GPL-3.0, BSD, ISC, MPL-2.0, LGPL, AGPL, Unlicense, etc.)
-- **Configurable allowed/denied license lists** in `.repolens.toml`
-- Comprehensive test suite for license detection, parsing, and compatibility
-
-#### Compare Command (#18)
-- **`repolens compare` command**: Compare two audit report JSON files to visualize improvements and regressions
-- **Score comparison**: Weighted score diff (Critical=10, Warning=3, Info=1) showing overall trend
-- **New issues detection**: Findings present in head but not in base (regressions)
-- **Resolved issues detection**: Findings present in base but not in head (improvements)
-- **Category breakdown**: Per-category count changes table
-- **Multiple output formats**: Terminal (colored), JSON, and Markdown
-- **`--fail-on-regression` flag**: Exit with code 1 if new issues are detected, for CI integration
-- **`--output` option**: Save comparison report to a file
-
-#### Git Hooks Support (#6)
-- New `install-hooks` CLI command to install and remove Git hooks
-- **Pre-commit hook**: Checks for exposed secrets before each commit
-- **Pre-push hook**: Runs a full audit before pushing to a remote
-- Configurable via `[hooks]` section in `.repolens.toml`
-- Automatic backup of existing hooks before overwriting (`--force`)
-- Restore original hooks on removal
-- Support for standard repositories and git worktrees
-- 50+ unit tests covering hooks functionality
-
-### Changed
-
-- Increased CI coverage threshold from 90% to 95%
-- Added `src/actions/git.rs` to tarpaulin exclusion list (external command execution module)
-
-### Added
-
-- Additional unit tests for improved coverage across multiple modules:
-  - Cache module: save/load roundtrip, expired entries, edge cases
-  - Config loader: glob matching edge cases, double-star patterns
-  - Workflows rules: full `run` dispatcher, disabled rules, non-YAML files
-  - Quality rules: Python, Ruby, Go, Rust project detection, linting configs
-  - Secrets rules: template/sample env files, sensitive file detection, ignore patterns
-  - Language detection: Go, Ruby, PHP, Java, C#, Gradle, Pipfile detection
-  - Action planner: code of conduct, security policy, branch protection, GitHub settings
-  - Templates: all template types, nested directories, variable replacement
-  - Scanner: glob matching, file filtering, extension matching
-  - Error types: additional display/conversion tests
-
-#### Previous Code Coverage Improvement
-- Improved test coverage to 90% minimum for core modules
-- Fixed `test_has_changes` test race condition in `src/actions/git.rs` by using `std::sync::Mutex` instead of `tokio::sync::Mutex` for better cross-runtime compatibility
-- Added comprehensive tests for:
-  - CLI output modules (terminal, json, markdown, html, sarif)
-  - Configuration modules (loader, presets)
-  - Rules engine and results
-  - Scanner modules (filesystem, git)
-  - Error types
-  - Action plan and templates
-  - Cache module
-- Updated CI coverage threshold from 50% to 90% with appropriate file exclusions for untestable modules (CLI commands, providers, external API dependencies)
-
-### Added
-
-#### Interactive Mode for Apply Command (#3)
-- **Interactive action selection**: New `--interactive` (`-i`) flag enables users to select which actions to apply using a multi-select interface
-- **Visual action summary**: Displays a categorized overview of all planned actions with icons per category
-- **Diff preview**: Shows colored before/after diff for each action (green for additions, red for deletions) using the `similar` crate
-- **Progress bar**: Real-time progress indicator during action execution with `indicatif`
-- **Spinner for individual actions**: Visual feedback for each action being executed
-- **Enhanced execution summary**: Detailed results display with success/failure counts
-- **Auto-accept mode**: New `--yes` (`-y`) flag to skip confirmation prompts and apply all actions automatically
-
-### Changed
-- Improved terminal output formatting with better visual hierarchy
-- Updated README documentation with interactive mode examples
-
-## [0.2.0] - 2026-01-28
-
-### Added
-
-#### Distribution et Installation (#34, #35)
-- **Publication sur crates.io** : RepoLens est maintenant disponible via `cargo install repolens` (#34)
-- **Binaires pre-compiles multi-plateformes** : Binaires disponibles pour 5 plateformes (#35) :
-  - Linux x86_64
-  - Linux ARM64
-  - macOS Intel (x86_64)
-  - macOS Apple Silicon (ARM64)
-  - Windows x86_64
-
-#### GitHub Action officielle (#38)
-- **Action GitHub officielle** pour integrer RepoLens dans vos workflows CI/CD (#38)
-  - 7 inputs configurables : `preset`, `format`, `output`, `categories`, `exclude`, `verbose`, `fail-on-error`
-  - 3 outputs exploitables : `score`, `report-path`, `issues-count`
-  - 3 exemples d'utilisation fournis : audit basique, audit avec publication SARIF, audit multi-presets
-
-- Cross-platform pre-built binaries for Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), and Windows (x86_64)
-- Automated release workflow that builds, archives, and publishes binaries on version tags
-- SHA256 checksum generation and consolidated `checksums.sha256` file for release verification
-- Nightly build pipeline with quality gates (CI status, code quality, coverage)
-- Installation documentation for downloading and verifying pre-built binaries
-
-## [0.1.0] - 2026-01-24
+## [1.0.0] - 2026-01-30
 
 ### Added
 
@@ -141,62 +26,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **security**: Security best practices validation
   - **workflows**: CI/CD and GitHub Actions validation
   - **quality**: Code quality standards checks
+  - **custom**: User-defined custom rules via `.repolens.toml`
+  - **dependencies**: Dependency security checking via OSV API
+  - **licenses**: License compliance checking with SPDX compatibility matrix
 
 #### Action System
 - Action planner to generate fix plans based on audit results
 - Action executor to apply fixes automatically
-- Support for:
-  - Creating missing files from templates
-  - Updating `.gitignore` files
-  - Configuring GitHub branch protection
-  - Updating GitHub repository settings
+- Support for creating missing files from templates, updating `.gitignore`, configuring branch protection, updating GitHub repository settings
+
+#### Interactive Mode for Apply Command (#3)
+- Interactive action selection with `--interactive` (`-i`) flag
+- Visual action summary with categorized overview and icons
+- Colored diff preview (before/after) using the `similar` crate
+- Progress bar and spinner for real-time feedback
+- Auto-accept mode with `--yes` (`-y`) flag
+
+#### Audit Results Caching (#5)
+- Caching system for audit results to avoid redundant scans
+- Configurable cache expiration
+
+#### Git Hooks Support (#6)
+- `install-hooks` CLI command to install and remove Git hooks
+- Pre-commit hook for secret detection, pre-push hook for full audit
+- Configurable via `[hooks]` section in `.repolens.toml`
+- Automatic backup and restore of existing hooks
+
+#### License Compliance Checking (#9)
+- New rule category `licenses` with rules LIC001-LIC004
+- Project license detection from LICENSE files, Cargo.toml, package.json, setup.cfg, pyproject.toml
+- Dependency license parsing from Cargo.toml, package.json, requirements.txt, go.mod
+- License compatibility matrix for common SPDX licenses
+- Configurable allowed/denied license lists
+
+#### JSON Schema for Audit Report Output (#15)
+- JSON Schema (draft-07) for audit report output (`schemas/audit-report.schema.json`)
+- `schema` subcommand to display or export the JSON Schema
+- `--schema` and `--validate` flags on `report` command
+- Enhanced JSON report with metadata, summary, and optional schema reference
+
+#### Compare Command (#18)
+- `repolens compare` command to compare two audit report JSON files
+- Score comparison with weighted severity diff
+- New/resolved issues detection with category breakdown
+- Multiple output formats: terminal, JSON, markdown
+- `--fail-on-regression` flag for CI integration
 
 #### Output Formats
 - Terminal output with colored formatting
 - JSON output for programmatic consumption
 - SARIF output for security tooling integration
-- Markdown reports
-- HTML reports
+- Markdown and HTML reports
 
 #### Templates
 - LICENSE templates (MIT, Apache-2.0, GPL-3.0)
-- CONTRIBUTING.md template
-- CODE_OF_CONDUCT.md template
-- SECURITY.md template
-- GitHub issue templates (bug report, feature request)
-- Pull request template
+- CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md templates
+- GitHub issue templates (bug report, feature request) and pull request template
 
 #### GitHub Integration
 - GitHub API provider for repository management
-- Branch protection configuration
-- Repository settings management
+- Branch protection configuration and repository settings management
+
+#### Distribution
+- Publication on crates.io via `cargo install repolens`
+- Pre-built binaries for Linux (x86_64, ARM64), macOS (Intel, Apple Silicon), Windows (x86_64)
+- SHA256 checksum generation and verification
+- Official GitHub Action with 7 configurable inputs and 3 outputs
+
+#### CI/CD
+- Automated release workflow with multi-platform builds
+- Nightly build pipeline with quality gates
+- Changelog generation script for releases
+- Automatic GitHub Discussion announcements on release
 
 #### Documentation
 - Comprehensive README with usage examples
-- Configuration examples
-- CLI help documentation
+- Wiki documentation
+- Configuration and preset examples
 
-### Changed
-
-- N/A (initial release)
-
-### Deprecated
-
-- N/A (initial release)
-
-### Removed
-
-- N/A (initial release)
-
-### Fixed
-
-- N/A (initial release)
-
-### Security
-
-- Initial security-focused auditing capabilities
-- Secret detection patterns
-- Security policy templates
-
-[0.2.0]: https://github.com/kdelfour/repolens/releases/tag/v0.2.0
-[0.1.0]: https://github.com/kdelfour/repolens/releases/tag/v0.1.0
+[1.0.0]: https://github.com/delfour-co/repolens/releases/tag/v1.0.0

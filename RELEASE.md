@@ -16,7 +16,7 @@ Les nightly builds sont automatiquement créés à chaque push sur la branche pr
 ### Caractéristiques
 
 - **Version** : `{base_version}-nightly.{date}-{commit_sha}`
-  - Exemple : `0.1.0-nightly.20260124-143022-a1b2c3d`
+  - Exemple : `1.0.0-nightly.20260124-143022-a1b2c3d`
 - **Tag** : `nightly-{date}-{commit_sha}`
 - **Prerelease** : Oui (marqué comme pre-release sur GitHub)
 - **Rétention** : 30 jours
@@ -39,9 +39,9 @@ Les releases sont créées automatiquement depuis la CI avec auto-incrémentatio
 2. Sélectionnez le workflow **"Create Release"**
 3. Cliquez sur **"Run workflow"**
 4. Choisissez le type d'incrémentation :
-   - **patch** : Corrections de bugs (0.1.0 → 0.1.1)
-   - **minor** : Nouvelles fonctionnalités (0.1.0 → 0.2.0)
-   - **major** : Changements incompatibles (0.1.0 → 1.0.0)
+   - **patch** : Corrections de bugs (1.0.0 → 1.0.1)
+   - **minor** : Nouvelles fonctionnalités (1.0.0 → 1.1.0)
+   - **major** : Changements incompatibles (1.0.0 → 2.0.0)
 5. Cochez **"Create and push tag automatically"** (recommandé)
 6. Cliquez sur **"Run workflow"**
 
@@ -59,7 +59,7 @@ Le workflow va automatiquement :
 #### Méthode 1 : Script automatique
 
 ```bash
-./scripts/release.sh 0.2.0
+./scripts/release.sh 1.0.0
 ```
 
 Le script va :
@@ -76,31 +76,31 @@ Ensuite, poussez le commit et le tag :
 
 ```bash
 git push origin main
-git push origin v0.2.0
+git push origin v1.0.0
 ```
 
 #### Méthode 2 : Manuel
 
 1. Mettre à jour la version dans `Cargo.toml` :
    ```toml
-   version = "0.2.0"
+   version = "1.0.0"
    ```
 
 2. Créer un commit :
    ```bash
    git add Cargo.toml
-   git commit -m "chore: bump version to 0.2.0"
+   git commit -m "chore: bump version to 1.0.0"
    ```
 
 3. Créer un tag annoté :
    ```bash
-   git tag -a v0.2.0 -m "Release 0.2.0"
+   git tag -a v1.0.0 -m "Release 1.0.0"
    ```
 
 4. Pousser le commit et le tag :
    ```bash
    git push origin main
-   git push origin v0.2.0
+   git push origin v1.0.0
    ```
 
 ### Format de version
@@ -108,7 +108,7 @@ git push origin v0.2.0
 Les versions doivent suivre [Semantic Versioning](https://semver.org/) :
 
 - Format : `MAJOR.MINOR.PATCH`
-- Exemples : `0.1.0`, `0.2.0`, `1.0.0`, `2.1.3`
+- Exemples : `1.0.0`, `1.1.0`, `2.0.0`, `2.1.3`
 - Pré-releases : `1.0.0-alpha.1`, `1.0.0-beta.2`
 
 ### Auto-incrémentation de version
@@ -118,10 +118,10 @@ Le système calcule automatiquement la prochaine version en fonction :
 - Du type d'incrémentation choisi (patch, minor, major)
 
 **Exemples :**
-- Dernière version : `0.1.0`
-  - **patch** → `0.1.1`
-  - **minor** → `0.2.0`
-  - **major** → `1.0.0`
+- Dernière version : `1.0.0`
+  - **patch** → `1.0.1`
+  - **minor** → `1.1.0`
+  - **major** → `2.0.0`
 
 ### Processus automatique
 
@@ -157,8 +157,8 @@ Chaque release contient :
 
 ```bash
 # Télécharger les fichiers
-wget https://github.com/delfour-co/cli--repolens/releases/download/v0.2.0/repolens
-wget https://github.com/delfour-co/cli--repolens/releases/download/v0.2.0/repolens.sha256
+wget https://github.com/delfour-co/cli--repolens/releases/download/v1.0.0/repolens
+wget https://github.com/delfour-co/cli--repolens/releases/download/v1.0.0/repolens.sha256
 
 # Vérifier
 sha256sum -c repolens.sha256
@@ -214,7 +214,7 @@ security: fix secret detection false positives
 Exemple :
 
 ```bash
-./scripts/generate-changelog.sh v0.1.0 v0.2.0
+./scripts/generate-changelog.sh v1.0.0 v1.0.0
 ```
 
 ## Workflow GitHub Actions
@@ -264,7 +264,7 @@ Exemple :
 ### Le workflow ne se déclenche pas
 
 - Vérifiez que le tag suit le format `v*.*.*`
-- Vérifiez que le tag a été poussé : `git push origin v0.2.0`
+- Vérifiez que le tag a été poussé : `git push origin v1.0.0`
 
 ### Le CHANGELOG est vide
 

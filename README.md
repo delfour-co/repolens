@@ -27,7 +27,7 @@ Download the latest release from the [Releases page](https://github.com/kdelfour
 
 ```bash
 # Download and install
-wget https://github.com/kdelfour/repolens/releases/download/v0.1.0/repolens-linux-x86_64.tar.gz
+wget https://github.com/kdelfour/repolens/releases/download/v1.0.0/repolens-linux-x86_64.tar.gz
 Pre-built binaries are available for all major platforms. Download the latest release from the [Releases page](https://github.com/delfour-co/cli--repolens/releases).
 
 #### Supported Platforms
@@ -515,7 +515,7 @@ jobs:
 | `format` | Output format (`terminal`, `json`, `sarif`, `markdown`, `html`) | `terminal` |
 | `fail-on` | Fail on severity level (`critical`, `high`, `medium`, `low`, `none`) | `critical` |
 | `config` | Path to a custom `.repolens.toml` config file | |
-| `version` | RepoLens version to install (e.g. `0.1.0` or `latest`) | `latest` |
+| `version` | RepoLens version to install (e.g. `1.0.0` or `latest`) | `latest` |
 | `upload-artifact` | Upload report as a GitHub Actions artifact | `true` |
 | `artifact-name` | Name of the uploaded artifact | `repolens-report` |
 

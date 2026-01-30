@@ -61,7 +61,7 @@
 
 ---
 
-## Additional Tasks (Nice to have for v0.1.0)
+## Additional Tasks (Nice to have for v1.0.0)
 
 - [x] Add `async-trait` crate to Cargo.toml (needed for RuleCategory trait)
 - [x] Verify compilation with `cargo check`

@@ -68,10 +68,10 @@ Vous pouvez générer le changelog manuellement avec le script :
 
 ```bash
 # Générer le changelog entre deux tags
-./scripts/generate-changelog.sh v0.1.0 v0.2.0
+./scripts/generate-changelog.sh v1.0.0 v1.1.0
 
 # Générer le changelog depuis le dernier tag jusqu'à HEAD
-./scripts/generate-changelog.sh v0.1.0 HEAD
+./scripts/generate-changelog.sh v1.0.0 HEAD
 
 # Générer le changelog depuis le début du projet
 ./scripts/generate-changelog.sh $(git rev-list --max-parents=0 HEAD) HEAD
@@ -82,7 +82,7 @@ Vous pouvez générer le changelog manuellement avec le script :
 Le changelog généré suit le format [Keep a Changelog](https://keepachangelog.com/) :
 
 ```markdown
-## [0.2.0] - 2026-01-28
+## [1.1.0] - 2026-01-28
 
 ### BREAKING CHANGES
 - Modification de l'API de configuration (#123)
@@ -100,7 +100,7 @@ Le changelog généré suit le format [Keep a Changelog](https://keepachangelog.
 ### Security
 - Correction de la vulnérabilité XSS (#128)
 
-[0.2.0]: https://github.com/delfour-co/cli--repolens/releases/tag/v0.2.0
+[1.1.0]: https://github.com/delfour-co/cli--repolens/releases/tag/v1.1.0
 ```
 
 ## Intégration dans les workflows
@@ -157,7 +157,7 @@ feat: Support des règles personnalisées (#125)
 fix: Correction de la détection des secrets (#126)
 
 # CHANGELOG généré
-## [0.2.0] - 2026-01-28
+## [1.1.0] - 2026-01-28
 
 ### Added
 - Ajout de la vérification des dépendances (#124)
@@ -174,7 +174,7 @@ fix: Correction de la détection des secrets (#126)
 feat!: Modification de l'API de configuration (#123)
 
 # CHANGELOG généré
-## [0.2.0] - 2026-01-28
+## [1.1.0] - 2026-01-28
 
 ### BREAKING CHANGES
 - Modification de l'API de configuration (#123)
@@ -188,7 +188,7 @@ Si le changelog généré est vide :
 
 1. Vérifiez que les commits suivent le format Conventional Commits
 2. Vérifiez que les tags existent : `git tag -l`
-3. Vérifiez la plage de commits : `git log v0.1.0..v0.2.0`
+3. Vérifiez la plage de commits : `git log v1.0.0..v1.1.0`
 
 ### Format incorrect
 
