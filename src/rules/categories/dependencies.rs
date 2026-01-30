@@ -5,6 +5,7 @@ use crate::error::RepoLensError;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -31,6 +32,8 @@ pub enum Ecosystem {
     Npm,
     PyPI,
     Go,
+    Maven,
+    Packagist,
 }
 
 impl Ecosystem {
@@ -40,6 +43,8 @@ impl Ecosystem {
             Ecosystem::Npm => "npm",
             Ecosystem::PyPI => "PyPI",
             Ecosystem::Go => "Go",
+            Ecosystem::Maven => "Maven",
+            Ecosystem::Packagist => "Packagist",
         }
     }
 }
@@ -163,6 +168,17 @@ async fn check_vulnerabilities(
     if let Ok(deps) = parse_go_sum(scanner) {
         all_deps.extend(deps);
     }
+    if let Ok(deps) = parse_pom_xml(scanner) {
+        all_deps.extend(deps);
+    }
+    if let Ok(deps) = parse_gradle_build(scanner) {
+        all_deps.extend(deps);
+    }
+    if let Ok(deps) = parse_composer_lock(scanner) {
+        all_deps.extend(deps);
+    } else if let Ok(deps) = parse_composer_json(scanner) {
+        all_deps.extend(deps);
+    }
     if all_deps.is_empty() {
         return Ok(findings);
     }
@@ -225,6 +241,8 @@ async fn check_vulnerabilities(
                         Ecosystem::Npm => "package-lock.json",
                         Ecosystem::PyPI => "requirements.txt",
                         Ecosystem::Go => "go.sum",
+                        Ecosystem::Maven => "pom.xml",
+                        Ecosystem::Packagist => "composer.lock",
                     };
                     f = f.with_location(loc);
                     findings.push(f);
@@ -282,6 +300,8 @@ async fn check_vulnerabilities(
                         Ecosystem::Npm => "package-lock.json",
                         Ecosystem::PyPI => "requirements.txt",
                         Ecosystem::Go => "go.sum",
+                        Ecosystem::Maven => "pom.xml",
+                        Ecosystem::Packagist => "composer.lock",
                     };
                     f = f.with_location(loc);
                     findings.push(f);
@@ -491,6 +511,169 @@ pub fn parse_go_sum(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError>
     Ok(deps)
 }
 
+pub fn parse_pom_xml(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+    if !scanner.file_exists("pom.xml") {
+        return Ok(deps);
+    }
+    let content = scanner.read_file("pom.xml").map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "pom.xml".to_string(),
+            source: e,
+        })
+    })?;
+
+    // Remove <dependencyManagement> sections to avoid picking up managed (non-direct) deps
+    let mgmt_re = Regex::new(r"(?s)<dependencyManagement>.*?</dependencyManagement>").unwrap();
+    let content = mgmt_re.replace_all(&content, "");
+
+    // Extract the <dependencies> block(s)
+    let deps_block_re = Regex::new(r"(?s)<dependencies>(.*?)</dependencies>").unwrap();
+    let dep_re = Regex::new(r"(?s)<dependency>(.*?)</dependency>").unwrap();
+    let group_re = Regex::new(r"<groupId>\s*([^<]+?)\s*</groupId>").unwrap();
+    let artifact_re = Regex::new(r"<artifactId>\s*([^<]+?)\s*</artifactId>").unwrap();
+    let version_re = Regex::new(r"<version>\s*([^<]+?)\s*</version>").unwrap();
+
+    for block_cap in deps_block_re.captures_iter(&content) {
+        let block = &block_cap[1];
+        for dep_cap in dep_re.captures_iter(block) {
+            let dep_content = &dep_cap[1];
+            let group = group_re.captures(dep_content).map(|c| c[1].to_string());
+            let artifact = artifact_re.captures(dep_content).map(|c| c[1].to_string());
+            let version = version_re.captures(dep_content).map(|c| c[1].to_string());
+
+            if let (Some(g), Some(a)) = (group, artifact) {
+                let ver = match version {
+                    Some(v) if !v.starts_with("${") => v,
+                    _ => continue,
+                };
+                deps.push(Dependency {
+                    name: format!("{}:{}", g, a),
+                    version: ver,
+                    ecosystem: Ecosystem::Maven,
+                });
+            }
+        }
+    }
+    Ok(deps)
+}
+
+pub fn parse_gradle_build(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+    let gradle_file = if scanner.file_exists("build.gradle.kts") {
+        "build.gradle.kts"
+    } else if scanner.file_exists("build.gradle") {
+        "build.gradle"
+    } else {
+        return Ok(deps);
+    };
+    let content = scanner.read_file(gradle_file).map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: gradle_file.to_string(),
+            source: e,
+        })
+    })?;
+
+    let re = Regex::new(
+        r#"(?:implementation|api|compile|testImplementation|runtimeOnly|compileOnly)\s*[\(]?\s*['"]([^'"]+)['"]"#,
+    )
+    .unwrap();
+
+    for cap in re.captures_iter(&content) {
+        let coord = &cap[1];
+        let parts: Vec<&str> = coord.split(':').collect();
+        if parts.len() >= 3 {
+            let name = format!("{}:{}", parts[0], parts[1]);
+            let version = parts[2].to_string();
+            deps.push(Dependency {
+                name,
+                version,
+                ecosystem: Ecosystem::Maven,
+            });
+        }
+    }
+    Ok(deps)
+}
+
+pub fn parse_composer_lock(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+    if !scanner.file_exists("composer.lock") {
+        return Ok(deps);
+    }
+    let content = scanner.read_file("composer.lock").map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "composer.lock".to_string(),
+            source: e,
+        })
+    })?;
+    let lock: serde_json::Value = serde_json::from_str(&content)?;
+
+    for key in &["packages", "packages-dev"] {
+        if let Some(packages) = lock.get(*key).and_then(|p| p.as_array()) {
+            for pkg in packages {
+                if let (Some(name), Some(version)) = (
+                    pkg.get("name").and_then(|n| n.as_str()),
+                    pkg.get("version").and_then(|v| v.as_str()),
+                ) {
+                    let version = version.strip_prefix('v').unwrap_or(version);
+                    deps.push(Dependency {
+                        name: name.to_string(),
+                        version: version.to_string(),
+                        ecosystem: Ecosystem::Packagist,
+                    });
+                }
+            }
+        }
+    }
+    Ok(deps)
+}
+
+pub fn parse_composer_json(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+    if !scanner.file_exists("composer.json") {
+        return Ok(deps);
+    }
+    let content = scanner.read_file("composer.json").map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "composer.json".to_string(),
+            source: e,
+        })
+    })?;
+    let parsed: serde_json::Value = serde_json::from_str(&content)?;
+
+    for section in &["require", "require-dev"] {
+        if let Some(reqs) = parsed.get(*section).and_then(|r| r.as_object()) {
+            for (name, version_val) in reqs {
+                // Skip php itself and extension requirements
+                if name == "php" || name.starts_with("ext-") {
+                    continue;
+                }
+                if let Some(version_str) = version_val.as_str() {
+                    let version = version_str
+                        .trim_start_matches('^')
+                        .trim_start_matches('~')
+                        .trim_start_matches(">=")
+                        .trim_start_matches("<=")
+                        .trim_start_matches('>')
+                        .trim_start_matches('<')
+                        .trim_start_matches('v')
+                        .split(',')
+                        .next()
+                        .unwrap_or(version_str)
+                        .trim()
+                        .to_string();
+                    deps.push(Dependency {
+                        name: name.clone(),
+                        version,
+                        ecosystem: Ecosystem::Packagist,
+                    });
+                }
+            }
+        }
+    }
+    Ok(deps)
+}
+
 async fn query_osv_batch(
     deps: &[Dependency],
 ) -> Result<Vec<(Dependency, Vec<OsvVulnerability>)>, String> {
@@ -562,6 +745,8 @@ async fn query_github_advisories(
             Ecosystem::Npm => "npm",
             Ecosystem::PyPI => "pip",
             Ecosystem::Go => "go",
+            Ecosystem::Maven => "maven",
+            Ecosystem::Packagist => "composer",
         };
 
         // Use GitHub's REST API for security advisories
@@ -861,5 +1046,377 @@ mod tests {
         assert_eq!(parse_pip_req("requests"), None);
         assert_eq!(parse_pip_req("# comment"), None);
         assert_eq!(parse_pip_req(""), None);
+    }
+
+    // ===== Maven (pom.xml) Tests =====
+
+    #[test]
+    fn test_parse_pom_xml_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("pom.xml"),
+            r#"<project>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>5.3.21</version>
+    </dependency>
+  </dependencies>
+</project>"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_pom_xml(&scanner).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].name, "org.springframework:spring-core");
+        assert_eq!(deps[0].version, "5.3.21");
+        assert_eq!(deps[0].ecosystem, Ecosystem::Maven);
+    }
+
+    #[test]
+    fn test_parse_pom_xml_multiple_deps() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("pom.xml"),
+            r#"<project>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>5.3.21</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.guava</groupId>
+      <artifactId>guava</artifactId>
+      <version>31.1-jre</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+</project>"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_pom_xml(&scanner).unwrap();
+        // 3rd dep has ${project.version}, should be skipped
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "org.springframework:spring-core"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "com.google.guava:guava" && d.version == "31.1-jre"));
+    }
+
+    #[test]
+    fn test_parse_pom_xml_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_pom_xml(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_parse_pom_xml_skips_dependency_management() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("pom.xml"),
+            r#"<project>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.managed</groupId>
+        <artifactId>managed-dep</artifactId>
+        <version>1.0.0</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.direct</groupId>
+      <artifactId>direct-dep</artifactId>
+      <version>2.0.0</version>
+    </dependency>
+  </dependencies>
+</project>"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_pom_xml(&scanner).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].name, "org.direct:direct-dep");
+        assert_eq!(deps[0].version, "2.0.0");
+    }
+
+    // ===== Gradle Tests =====
+
+    #[test]
+    fn test_parse_gradle_build_implementation() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("build.gradle"),
+            r#"
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter:2.7.0'
+    testImplementation 'junit:junit:4.13.2'
+}
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_gradle_build(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "org.springframework.boot:spring-boot-starter"
+                && d.version == "2.7.0"
+                && d.ecosystem == Ecosystem::Maven));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "junit:junit" && d.version == "4.13.2"));
+    }
+
+    #[test]
+    fn test_parse_gradle_build_multiple_formats() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("build.gradle"),
+            r#"
+dependencies {
+    implementation "com.google.guava:guava:31.1-jre"
+    api 'io.netty:netty-all:4.1.80.Final'
+    runtimeOnly 'org.postgresql:postgresql:42.5.0'
+    compileOnly 'org.projectlombok:lombok:1.18.24'
+}
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_gradle_build(&scanner).unwrap();
+        assert_eq!(deps.len(), 4);
+        assert!(deps.iter().any(|d| d.name == "com.google.guava:guava"));
+        assert!(deps.iter().any(|d| d.name == "io.netty:netty-all"));
+        assert!(deps.iter().any(|d| d.name == "org.postgresql:postgresql"));
+        assert!(deps.iter().any(|d| d.name == "org.projectlombok:lombok"));
+    }
+
+    #[test]
+    fn test_parse_gradle_build_kotlin_dsl() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("build.gradle.kts"),
+            r#"
+dependencies {
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.7.20")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
+}
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_gradle_build(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "org.jetbrains.kotlin:kotlin-stdlib" && d.version == "1.7.20"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "org.junit.jupiter:junit-jupiter" && d.version == "5.9.0"));
+    }
+
+    #[test]
+    fn test_parse_gradle_build_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_gradle_build(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== Composer Lock Tests =====
+
+    #[test]
+    fn test_parse_composer_lock_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("composer.lock"),
+            r#"{
+    "packages": [
+        {
+            "name": "monolog/monolog",
+            "version": "2.8.0"
+        }
+    ],
+    "packages-dev": []
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_composer_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].name, "monolog/monolog");
+        assert_eq!(deps[0].version, "2.8.0");
+        assert_eq!(deps[0].ecosystem, Ecosystem::Packagist);
+    }
+
+    #[test]
+    fn test_parse_composer_lock_multiple_packages() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("composer.lock"),
+            r#"{
+    "packages": [
+        {
+            "name": "monolog/monolog",
+            "version": "v2.8.0"
+        },
+        {
+            "name": "symfony/console",
+            "version": "v5.4.12"
+        }
+    ],
+    "packages-dev": [
+        {
+            "name": "phpunit/phpunit",
+            "version": "v9.5.25"
+        }
+    ]
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_composer_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 3);
+        // v prefix should be stripped
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "monolog/monolog" && d.version == "2.8.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "symfony/console" && d.version == "5.4.12"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "phpunit/phpunit" && d.version == "9.5.25"));
+    }
+
+    #[test]
+    fn test_parse_composer_lock_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_composer_lock(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== Composer JSON Tests =====
+
+    #[test]
+    fn test_parse_composer_json_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("composer.json"),
+            r#"{
+    "require": {
+        "monolog/monolog": "^2.8"
+    }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_composer_json(&scanner).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].name, "monolog/monolog");
+        assert_eq!(deps[0].version, "2.8");
+        assert_eq!(deps[0].ecosystem, Ecosystem::Packagist);
+    }
+
+    #[test]
+    fn test_parse_composer_json_skip_php_and_ext() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("composer.json"),
+            r#"{
+    "require": {
+        "php": ">=8.0",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "monolog/monolog": "^2.8",
+        "symfony/console": "~5.4"
+    }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_composer_json(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|d| d.name == "monolog/monolog"));
+        assert!(deps.iter().any(|d| d.name == "symfony/console"));
+        // php and ext-* should be excluded
+        assert!(!deps.iter().any(|d| d.name == "php"));
+        assert!(!deps.iter().any(|d| d.name.starts_with("ext-")));
+    }
+
+    #[test]
+    fn test_parse_composer_json_version_constraint_cleanup() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("composer.json"),
+            r#"{
+    "require": {
+        "pkg/a": "^1.2.3",
+        "pkg/b": "~2.0",
+        "pkg/c": ">=3.1.0",
+        "pkg/d": "v4.0.0"
+    },
+    "require-dev": {
+        "pkg/e": "^5.0"
+    }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_composer_json(&scanner).unwrap();
+        assert_eq!(deps.len(), 5);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "pkg/a" && d.version == "1.2.3"));
+        assert!(deps.iter().any(|d| d.name == "pkg/b" && d.version == "2.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "pkg/c" && d.version == "3.1.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "pkg/d" && d.version == "4.0.0"));
+        assert!(deps.iter().any(|d| d.name == "pkg/e" && d.version == "5.0"));
+    }
+
+    #[test]
+    fn test_parse_composer_json_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_composer_json(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== Ecosystem Enum Tests =====
+
+    #[test]
+    fn test_ecosystem_maven_as_str() {
+        assert_eq!(Ecosystem::Maven.as_str(), "Maven");
+    }
+
+    #[test]
+    fn test_ecosystem_packagist_as_str() {
+        assert_eq!(Ecosystem::Packagist.as_str(), "Packagist");
+    }
+
+    #[test]
+    fn test_ecosystem_equality() {
+        assert_eq!(Ecosystem::Maven, Ecosystem::Maven);
+        assert_eq!(Ecosystem::Packagist, Ecosystem::Packagist);
+        assert_ne!(Ecosystem::Maven, Ecosystem::Packagist);
+        assert_ne!(Ecosystem::Maven, Ecosystem::Cargo);
     }
 }
