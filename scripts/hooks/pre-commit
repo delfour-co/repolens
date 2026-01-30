@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+# Pre-commit hook for RepoLens
+# Runs cargo fmt and cargo clippy before each commit
+#
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}Running pre-commit checks...${NC}"
+
+# Check if cargo is available
+if ! command -v cargo &> /dev/null; then
+    echo -e "${RED}Error: cargo is not installed${NC}"
+    exit 1
+fi
+
+# Run cargo fmt check
+echo -e "\n${YELLOW}Checking formatting (cargo fmt)...${NC}"
+if ! cargo fmt --all -- --check; then
+    echo -e "${RED}Formatting check failed!${NC}"
+    echo -e "Run '${YELLOW}cargo fmt --all${NC}' to fix formatting issues."
+    exit 1
+fi
+echo -e "${GREEN}Formatting OK${NC}"
+
+# Run cargo clippy
+echo -e "\n${YELLOW}Running linter (cargo clippy)...${NC}"
+if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    echo -e "${RED}Clippy check failed!${NC}"
+    echo -e "Fix the warnings above before committing."
+    exit 1
+fi
+echo -e "${GREEN}Clippy OK${NC}"
+
+echo -e "\n${GREEN}All pre-commit checks passed!${NC}"

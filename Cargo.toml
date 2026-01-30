@@ -1,0 +1,118 @@
+[package]
+name = "repolens"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+authors = ["Kevin Delfour"]
+description = "A CLI tool to audit and prepare repositories for open source or enterprise standards"
+license = "MIT"
+repository = "https://github.com/kdelfour/repolens"
+homepage = "https://github.com/kdelfour/repolens"
+documentation = "https://docs.rs/repolens"
+keywords = ["cli", "audit", "github", "opensource", "security"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+exclude = [
+    ".github/",
+    ".gitignore",
+    ".repolens.toml",
+    ".claude/",
+    "coverage/",
+    "scripts/",
+    "wiki/",
+    "docs/",
+    "CLAUDE.md",
+    "DEVELOPMENT.md",
+    "RELEASE.md",
+    "TEST.md",
+    "TODO.md",
+    "deny.toml",
+    "tests/",
+    "benches/",
+]
+
+[dependencies]
+# CLI framework
+clap = { version = "4", features = ["derive", "env", "color"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# File system operations
+walkdir = "2"
+ignore = "0.4"
+globset = "0.4"
+
+# Pattern matching for secrets detection
+regex = "1"
+lazy_static = "1"
+
+# Terminal output
+colored = "2"
+indicatif = { version = "0.17", features = ["tokio"] }
+console = "0.15"
+
+# Interactive prompts
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# URL parsing for validation
+url = "2"
+
+# GitHub API (via gh CLI wrapper initially, octocrab for direct API later)
+which = "6"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Metrics
+metrics = "0.22"
+metrics-prometheus = "0.3"
+
+# Template rendering
+tera = "1"
+
+# Date/time for reports
+chrono = { version = "0.4", features = ["serde"] }
+
+# SARIF output format (using serde for manual SARIF generation)
+serde-sarif = { version = "0.6", optional = true }
+
+# HTTP client for OSV API
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# HTML report generation
+minijinja = "2"
+
+# Parallel processing
+rayon = "1.8"
+
+[dev-dependencies]
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+pretty_assertions = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "parse_benchmark"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[[bin]]
+name = "repolens"
+path = "src/main.rs"

@@ -1,0 +1,63 @@
+# RepoLens Open Source Preset
+# Use this preset when preparing a repository for public open source release
+
+preset = "opensource"
+
+# Rules configuration
+[rules]
+# All rules enabled by default for open source
+
+# Secrets detection - strict for open source
+[rules.secrets]
+ignore_patterns = [
+    "**/test/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+]
+ignore_files = []
+
+# No internal URLs allowed for open source
+[rules.urls]
+allowed_internal = []
+
+# Actions to perform
+[actions]
+gitignore = true
+
+[actions.license]
+enabled = true
+type = "MIT"
+# author = "Your Name"  # Uncomment and set your name
+
+[actions.contributing]
+enabled = true
+
+[actions.code_of_conduct]
+enabled = true
+
+[actions.security_policy]
+enabled = true
+
+[actions.branch_protection]
+enabled = true
+branch = "main"
+required_approvals = 1
+require_status_checks = true
+block_force_push = true
+require_signed_commits = false
+
+[actions.github_settings]
+discussions = true
+issues = true
+wiki = false
+vulnerability_alerts = true
+automated_security_fixes = true
+
+# Templates configuration
+[templates]
+# license_author = "Your Name"
+# license_year = "2025"
+# project_name = "My Project"
+# project_description = "A description of my project"

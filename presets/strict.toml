@@ -1,0 +1,56 @@
+# RepoLens Strict Preset
+# Maximum security and compliance checks
+# Use for high-security or regulated environments
+
+preset = "strict"
+
+# Rules configuration - all rules at maximum strictness
+[rules]
+# Enable all rules with critical severity where appropriate
+
+# Secrets detection - maximum strictness
+[rules.secrets]
+ignore_patterns = []  # No ignores in strict mode
+ignore_files = []
+
+# No internal URLs allowed
+[rules.urls]
+allowed_internal = []
+
+# Actions to perform
+[actions]
+gitignore = true
+
+[actions.license]
+enabled = true
+type = "MIT"
+# author = "Your Name"
+
+[actions.contributing]
+enabled = true
+
+[actions.code_of_conduct]
+enabled = true
+
+[actions.security_policy]
+enabled = true
+
+[actions.branch_protection]
+enabled = true
+branch = "main"
+required_approvals = 2
+require_status_checks = true
+block_force_push = true
+require_signed_commits = true  # Required in strict mode
+
+[actions.github_settings]
+discussions = true
+issues = true
+wiki = false
+vulnerability_alerts = true
+automated_security_fixes = true
+
+# Templates configuration
+[templates]
+# license_author = "Your Name"
+# license_year = "2025"

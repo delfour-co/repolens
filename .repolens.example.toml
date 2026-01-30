@@ -1,0 +1,83 @@
+# RepoLens Configuration Example
+# Copy this file to .repolens.toml and customize for your project
+
+# General settings
+[general]
+# Preset to use: opensource, enterprise, or strict
+preset = "opensource"
+
+# Rules configuration
+[rules]
+# Enable/disable rule categories
+secrets = true
+files = true
+docs = true
+security = true
+workflows = true
+quality = true
+
+# Required files
+[files]
+readme = true
+license = true
+contributing = true
+code_of_conduct = true
+security_policy = true
+changelog = false
+
+# Documentation requirements
+[docs]
+min_readme_sections = ["Installation", "Usage"]
+require_api_docs = false
+
+# Security settings
+[security]
+require_branch_protection = true
+require_signed_commits = false
+require_2fa = false
+
+# Workflow settings
+[workflows]
+require_ci = true
+require_tests = true
+
+# Severity overrides (optional)
+# [severity]
+# "missing-readme" = "critical"
+# "missing-tests" = "warning"
+
+# Custom rules
+# Define your own audit rules using regex patterns or shell commands
+[rules.custom]
+
+# Example: Detect TODO comments
+[rules.custom."no-todo"]
+pattern = "TODO"
+severity = "warning"
+files = ["**/*.rs", "**/*.ts"]
+message = "TODO comment found"
+remediation = "Address or remove the TODO comment"
+
+# Example: Require module documentation (inverted pattern)
+[rules.custom."require-module-doc"]
+pattern = "^//!"
+severity = "info"
+files = ["**/lib.rs"]
+invert = true  # Fail if pattern NOT found
+message = "Missing module documentation"
+remediation = "Add module-level documentation with //!"
+
+# Example: Check git status (shell command)
+[rules.custom."check-git-status"]
+command = "git status --porcelain"
+severity = "warning"
+invert = true  # Fail if command returns non-zero (uncommitted changes)
+message = "Working directory is not clean"
+remediation = "Commit or stash your changes"
+
+# Example: Check if Dockerfile exists (shell command)
+[rules.custom."check-dockerfile"]
+command = "test -f Dockerfile"
+severity = "info"
+invert = true  # Fail if Dockerfile doesn't exist
+message = "Dockerfile not found"
