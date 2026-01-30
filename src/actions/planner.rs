@@ -589,8 +589,8 @@ mod tests {
     use crate::config::Config;
     use crate::rules::results::{AuditResults, Finding, Severity};
 
-    #[test]
-    fn test_create_plan_includes_gitignore() {
+    #[tokio::test]
+    async fn test_create_plan_includes_gitignore() {
         let config = Config::default();
         let planner = ActionPlanner::new(config);
 
@@ -602,14 +602,14 @@ mod tests {
             ".gitignore missing recommended entry: .env",
         ));
 
-        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
+        let plan = planner.create_plan(&results).await.unwrap();
 
         assert!(!plan.is_empty());
         assert!(plan.actions().iter().any(|a| a.id() == "gitignore-update"));
     }
 
-    #[test]
-    fn test_create_plan_includes_license() {
+    #[tokio::test]
+    async fn test_create_plan_includes_license() {
         let config = Config::default();
         let planner = ActionPlanner::new(config);
 
@@ -621,13 +621,13 @@ mod tests {
             "LICENSE file is missing",
         ));
 
-        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
+        let plan = planner.create_plan(&results).await.unwrap();
 
         assert!(plan.actions().iter().any(|a| a.id() == "license-create"));
     }
 
-    #[test]
-    fn test_create_plan_includes_contributing() {
+    #[tokio::test]
+    async fn test_create_plan_includes_contributing() {
         let config = Config::default();
         let planner = ActionPlanner::new(config);
 
@@ -639,7 +639,7 @@ mod tests {
             "CONTRIBUTING file is missing",
         ));
 
-        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
+        let plan = planner.create_plan(&results).await.unwrap();
 
         assert!(plan
             .actions()
@@ -647,8 +647,8 @@ mod tests {
             .any(|a| a.id() == "contributing-create"));
     }
 
-    #[test]
-    fn test_create_plan_filters_by_config() {
+    #[tokio::test]
+    async fn test_create_plan_filters_by_config() {
         let mut config = Config::default();
         config.actions.contributing = false;
 
@@ -662,7 +662,7 @@ mod tests {
             "CONTRIBUTING file is missing",
         ));
 
-        let plan = futures::executor::block_on(planner.create_plan(&results)).unwrap();
+        let plan = planner.create_plan(&results).await.unwrap();
 
         // Should not include contributing because it's disabled in config
         assert!(!plan

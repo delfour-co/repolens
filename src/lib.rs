@@ -6,6 +6,7 @@
 pub mod actions;
 pub mod cache;
 pub mod cli;
+pub mod compare;
 pub mod config;
 pub mod error;
 pub mod hooks;

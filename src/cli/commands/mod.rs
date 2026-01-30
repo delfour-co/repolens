@@ -1,6 +1,7 @@
 //! CLI commands module
 
 pub mod apply;
+pub mod compare;
 pub mod init;
 pub mod install_hooks;
 pub mod plan;
@@ -159,4 +160,36 @@ pub enum ReportFormat {
     Html,
     Markdown,
     Json,
+}
+
+/// Arguments for the compare command
+#[derive(Args, Debug)]
+pub struct CompareArgs {
+    /// Path to the base (before) report JSON file
+    #[arg(long, value_name = "FILE")]
+    pub base_file: PathBuf,
+
+    /// Path to the head (after) report JSON file
+    #[arg(long, value_name = "FILE")]
+    pub head_file: PathBuf,
+
+    /// Output format (terminal, json, markdown)
+    #[arg(short, long, default_value = "terminal")]
+    pub format: CompareFormat,
+
+    /// Output file (defaults to stdout)
+    #[arg(short, long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
+
+    /// Exit with code 1 if regressions (new issues) are found
+    #[arg(long)]
+    pub fail_on_regression: bool,
+}
+
+/// Output format for compare command
+#[derive(Debug, Clone, PartialEq, Eq, clap::ValueEnum)]
+pub enum CompareFormat {
+    Terminal,
+    Json,
+    Markdown,
 }

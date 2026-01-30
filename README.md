@@ -245,6 +245,38 @@ repolens report
 repolens report --format html --output report.html
 ```
 
+### Comparing Audits
+
+Compare two previously generated JSON audit reports to visualize improvements and regressions between runs.
+
+```bash
+# First, generate two JSON reports at different points in time
+repolens report --format json --output report-before.json
+# ... make changes ...
+repolens report --format json --output report-after.json
+
+# Compare the two reports (terminal output with colors)
+repolens compare --base-file report-before.json --head-file report-after.json
+
+# Output as JSON
+repolens compare --base-file report-before.json --head-file report-after.json --format json
+
+# Output as Markdown
+repolens compare --base-file report-before.json --head-file report-after.json --format markdown
+
+# Save comparison to a file
+repolens compare --base-file report-before.json --head-file report-after.json --output comparison.md --format markdown
+
+# Fail with exit code 1 if new issues are detected (useful in CI)
+repolens compare --base-file baseline.json --head-file current.json --fail-on-regression
+```
+
+The comparison report includes:
+- **Score summary**: Weighted score (Critical=10, Warning=3, Info=1) with diff
+- **New issues**: Findings present in the head report but not in the base (regressions)
+- **Resolved issues**: Findings present in the base report but not in the head (improvements)
+- **Category breakdown**: Per-category count changes
+
 ## Configuration
 
 Create a `.repolens.toml` file in your repository root:
