@@ -54,12 +54,18 @@ impl Preset {
                 "docs/contributing",
                 "docs/code-of-conduct",
                 "docs/security",
+                "docs/changelog",
                 "files/sensitive",
                 "files/large",
                 "files/gitignore",
                 "security/dependencies",
                 "workflows/secrets",
                 "workflows/permissions",
+                "workflows/linters-in-ci",
+                "docker/dockerfile-presence",
+                "docker/dockerignore",
+                "docker/from-pinning",
+                "docker/user",
                 "github/branch-protection",
                 "github/settings",
             ],
@@ -77,6 +83,15 @@ impl Preset {
                 "security/signed-commits",
                 "workflows/secrets",
                 "workflows/permissions",
+                "workflows/timeout",
+                "workflows/pull-request-target",
+                "docker/dockerfile-presence",
+                "docker/dockerignore",
+                "docker/from-pinning",
+                "docker/user",
+                "docker/secrets-in-env",
+                "docker/healthcheck",
+                "quality/coverage",
                 "github/branch-protection",
                 "github/settings",
             ],
@@ -91,6 +106,8 @@ impl Preset {
                 "docs/code-of-conduct",
                 "docs/security",
                 "docs/changelog",
+                "docs/changelog-format",
+                "docs/changelog-unreleased",
                 "files/sensitive",
                 "files/large",
                 "files/gitignore",
@@ -101,10 +118,29 @@ impl Preset {
                 "workflows/secrets",
                 "workflows/permissions",
                 "workflows/pinned-actions",
-                "github/branch-protection",
-                "github/settings",
+                "workflows/timeout",
+                "workflows/concurrency",
+                "workflows/reusable-workflows",
+                "workflows/artifacts-retention",
+                "workflows/pull-request-target",
+                "workflows/linters-in-ci",
+                "docker/dockerfile-presence",
+                "docker/dockerignore",
+                "docker/from-pinning",
+                "docker/user",
+                "docker/healthcheck",
+                "docker/multistage",
+                "docker/secrets-in-env",
+                "docker/copy-all",
                 "quality/tests",
                 "quality/linting",
+                "quality/coverage",
+                "quality/api-docs",
+                "quality/complexity",
+                "quality/dead-code",
+                "quality/naming-conventions",
+                "github/branch-protection",
+                "github/settings",
             ],
         }
     }
@@ -122,6 +158,7 @@ impl Preset {
                 "docs/license",
                 "security/codeowners",
                 "security/signed-commits",
+                "docker/from-pinning",
             ],
         }
     }
@@ -202,6 +239,34 @@ mod tests {
         assert!(rules.contains(&"quality/tests"));
         assert!(rules.contains(&"quality/linting"));
         assert!(rules.contains(&"workflows/pinned-actions"));
+        // New rules
+        assert!(rules.contains(&"docker/from-pinning"));
+        assert!(rules.contains(&"workflows/timeout"));
+        assert!(rules.contains(&"quality/coverage"));
+        assert!(rules.contains(&"docs/changelog-format"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_opensource_new() {
+        let rules = Preset::OpenSource.enabled_rules();
+        assert!(rules.contains(&"docs/changelog"));
+        assert!(rules.contains(&"workflows/linters-in-ci"));
+        assert!(rules.contains(&"docker/dockerfile-presence"));
+    }
+
+    #[test]
+    fn test_preset_enabled_rules_enterprise_new() {
+        let rules = Preset::Enterprise.enabled_rules();
+        assert!(rules.contains(&"workflows/timeout"));
+        assert!(rules.contains(&"workflows/pull-request-target"));
+        assert!(rules.contains(&"docker/from-pinning"));
+        assert!(rules.contains(&"quality/coverage"));
+    }
+
+    #[test]
+    fn test_preset_critical_rules_strict_docker() {
+        let rules = Preset::Strict.critical_rules();
+        assert!(rules.contains(&"docker/from-pinning"));
     }
 
     #[test]
