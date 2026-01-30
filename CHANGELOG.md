@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Audit Results Caching (#5)**: Implemented a file-based caching system to improve performance
+  - Cache based on SHA256 content hashing to detect file changes
+  - Automatic cache invalidation when files are modified
+  - Configurable cache expiration (`max_age_hours`, default: 24 hours)
+  - New CLI options: `--no-cache`, `--clear-cache`, `--cache-dir`
+  - New `[cache]` configuration section in `.repolens.toml`
+  - Cache stored in `.repolens/cache/` by default (customizable)
+  - Significant performance improvement for repeated audits on unchanged files
+
 ## [0.2.0] - 2026-01-28
 
 ### Added

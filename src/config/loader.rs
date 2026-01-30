@@ -9,7 +9,8 @@ use crate::error::{ConfigError, RepoLensError};
 
 use super::presets::Preset;
 use super::{
-    ActionsConfig, CustomRulesConfig, RuleConfig, SecretsConfig, TemplatesConfig, UrlConfig,
+    ActionsConfig, CacheConfig, CustomRulesConfig, RuleConfig, SecretsConfig, TemplatesConfig,
+    UrlConfig,
 };
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
@@ -47,6 +48,10 @@ pub struct Config {
     #[serde(default)]
     #[serde(rename = "rules.custom")]
     pub custom_rules: CustomRulesConfig,
+
+    /// Cache configuration
+    #[serde(default)]
+    pub cache: CacheConfig,
 }
 
 fn default_preset() -> String {
@@ -63,6 +68,7 @@ impl Default for Config {
             actions: ActionsConfig::default(),
             templates: TemplatesConfig::default(),
             custom_rules: CustomRulesConfig::default(),
+            cache: CacheConfig::default(),
         }
     }
 }

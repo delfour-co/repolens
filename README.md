@@ -249,6 +249,37 @@ message = "Working directory is not clean"
 ```
 
 See the [Custom Rules documentation](wiki/Custom-Rules.md) for more examples and details.
+
+### Cache
+
+RepoLens includes a caching system to improve performance by avoiding re-auditing files that haven't changed. Cache entries are automatically invalidated when file content changes (detected via SHA256 hashing).
+
+#### Cache Configuration
+
+```toml
+[cache]
+# Enable/disable caching (default: true)
+enabled = true
+# Maximum age for cache entries in hours (default: 24)
+max_age_hours = 24
+# Cache directory (relative to project root or absolute path)
+directory = ".repolens/cache"
+```
+
+#### Cache CLI Options
+
+```bash
+# Disable cache and force a complete re-audit
+repolens plan --no-cache
+
+# Clear the cache before running the audit
+repolens plan --clear-cache
+
+# Use a custom cache directory
+repolens plan --cache-dir /tmp/repolens-cache
+```
+
+The same options are available for the `report` command.
 ```
 
 ## Presets

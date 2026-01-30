@@ -45,3 +45,6 @@ logs/security/
 
 # Added by repolens
 *.key
+
+# RepoLens cache directory
+.repolens/

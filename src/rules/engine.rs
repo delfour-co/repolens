@@ -1,5 +1,6 @@
 //! Rules evaluation engine
 
+use crate::cache::AuditCache;
 use crate::error::RepoLensError;
 use tracing::{debug, info, span, Level};
 
@@ -36,6 +37,7 @@ pub struct RulesEngine {
     only_categories: Option<Vec<String>>,
     skip_categories: Option<Vec<String>>,
     progress_callback: Option<ProgressCallback>,
+    cache: Option<AuditCache>,
 }
 
 impl RulesEngine {
@@ -46,6 +48,7 @@ impl RulesEngine {
             only_categories: None,
             skip_categories: None,
             progress_callback: None,
+            cache: None,
         }
     }
 
@@ -64,6 +67,28 @@ impl RulesEngine {
     /// Set categories to skip
     pub fn set_skip_categories(&mut self, categories: Vec<String>) {
         self.skip_categories = Some(categories);
+    }
+
+    /// Set the audit cache
+    pub fn set_cache(&mut self, cache: AuditCache) {
+        self.cache = Some(cache);
+    }
+
+    /// Take ownership of the cache (for saving after audit)
+    pub fn take_cache(&mut self) -> Option<AuditCache> {
+        self.cache.take()
+    }
+
+    /// Get a reference to the cache
+    #[allow(dead_code)]
+    pub fn cache(&self) -> Option<&AuditCache> {
+        self.cache.as_ref()
+    }
+
+    /// Get a mutable reference to the cache
+    #[allow(dead_code)]
+    pub fn cache_mut(&mut self) -> Option<&mut AuditCache> {
+        self.cache.as_mut()
     }
 
     /// Check if a category should be run
