@@ -9,14 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Audit Results Caching (#5)**: Implemented a file-based caching system to improve performance
-  - Cache based on SHA256 content hashing to detect file changes
-  - Automatic cache invalidation when files are modified
-  - Configurable cache expiration (`max_age_hours`, default: 24 hours)
-  - New CLI options: `--no-cache`, `--clear-cache`, `--cache-dir`
-  - New `[cache]` configuration section in `.repolens.toml`
-  - Cache stored in `.repolens/cache/` by default (customizable)
-  - Significant performance improvement for repeated audits on unchanged files
+#### Interactive Mode for Apply Command (#3)
+- **Interactive action selection**: New `--interactive` (`-i`) flag enables users to select which actions to apply using a multi-select interface
+- **Visual action summary**: Displays a categorized overview of all planned actions with icons per category
+- **Diff preview**: Shows colored before/after diff for each action (green for additions, red for deletions) using the `similar` crate
+- **Progress bar**: Real-time progress indicator during action execution with `indicatif`
+- **Spinner for individual actions**: Visual feedback for each action being executed
+- **Enhanced execution summary**: Detailed results display with success/failure counts
+- **Auto-accept mode**: New `--yes` (`-y`) flag to skip confirmation prompts and apply all actions automatically
+
+### Changed
+- Improved terminal output formatting with better visual hierarchy
+- Updated README documentation with interactive mode examples
 
 ## [0.2.0] - 2026-01-28
 
