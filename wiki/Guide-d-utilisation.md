@@ -148,6 +148,24 @@ Le mode interactif offre :
 4. **Barre de progression** pendant l'exécution
 5. **Résumé d'exécution** avec compteurs succès/échec
 
+### Création automatique d'issues GitHub
+
+Après l'exécution des actions, `repolens apply` crée automatiquement une issue GitHub par catégorie de warning détectée. Chaque issue contient un tableau récapitulatif des findings (rule_id, message, location) et est labellisée `repolens-audit`.
+
+```bash
+# Désactiver la création automatique d'issues
+repolens apply --no-issues
+
+# Combiner avec d'autres options
+repolens apply --yes --no-issues
+```
+
+> **Note** : La création d'issues nécessite que le GitHub CLI (`gh`) soit installé et authentifié. Si `gh` n'est pas disponible, l'étape est ignorée avec un avertissement.
+
+### Pull Request et fichiers commités
+
+Lorsqu'une PR est créée automatiquement, seuls les fichiers modifiés par les actions sont commités (par exemple, `.gitignore`, fichiers créés). Les fichiers de rapport ne sont pas inclus dans le commit.
+
 ## Génération de rapports
 
 ### Rapport terminal

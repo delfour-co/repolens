@@ -93,6 +93,10 @@ pub struct ApplyArgs {
     /// Skip creating a pull request (overrides --create-pr)
     #[arg(long)]
     pub no_pr: bool,
+
+    /// Skip automatic issue creation for warnings
+    #[arg(long, default_value_t = false)]
+    pub no_issues: bool,
 }
 
 /// Arguments for the report command
