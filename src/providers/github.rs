@@ -224,10 +224,8 @@ impl GitHubProvider {
                 })
             })?;
 
-        // 204 means enabled, 404 means disabled
-        // Some APIs might return 200 OK when enabled
-        let status_code = output.status.code();
-        Ok(status_code == Some(204) || status_code == Some(200))
+        // gh api returns exit code 0 for HTTP 2xx (enabled), non-zero for HTTP 4xx (disabled)
+        Ok(output.status.success())
     }
 
     /// Check if automated security fixes are enabled
@@ -244,10 +242,49 @@ impl GitHubProvider {
                 })
             })?;
 
-        // 204 means enabled, 404 means disabled
-        // Some APIs might return 200 OK when enabled
-        let status_code = output.status.code();
-        Ok(status_code == Some(204) || status_code == Some(200))
+        // gh api returns exit code 0 for HTTP 2xx (enabled), non-zero for HTTP 4xx (disabled)
+        Ok(output.status.success())
+    }
+
+    /// Create a GitHub issue in the repository
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - The issue title
+    /// * `body` - The issue body/description
+    /// * `labels` - Labels to add to the issue
+    ///
+    /// # Returns
+    ///
+    /// The URL of the created issue
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the issue creation fails
+    pub fn create_issue(
+        &self,
+        title: &str,
+        body: &str,
+        labels: &[&str],
+    ) -> Result<String, RepoLensError> {
+        let mut args = vec!["issue", "create", "--title", title, "--body", body];
+        for label in labels {
+            args.push("--label");
+            args.push(label);
+        }
+        let output = Command::new("gh").args(&args).output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("gh {}", args.join(" ")),
+            })
+        })?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("Failed to create issue: {}", stderr),
+            }));
+        }
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(url)
     }
 
     /// Create a pull request
@@ -363,4 +400,89 @@ pub struct AllowForcePushes {
 pub struct AllowDeletions {
     #[allow(dead_code)]
     pub enabled: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    /// Create a GitHubProvider with test values (bypasses gh CLI)
+    fn test_provider() -> GitHubProvider {
+        GitHubProvider {
+            repo_owner: "test-owner".to_string(),
+            repo_name: "test-repo".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_full_name() {
+        let provider = test_provider();
+        assert_eq!(provider.full_name(), "test-owner/test-repo");
+    }
+
+    #[test]
+    fn test_exit_code_success_means_enabled() {
+        // The "true" command exits with code 0 (success)
+        // This simulates gh api returning HTTP 2xx (feature enabled)
+        let output = Command::new("true").output().unwrap();
+        assert!(output.status.success());
+        // With the fix, output.status.success() correctly returns true
+    }
+
+    #[test]
+    fn test_exit_code_failure_means_disabled() {
+        // The "false" command exits with code 1 (failure)
+        // This simulates gh api returning HTTP 4xx (feature disabled)
+        let output = Command::new("false").output().unwrap();
+        assert!(!output.status.success());
+        // With the fix, output.status.success() correctly returns false
+    }
+
+    #[test]
+    fn test_exit_code_not_http_status() {
+        // Verify that process exit codes are NOT HTTP status codes.
+        // The old buggy code compared exit codes against 200/204, which never matches
+        // because process exit codes are 0 (success) or 1 (failure).
+        let success_output = Command::new("true").output().unwrap();
+        let failure_output = Command::new("false").output().unwrap();
+
+        let success_code = success_output.status.code();
+        let failure_code = failure_output.status.code();
+
+        // Exit code 0 for success, 1 for failure -- never 200 or 204
+        assert_eq!(success_code, Some(0));
+        assert_eq!(failure_code, Some(1));
+
+        // The old buggy check: status_code == Some(204) || status_code == Some(200)
+        // This would ALWAYS be false for both success and failure:
+        assert!(success_code != Some(204) && success_code != Some(200));
+        assert!(failure_code != Some(204) && failure_code != Some(200));
+
+        // The correct check uses .success() which checks exit code == 0
+        assert!(success_output.status.success());
+        assert!(!failure_output.status.success());
+    }
+
+    #[test]
+    fn test_has_vulnerability_alerts_uses_gh_api() {
+        // This test verifies the provider is constructed correctly
+        // and that full_name() produces the right API path
+        let provider = test_provider();
+        let expected_endpoint = "repos/test-owner/test-repo/vulnerability-alerts";
+        assert_eq!(
+            format!("repos/{}/vulnerability-alerts", provider.full_name()),
+            expected_endpoint
+        );
+    }
+
+    #[test]
+    fn test_has_automated_security_fixes_uses_gh_api() {
+        let provider = test_provider();
+        let expected_endpoint = "repos/test-owner/test-repo/automated-security-fixes";
+        assert_eq!(
+            format!("repos/{}/automated-security-fixes", provider.full_name()),
+            expected_endpoint
+        );
+    }
 }

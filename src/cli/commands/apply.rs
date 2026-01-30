@@ -20,6 +20,7 @@ use crate::error::RepoLensError;
 use crate::exit_codes;
 use crate::providers::github::GitHubProvider;
 use crate::rules::engine::RulesEngine;
+use crate::rules::results::{AuditResults, Severity};
 use crate::scanner::Scanner;
 
 /// Display a visual summary of the actions to be applied
@@ -509,6 +510,11 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
     println!();
     println!("{}", separator.dimmed());
 
+    // Create GitHub issues for warning findings (unless --no-issues is set)
+    if !args.no_issues {
+        create_warning_issues(&audit_results);
+    }
+
     // Handle git operations and PR creation if there were successful file changes
     if success_count > 0 {
         let repo_root = PathBuf::from(".");
@@ -538,6 +544,99 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
     }
 }
 
+/// Create GitHub issues for warning findings grouped by category
+fn create_warning_issues(audit_results: &AuditResults) {
+    // Check if GitHub CLI is available
+    if !GitHubProvider::is_available() {
+        println!(
+            "{} {}",
+            "[WARN]".yellow().bold(),
+            "GitHub CLI not available, skipping issue creation.".yellow()
+        );
+        return;
+    }
+
+    let github_provider = match GitHubProvider::new() {
+        Ok(provider) => provider,
+        Err(e) => {
+            println!(
+                "{} {}",
+                "[WARN]".yellow().bold(),
+                format!("Unable to create issues: {}. Skipping.", e).yellow()
+            );
+            return;
+        }
+    };
+
+    // Group warnings by category
+    let mut warning_categories: HashMap<String, Vec<&crate::rules::results::Finding>> =
+        HashMap::new();
+    for finding in audit_results.findings_by_severity(Severity::Warning) {
+        warning_categories
+            .entry(finding.category.clone())
+            .or_default()
+            .push(finding);
+    }
+
+    if warning_categories.is_empty() {
+        return;
+    }
+
+    let term_width = Term::stdout().size().1 as usize;
+    let separator = "=".repeat(term_width.min(50));
+
+    println!();
+    println!("{}", separator.dimmed());
+    println!("{}", "  ISSUES CREATED".bold().cyan());
+    println!();
+
+    let mut sorted_categories: Vec<_> = warning_categories.into_iter().collect();
+    sorted_categories.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (category, findings) in &sorted_categories {
+        let count = findings.len();
+
+        let title = format!("[RepoLens] {} warning(s) -- {}", count, category);
+
+        // Build markdown table body
+        let mut body =
+            String::from("| Rule ID | Message | Location |\n|---------|---------|----------|\n");
+        for finding in findings {
+            let location = finding.location.as_deref().unwrap_or("-");
+            body.push_str(&format!(
+                "| {} | {} | {} |\n",
+                finding.rule_id, finding.message, location
+            ));
+        }
+
+        let labels = vec!["repolens-audit"];
+
+        match github_provider.create_issue(&title, &body, &labels) {
+            Ok(url) => {
+                println!(
+                    "  {} {} ({} warning{}) -> {}",
+                    "[OK]".green().bold(),
+                    category,
+                    count,
+                    if count > 1 { "s" } else { "" },
+                    url.cyan()
+                );
+            }
+            Err(e) => {
+                println!(
+                    "  {} {} -- {}",
+                    "[FAIL]".red().bold(),
+                    category,
+                    format!("Failed to create issue: {}", e).red()
+                );
+            }
+        }
+    }
+
+    println!();
+    println!("{}", separator.dimmed());
+}
+
 /// Handle git operations: create branch, commit, push, and create PR
 async fn handle_git_operations(
     repo_root: &Path,
@@ -552,19 +651,7 @@ async fn handle_git_operations(
         )
     });
 
-    // Also check if any file-related actions succeeded
-    let has_successful_file_changes = results.iter().any(|r| {
-        if !r.success {
-            return false;
-        }
-        // Match successful file operations by checking action names
-        r.action_name.contains("file")
-            || r.action_name.contains("gitignore")
-            || r.action_name.contains("Create")
-            || r.action_name.contains("Update")
-    });
-
-    if !has_file_changes && !has_successful_file_changes {
+    if !has_file_changes {
         // Only file changes trigger PR creation
         return Ok(());
     }
@@ -589,8 +676,19 @@ async fn handle_git_operations(
         branch_name.cyan()
     );
 
-    // Stage all changes
-    git::stage_all_changes(repo_root)?;
+    // Collect file paths from actions that modify files
+    let file_paths: Vec<String> = action_plan
+        .actions()
+        .iter()
+        .filter_map(|action| match action.operation() {
+            ActionOperation::CreateFile { path, .. } => Some(path.clone()),
+            ActionOperation::UpdateGitignore { .. } => Some(".gitignore".to_string()),
+            _ => None,
+        })
+        .collect();
+
+    // Stage only the specific files changed by actions
+    git::stage_files(repo_root, &file_paths)?;
     println!("  {} Changes staged", "[OK]".green().bold());
 
     // Create commit message

@@ -83,6 +83,7 @@ pub fn has_changes(root: &Path) -> Result<bool, RepoLensError> {
 /// # Errors
 ///
 /// Returns an error if git add fails
+#[allow(dead_code)]
 pub fn stage_all_changes(root: &Path) -> Result<(), RepoLensError> {
     let output = Command::new("git")
         .args(["add", "-A"])
@@ -98,6 +99,45 @@ pub fn stage_all_changes(root: &Path) -> Result<(), RepoLensError> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(RepoLensError::Action(ActionError::ExecutionFailed {
             message: format!("Failed to stage changes: {}", stderr),
+        }));
+    }
+
+    Ok(())
+}
+
+/// Stage specific files in the repository
+///
+/// # Arguments
+///
+/// * `root` - The root directory of the git repository
+/// * `files` - The list of file paths to stage (relative to the repository root)
+///
+/// # Errors
+///
+/// Returns an error if git add fails
+pub fn stage_files(root: &Path, files: &[String]) -> Result<(), RepoLensError> {
+    if files.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["add", "--"];
+    let file_refs: Vec<&str> = files.iter().map(|s| s.as_str()).collect();
+    args.extend(file_refs);
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(root)
+        .output()
+        .map_err(|e| {
+            RepoLensError::Action(ActionError::ExecutionFailed {
+                message: format!("Failed to stage files: {}", e),
+            })
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(RepoLensError::Action(ActionError::ExecutionFailed {
+            message: format!("Failed to stage files: {}", stderr),
         }));
     }
 
@@ -458,6 +498,84 @@ mod tests {
 
         let log = String::from_utf8_lossy(&output.stdout);
         assert!(log.contains(commit_message));
+
+        let _ = std::env::set_current_dir(&original_dir);
+    }
+
+    #[test]
+    fn test_stage_files() {
+        let _guard = DIR_MUTEX.lock().unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+
+        if std::env::current_dir().is_err() {
+            let _ = std::env::set_current_dir("/tmp");
+        }
+
+        std::env::set_current_dir(&root_abs).expect("Failed to change to temp directory");
+
+        // Initialize git repo
+        init_git_repo(&root_abs).expect("Failed to init git repo");
+
+        // Create multiple files
+        fs::write(root_abs.join("file1.txt"), "content 1").unwrap();
+        fs::write(root_abs.join("file2.txt"), "content 2").unwrap();
+        fs::write(root_abs.join("file3.txt"), "content 3").unwrap();
+
+        // Stage only specific files
+        let files = vec!["file1.txt".to_string(), "file2.txt".to_string()];
+        stage_files(&root_abs, &files).expect("Failed to stage files");
+
+        // Verify only file1.txt and file2.txt are staged, file3.txt is not
+        let output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&root_abs)
+            .output()
+            .unwrap();
+
+        let status = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            status.contains("A  file1.txt"),
+            "file1.txt should be staged"
+        );
+        assert!(
+            status.contains("A  file2.txt"),
+            "file2.txt should be staged"
+        );
+        assert!(
+            status.contains("?? file3.txt"),
+            "file3.txt should be untracked, not staged"
+        );
+
+        let _ = std::env::set_current_dir(&original_dir);
+    }
+
+    #[test]
+    fn test_stage_files_empty() {
+        let _guard = DIR_MUTEX.lock().unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+
+        if std::env::current_dir().is_err() {
+            let _ = std::env::set_current_dir("/tmp");
+        }
+
+        std::env::set_current_dir(&root_abs).expect("Failed to change to temp directory");
+
+        // Initialize git repo
+        init_git_repo(&root_abs).expect("Failed to init git repo");
+
+        // Stage empty list should succeed without error
+        let files: Vec<String> = vec![];
+        stage_files(&root_abs, &files).expect("Staging empty file list should succeed");
 
         let _ = std::env::set_current_dir(&original_dir);
     }
