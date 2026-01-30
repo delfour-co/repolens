@@ -1,0 +1,40 @@
+preset = "opensource"
+
+[rules]
+
+["rules.secrets"]
+ignore_patterns = []
+ignore_files = []
+custom_patterns = []
+
+["rules.urls"]
+allowed_internal = []
+
+[actions]
+gitignore = true
+contributing = true
+code_of_conduct = true
+security_policy = true
+
+[actions.license]
+enabled = true
+license_type = "MIT"
+
+[actions.branch_protection]
+enabled = true
+branch = "main"
+required_approvals = 1
+require_status_checks = true
+block_force_push = true
+require_signed_commits = false
+
+[actions.github_settings]
+discussions = true
+issues = true
+wiki = false
+vulnerability_alerts = true
+automated_security_fixes = true
+
+[templates]
+
+["rules.custom"]

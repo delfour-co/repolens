@@ -1,0 +1,68 @@
+# RepoLens Enterprise Preset
+# Use this preset for internal company projects
+
+preset = "enterprise"
+
+# Rules configuration
+[rules]
+# Disable some open-source specific rules
+"docs/license" = false
+"docs/contributing" = false
+"docs/code-of-conduct" = false
+
+# Secrets detection
+[rules.secrets]
+ignore_patterns = [
+    "**/test/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/fixtures/**",
+    "**/mocks/**",
+]
+ignore_files = []
+
+# Allow internal URLs for enterprise
+[rules.urls]
+allowed_internal = [
+    # Add your internal domains here
+    # "*.internal.company.com",
+    # "*.corp.company.com",
+    # "vault.company.com",
+]
+
+# Actions to perform
+[actions]
+gitignore = true
+
+[actions.license]
+enabled = false  # No license for internal projects
+
+[actions.contributing]
+enabled = false  # Internal teams have different processes
+
+[actions.code_of_conduct]
+enabled = false  # Covered by company policy
+
+[actions.security_policy]
+enabled = true  # Always good to have
+
+[actions.branch_protection]
+enabled = true
+branch = "main"
+required_approvals = 2  # Stricter for enterprise
+require_status_checks = true
+block_force_push = true
+require_signed_commits = true  # Required for enterprise
+
+[actions.github_settings]
+discussions = false  # Usually not needed for internal
+issues = true
+wiki = false
+vulnerability_alerts = true
+automated_security_fixes = true
+
+# Templates configuration
+[templates]
+# project_name = "Internal Project"
