@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-01-30
+
+### Fixed
+
+- **apply**: Prevent parasitic branch creation for API-only actions (settings updates no longer trigger file commits) (#139)
+- **providers**: Use process exit code instead of HTTP status code for GitHub API checks (`has_vulnerability_alerts`, `has_automated_security_fixes`) (#140)
+- **apply**: Show pending warning issue creation in planned actions when no file actions are required (#144)
+- **apply**: Execute warning issue creation even when action plan is empty (#146)
+- **apply**: Auto-create `repolens-audit` label before issue creation to prevent "label not found" errors (#147)
+
+### Added
+
+- **apply**: Selective file staging — only files modified by actions are committed, excluding report files (#141)
+- **apply**: Automatic GitHub issue creation per warning category with `repolens-audit` label (#142)
+- **apply**: `--no-issues` flag to disable automatic issue creation
+- **providers**: `ensure_label()` method for auto-creating missing labels
+- **providers**: `create_issue()` method for creating GitHub issues via `gh`
+
 ## [1.0.0] - 2026-01-30
 
 ### Added
@@ -104,4 +122,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wiki documentation
 - Configuration and preset examples
 
+[1.0.1]: https://github.com/delfour-co/repolens/releases/tag/v1.0.1
 [1.0.0]: https://github.com/delfour-co/repolens/releases/tag/v1.0.0
