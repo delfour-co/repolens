@@ -24,7 +24,7 @@ use crate::rules::results::{AuditResults, Severity};
 use crate::scanner::Scanner;
 
 /// Display a visual summary of the actions to be applied
-fn display_action_summary(actions: &[Action]) {
+fn display_action_summary(actions: &[Action], audit_results: &AuditResults) {
     let term_width = Term::stdout().size().1 as usize;
     let separator = "=".repeat(term_width.min(80));
 
@@ -72,12 +72,51 @@ fn display_action_summary(actions: &[Action]) {
         println!();
     }
 
+    // Display warning issue creation preview
+    let mut warning_categories: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for finding in audit_results.findings_by_severity(Severity::Warning) {
+        *warning_categories
+            .entry(finding.category.clone())
+            .or_insert(0) += 1;
+    }
+
+    if !warning_categories.is_empty() {
+        let total_warnings: usize = warning_categories.values().sum();
+        println!(
+            "[I] {} {}",
+            "ISSUES".bold(),
+            format!(
+                "({} warning{} → GitHub issues)",
+                total_warnings,
+                if total_warnings > 1 { "s" } else { "" }
+            )
+            .dimmed()
+        );
+        for (category, count) in &warning_categories {
+            println!(
+                "    {} {} ({} warning{})",
+                "+".green(),
+                category,
+                count,
+                if *count > 1 { "s" } else { "" }
+            );
+        }
+        println!();
+    }
+
+    let total = actions.len()
+        + if warning_categories.is_empty() {
+            0
+        } else {
+            warning_categories.len()
+        };
     println!("{}", separator.dimmed());
     println!(
         "  {} {} action{} to apply",
         "Total:".bold(),
-        actions.len().to_string().cyan().bold(),
-        if actions.len() > 1 { "s" } else { "" }
+        total.to_string().cyan().bold(),
+        if total > 1 { "s" } else { "" }
     );
     println!("{}", separator.dimmed());
     println!();
@@ -341,7 +380,7 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
     }
 
     // Display visual summary
-    display_action_summary(action_plan.actions());
+    display_action_summary(action_plan.actions(), &audit_results);
 
     // Dry run mode
     if args.dry_run {
@@ -849,8 +888,10 @@ mod tests {
             ),
         ];
 
+        let results = AuditResults::new("test-repo", "opensource");
+
         // This test verifies the summary display function runs without panic
-        display_action_summary(&actions);
+        display_action_summary(&actions, &results);
     }
 
     #[test]
