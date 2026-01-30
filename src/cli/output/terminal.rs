@@ -96,7 +96,7 @@ impl TerminalOutput {
         output
     }
 
-    fn format_actions(&self, plan: &ActionPlan) -> String {
+    fn format_actions(&self, plan: &ActionPlan, results: &AuditResults) -> String {
         let mut output = String::new();
 
         output.push_str(&format!(
@@ -105,7 +105,19 @@ impl TerminalOutput {
             "  PLANNED ACTIONS".bold()
         ));
 
-        if plan.is_empty() {
+        // Collect warning categories for issue creation preview
+        let mut warning_categories: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for finding in results.findings_by_severity(Severity::Warning) {
+            *warning_categories
+                .entry(finding.category.clone())
+                .or_insert(0) += 1;
+        }
+
+        let has_actions = !plan.is_empty();
+        let has_warning_issues = !warning_categories.is_empty();
+
+        if !has_actions && !has_warning_issues {
             output.push_str(&format!("  {}\n", "No actions required.".green()));
             return output;
         }
@@ -122,6 +134,27 @@ impl TerminalOutput {
 
             for detail in action.details() {
                 output.push_str(&format!("      {} {}\n", "└─".dimmed(), detail.dimmed()));
+            }
+        }
+
+        if has_warning_issues {
+            let total_warnings: usize = warning_categories.values().sum();
+            output.push_str(&format!(
+                "  {} [{}] Create GitHub issues for warnings ({} warning{})\n",
+                "+".green(),
+                "issues".cyan(),
+                total_warnings,
+                if total_warnings > 1 { "s" } else { "" }
+            ));
+
+            for (category, count) in &warning_categories {
+                output.push_str(&format!(
+                    "      {} {} ({} warning{})\n",
+                    "└─".dimmed(),
+                    category.dimmed(),
+                    count,
+                    if *count > 1 { "s" } else { "" }
+                ));
             }
         }
 
@@ -181,7 +214,7 @@ impl OutputRenderer for TerminalOutput {
 
         output.push_str(&self.format_header(&results.repository_name, &results.preset));
         output.push_str(&self.format_findings(results));
-        output.push_str(&self.format_actions(plan));
+        output.push_str(&self.format_actions(plan, results));
         output.push_str(&self.format_summary(results));
 
         Ok(output)
@@ -292,7 +325,8 @@ mod tests {
     fn test_format_actions_empty() {
         let output = TerminalOutput::new();
         let plan = ActionPlan::new();
-        let formatted = output.format_actions(&plan);
+        let results = create_empty_results();
+        let formatted = output.format_actions(&plan, &results);
         assert!(formatted.contains("No actions required"));
     }
 
@@ -313,10 +347,58 @@ mod tests {
             )
             .with_detail("Adding *.log"),
         );
-        let formatted = output.format_actions(&plan);
+        let results = create_empty_results();
+        let formatted = output.format_actions(&plan, &results);
         assert!(formatted.contains("PLANNED ACTIONS"));
         assert!(formatted.contains("Update gitignore"));
         assert!(formatted.contains("Adding *.log"));
+    }
+
+    #[test]
+    fn test_format_actions_with_warnings_only() {
+        let output = TerminalOutput::new();
+        let plan = ActionPlan::new();
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DEP001",
+            "dependencies",
+            Severity::Warning,
+            "Vulnerability found in pkg",
+        ));
+        results.add_finding(Finding::new(
+            "DEP001",
+            "dependencies",
+            Severity::Warning,
+            "Vulnerability found in pkg2",
+        ));
+        results.add_finding(Finding::new(
+            "DOC003",
+            "docs",
+            Severity::Warning,
+            "Missing section",
+        ));
+        let formatted = output.format_actions(&plan, &results);
+        assert!(!formatted.contains("No actions required"));
+        assert!(formatted.contains("issues"));
+        assert!(formatted.contains("dependencies (2 warnings)"));
+        assert!(formatted.contains("docs (1 warning)"));
+        assert!(formatted.contains("3 warnings"));
+    }
+
+    #[test]
+    fn test_format_actions_no_warnings_no_actions() {
+        let output = TerminalOutput::new();
+        let plan = ActionPlan::new();
+        let mut results = AuditResults::new("test-repo", "opensource");
+        // Only info findings, no warnings
+        results.add_finding(Finding::new(
+            "INFO001",
+            "quality",
+            Severity::Info,
+            "Consider adding tests",
+        ));
+        let formatted = output.format_actions(&plan, &results);
+        assert!(formatted.contains("No actions required"));
     }
 
     #[test]
