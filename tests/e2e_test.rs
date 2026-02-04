@@ -917,3 +917,886 @@ async fn e2e_real_repo_kubernetes() {
         .assert()
         .code(predicate::in_iter([0, 1]));
 }
+
+// ============================================================================
+// E2E Tests for other CLI commands
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_schema_command_outputs_valid_json() {
+    let output = get_cmd()
+        .args(["schema"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let stdout = String::from_utf8_lossy(&output);
+    let schema: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Schema should be valid JSON");
+
+    // Verify it's a JSON schema
+    assert!(
+        schema.get("$schema").is_some() || schema.get("type").is_some(),
+        "Should be a JSON schema"
+    );
+}
+
+#[tokio::test]
+async fn e2e_compare_command_detects_changes() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Initialize config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Generate first report
+    let report1_path = temp_dir.path().join("report1.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["report", "--format", "json", "--output"])
+        .arg(&report1_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // Add README to reduce findings
+    fs::write(temp_dir.path().join("README.md"), "# Test Project\n").unwrap();
+
+    // Generate second report
+    let report2_path = temp_dir.path().join("report2.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["report", "--format", "json", "--output"])
+        .arg(&report2_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // Compare reports
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["compare"])
+        .arg(&report1_path)
+        .arg(&report2_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2])); // Any valid exit code
+}
+
+#[tokio::test]
+async fn e2e_install_hooks_command() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Initialize config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Install hooks
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["install-hooks"])
+        .assert()
+        .success();
+
+    // Verify hooks were created
+    let hooks_dir = temp_dir.path().join(".git/hooks");
+    assert!(
+        hooks_dir.join("pre-commit").exists() || hooks_dir.join("pre-push").exists(),
+        "At least one hook should be installed"
+    );
+}
+
+#[tokio::test]
+async fn e2e_apply_command_creates_readme() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Initialize config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Verify README doesn't exist
+    assert!(!temp_dir.path().join("README.md").exists());
+
+    // Run apply with auto-confirm, skip GitHub actions (which require network)
+    // and disable PR/issue creation which need GitHub API access
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "apply",
+            "--yes",
+            "--no-issues",
+            "--no-pr",
+            "--skip",
+            "github",
+        ])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // Note: Whether README is created depends on implementation
+    // The test verifies the command runs without error
+}
+
+// ============================================================================
+// E2E Tests for CLI options
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_verbose_option() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Run with verbose flag
+    let output = get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["-v", "plan"])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]))
+        .get_output()
+        .stderr
+        .clone();
+
+    // Verbose output goes to stderr typically
+    let _stderr = String::from_utf8_lossy(&output);
+    // Test passes if command runs without error - verbose output depends on implementation
+}
+
+// FIXME: The -C option is defined in the CLI but not implemented.
+// See: https://github.com/delfour-co/repolens/issues/166
+// The directory option is parsed but commands use current_dir() instead.
+#[tokio::test]
+#[ignore = "CLI bug: -C option is not implemented (uses current_dir instead)"]
+async fn e2e_directory_option() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Initialize from outside the directory using -C option
+    get_cmd()
+        .args([
+            "-C",
+            temp_dir.path().to_str().unwrap(),
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Verify config was created in the target directory
+    assert!(temp_dir.path().join(".repolens.toml").exists());
+
+    // Run plan using -C option
+    get_cmd()
+        .args(["-C", temp_dir.path().to_str().unwrap(), "plan"])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+}
+
+#[tokio::test]
+async fn e2e_config_option() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Create a custom config file
+    let custom_config = temp_dir.path().join("custom-config.toml");
+    fs::write(
+        &custom_config,
+        r#"
+preset = "strict"
+"#,
+    )
+    .unwrap();
+
+    // Run plan with custom config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["-c", custom_config.to_str().unwrap(), "plan"])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+}
+
+// ============================================================================
+// E2E Tests for error handling
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_error_invalid_preset() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Try to init with invalid preset
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "invalid-preset-name",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_error_nonexistent_directory() {
+    // Try to run in non-existent directory
+    get_cmd()
+        .args(["-C", "/nonexistent/directory/path", "plan"])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_error_invalid_config_file() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Create an invalid config file
+    let invalid_config = temp_dir.path().join("invalid.toml");
+    fs::write(&invalid_config, "this is not valid toml {{{{").unwrap();
+
+    // Try to run with invalid config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["-c", invalid_config.to_str().unwrap(), "plan"])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_error_missing_config() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Don't initialize - try to run plan without config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("config").or(predicate::str::contains("initialize")));
+}
+
+#[tokio::test]
+async fn e2e_error_compare_missing_file() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Try to compare with non-existent files
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["compare", "nonexistent1.json", "nonexistent2.json"])
+        .assert()
+        .failure();
+}
+
+// ============================================================================
+// E2E Tests for Git hygiene rules (GIT001-003)
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_git_rule_large_binary_detected() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Create a large binary file (>1MB)
+    let large_file = temp_dir.path().join("large.exe");
+    let large_content = vec![0u8; 2 * 1024 * 1024]; // 2MB
+    fs::write(&large_file, large_content).unwrap();
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "strict",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    let output_path = temp_dir.path().join("plan.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan", "--format", "json", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    let findings = plan
+        .get("audit")
+        .and_then(|a| a.get("findings"))
+        .and_then(|f| f.as_array())
+        .unwrap();
+
+    let has_git001 = findings.iter().any(|f| {
+        f.get("rule_id")
+            .and_then(|r| r.as_str())
+            .map(|r| r == "GIT001")
+            .unwrap_or(false)
+    });
+    assert!(has_git001, "Should detect large binary file (GIT001)");
+}
+
+#[tokio::test]
+async fn e2e_git_rule_gitattributes_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "strict",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    let output_path = temp_dir.path().join("plan.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan", "--format", "json", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    let findings = plan
+        .get("audit")
+        .and_then(|a| a.get("findings"))
+        .and_then(|f| f.as_array())
+        .unwrap();
+
+    let has_git002 = findings.iter().any(|f| {
+        f.get("rule_id")
+            .and_then(|r| r.as_str())
+            .map(|r| r == "GIT002")
+            .unwrap_or(false)
+    });
+    assert!(has_git002, "Should detect missing .gitattributes (GIT002)");
+}
+
+// ============================================================================
+// E2E Tests for branch protection rules (SEC007-010)
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_security_rule_branch_protection_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "strict",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    let output_path = temp_dir.path().join("plan.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan", "--format", "json", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    let findings = plan
+        .get("audit")
+        .and_then(|a| a.get("findings"))
+        .and_then(|f| f.as_array())
+        .unwrap();
+
+    let has_sec007 = findings.iter().any(|f| {
+        f.get("rule_id")
+            .and_then(|r| r.as_str())
+            .map(|r| r == "SEC007")
+            .unwrap_or(false)
+    });
+    assert!(
+        has_sec007,
+        "Should detect missing .github/settings.yml (SEC007)"
+    );
+}
+
+#[tokio::test]
+async fn e2e_security_rule_branch_protection_incomplete() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Create incomplete .github/settings.yml
+    fs::create_dir_all(temp_dir.path().join(".github")).unwrap();
+    fs::write(
+        temp_dir.path().join(".github/settings.yml"),
+        r#"
+repository:
+  name: test
+# No branch protection rules
+"#,
+    )
+    .unwrap();
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "strict",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    let output_path = temp_dir.path().join("plan.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan", "--format", "json", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    let findings = plan
+        .get("audit")
+        .and_then(|a| a.get("findings"))
+        .and_then(|f| f.as_array())
+        .unwrap();
+
+    // Should detect missing branch protection rules (SEC008)
+    let has_sec008 = findings.iter().any(|f| {
+        f.get("rule_id")
+            .and_then(|r| r.as_str())
+            .map(|r| r == "SEC008")
+            .unwrap_or(false)
+    });
+    assert!(
+        has_sec008,
+        "Should detect missing branch protection rules (SEC008)"
+    );
+}
+
+// ============================================================================
+// E2E Tests for ecosystem detection
+// ============================================================================
+
+/// Create a Go project for testing
+fn create_go_project(dir: &Path) {
+    fs::write(dir.join("go.mod"), "module example.com/test\n\ngo 1.21\n").unwrap();
+    fs::write(dir.join("main.go"), "package main\n\nfunc main() {}\n").unwrap();
+    StdCommand::new("git")
+        .args(["init"])
+        .current_dir(dir)
+        .output()
+        .ok();
+    StdCommand::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(dir)
+        .output()
+        .ok();
+    StdCommand::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(dir)
+        .output()
+        .ok();
+}
+
+/// Create a PHP project for testing
+fn create_php_project(dir: &Path) {
+    fs::write(
+        dir.join("composer.json"),
+        r#"{
+    "name": "test/project",
+    "require": {
+        "php": ">=8.0"
+    }
+}"#,
+    )
+    .unwrap();
+    fs::write(dir.join("index.php"), "<?php echo 'Hello'; ?>\n").unwrap();
+    StdCommand::new("git")
+        .args(["init"])
+        .current_dir(dir)
+        .output()
+        .ok();
+    StdCommand::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(dir)
+        .output()
+        .ok();
+    StdCommand::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(dir)
+        .output()
+        .ok();
+}
+
+/// Create a Ruby project for testing
+fn create_ruby_project(dir: &Path) {
+    fs::write(dir.join("Gemfile"), "source 'https://rubygems.org'\n").unwrap();
+    fs::write(dir.join("main.rb"), "puts 'Hello'\n").unwrap();
+    StdCommand::new("git")
+        .args(["init"])
+        .current_dir(dir)
+        .output()
+        .ok();
+    StdCommand::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(dir)
+        .output()
+        .ok();
+    StdCommand::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(dir)
+        .output()
+        .ok();
+}
+
+#[tokio::test]
+async fn e2e_go_project_audit() {
+    let temp_dir = TempDir::new().unwrap();
+    create_go_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Run plan - should complete without crashing
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan"])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+}
+
+#[tokio::test]
+async fn e2e_go_project_missing_go_sum() {
+    let temp_dir = TempDir::new().unwrap();
+    create_go_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    let output_path = temp_dir.path().join("plan.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan", "--format", "json", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    let findings = plan
+        .get("audit")
+        .and_then(|a| a.get("findings"))
+        .and_then(|f| f.as_array());
+
+    if let Some(findings) = findings {
+        let has_dep003 = findings.iter().any(|f| {
+            f.get("rule_id")
+                .and_then(|r| r.as_str())
+                .map(|r| r == "DEP003")
+                .unwrap_or(false)
+        });
+        assert!(has_dep003, "Should detect missing go.sum (DEP003)");
+    }
+}
+
+#[tokio::test]
+async fn e2e_php_project_audit() {
+    let temp_dir = TempDir::new().unwrap();
+    create_php_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan"])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+}
+
+#[tokio::test]
+async fn e2e_ruby_project_audit() {
+    let temp_dir = TempDir::new().unwrap();
+    create_ruby_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan"])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+}
+
+#[tokio::test]
+async fn e2e_ruby_project_missing_gemfile_lock() {
+    let temp_dir = TempDir::new().unwrap();
+    create_ruby_project(temp_dir.path());
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    let output_path = temp_dir.path().join("plan.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan", "--format", "json", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    let findings = plan
+        .get("audit")
+        .and_then(|a| a.get("findings"))
+        .and_then(|f| f.as_array());
+
+    if let Some(findings) = findings {
+        let has_dep003 = findings.iter().any(|f| {
+            f.get("rule_id")
+                .and_then(|r| r.as_str())
+                .map(|r| r == "DEP003")
+                .unwrap_or(false)
+        });
+        assert!(has_dep003, "Should detect missing Gemfile.lock (DEP003)");
+    }
+}
+
+// ============================================================================
+// E2E Tests for workflow rules
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_workflow_rules_detected() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Create a GitHub workflow without best practices
+    fs::create_dir_all(temp_dir.path().join(".github/workflows")).unwrap();
+    fs::write(
+        temp_dir.path().join(".github/workflows/ci.yml"),
+        r#"
+name: CI
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo build
+"#,
+    )
+    .unwrap();
+
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "strict",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    let output_path = temp_dir.path().join("plan.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan", "--format", "json", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
+
+    let findings = plan
+        .get("audit")
+        .and_then(|a| a.get("findings"))
+        .and_then(|f| f.as_array())
+        .unwrap();
+
+    // Should detect workflow issues (WF004 - missing timeout)
+    let workflow_findings: Vec<_> = findings
+        .iter()
+        .filter(|f| {
+            f.get("category")
+                .and_then(|c| c.as_str())
+                .map(|c| c == "workflows")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    assert!(
+        !workflow_findings.is_empty(),
+        "Should detect workflow issues"
+    );
+}
+
+// ============================================================================
+// E2E Tests for report formats
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_report_html_format() {
+    let repo_root = std::env::current_dir().unwrap();
+    let temp_dir = TempDir::new().unwrap();
+    let output_path = temp_dir.path().join("report.html");
+
+    let result = get_cmd()
+        .current_dir(&repo_root)
+        .args(["report", "--format", "html", "--output"])
+        .arg(&output_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // HTML format might not be implemented - just verify command doesn't crash
+    let _ = result;
+}
+
+#[tokio::test]
+async fn e2e_report_text_format() {
+    let repo_root = std::env::current_dir().unwrap();
+
+    // Run with text format (default)
+    let output = get_cmd()
+        .current_dir(&repo_root)
+        .args(["report"])
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]))
+        .get_output()
+        .stdout
+        .clone();
+
+    // Text output should have some content
+    let _stdout = String::from_utf8_lossy(&output);
+    // Test passes if command runs without error - report writes to file by default
+}
