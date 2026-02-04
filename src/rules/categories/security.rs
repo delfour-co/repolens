@@ -45,6 +45,11 @@ impl RuleCategory for SecurityRules {
             findings.extend(check_dependencies(scanner).await?);
         }
 
+        // Check for branch protection configuration
+        if config.is_rule_enabled("security/branch-protection") {
+            findings.extend(check_branch_protection(scanner).await?);
+        }
+
         Ok(findings)
     }
 }
@@ -190,6 +195,164 @@ async fn check_dependencies(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensE
     Ok(findings)
 }
 
+/// Check for branch protection configuration via .github/settings.yml
+///
+/// Verifies that branch protection is configured using the probot/settings app
+/// configuration file. This is a common way to manage branch protection as code.
+///
+/// SEC007: .github/settings.yml absent (info)
+/// SEC008: No branch protection rules in settings.yml (warning)
+/// SEC009: required_pull_request_reviews not configured (warning)
+/// SEC010: required_status_checks not configured (warning)
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for branch protection issues
+async fn check_branch_protection(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
+    let mut findings = Vec::new();
+
+    // Check if .github/settings.yml exists
+    let settings_path = ".github/settings.yml";
+    if !scanner.file_exists(settings_path) {
+        findings.push(
+            Finding::new(
+                "SEC007",
+                "security",
+                Severity::Info,
+                "GitHub settings file (.github/settings.yml) is absent",
+            )
+            .with_description(
+                "The .github/settings.yml file allows you to configure repository settings, \
+                 including branch protection rules, as code using the probot/settings app."
+            )
+            .with_remediation(
+                "Consider adding a .github/settings.yml file to manage repository settings as code. \
+                 See https://probot.github.io/apps/settings/ for more information."
+            )
+        );
+        return Ok(findings);
+    }
+
+    // Read and parse the settings.yml file
+    let content = match scanner.read_file(settings_path) {
+        Ok(c) => c,
+        Err(_) => return Ok(findings),
+    };
+
+    let settings: serde_yaml::Value = match serde_yaml::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => {
+            // Invalid YAML, skip further checks
+            return Ok(findings);
+        }
+    };
+
+    // Check for branches configuration
+    let branches = settings.get("branches");
+    if branches.is_none() {
+        findings.push(
+            Finding::new(
+                "SEC008",
+                "security",
+                Severity::Warning,
+                "No branch protection rules defined in settings.yml",
+            )
+            .with_location(settings_path)
+            .with_description(
+                "Branch protection rules help prevent accidental force pushes, \
+                 require code reviews, and enforce status checks before merging.",
+            )
+            .with_remediation(
+                "Add a 'branches:' section to your .github/settings.yml to configure \
+                 branch protection for important branches like main/master.",
+            ),
+        );
+        return Ok(findings);
+    }
+
+    // Check if branches is an array and has protection rules
+    let branches_arr = match branches.and_then(|b| b.as_sequence()) {
+        Some(arr) => arr,
+        None => return Ok(findings),
+    };
+
+    let mut has_pr_reviews = false;
+    let mut has_status_checks = false;
+
+    for branch in branches_arr {
+        // Check protection settings
+        if let Some(protection) = branch.get("protection") {
+            // Check for required_pull_request_reviews
+            if protection.get("required_pull_request_reviews").is_some() {
+                has_pr_reviews = true;
+            }
+
+            // Check for required_status_checks
+            if protection.get("required_status_checks").is_some() {
+                has_status_checks = true;
+            }
+        }
+    }
+
+    if !has_pr_reviews {
+        findings.push(
+            Finding::new(
+                "SEC009",
+                "security",
+                Severity::Warning,
+                "required_pull_request_reviews not configured in branch protection",
+            )
+            .with_location(settings_path)
+            .with_description(
+                "Requiring pull request reviews ensures that changes are reviewed \
+                 by at least one other team member before merging.",
+            )
+            .with_remediation(
+                "Add 'required_pull_request_reviews' to your branch protection settings in \
+                 .github/settings.yml. Example:\n\
+                 branches:\n\
+                   - name: main\n\
+                     protection:\n\
+                       required_pull_request_reviews:\n\
+                         required_approving_review_count: 1",
+            ),
+        );
+    }
+
+    if !has_status_checks {
+        findings.push(
+            Finding::new(
+                "SEC010",
+                "security",
+                Severity::Warning,
+                "required_status_checks not configured in branch protection",
+            )
+            .with_location(settings_path)
+            .with_description(
+                "Requiring status checks ensures that CI/CD pipelines pass \
+                 before changes can be merged.",
+            )
+            .with_remediation(
+                "Add 'required_status_checks' to your branch protection settings in \
+                 .github/settings.yml. Example:\n\
+                 branches:\n\
+                   - name: main\n\
+                     protection:\n\
+                       required_status_checks:\n\
+                         strict: true\n\
+                         contexts:\n\
+                           - ci",
+            ),
+        );
+    }
+
+    Ok(findings)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +423,207 @@ mod tests {
         let findings = check_dependencies(&scanner).await.unwrap();
 
         assert!(findings.iter().any(|f| f.rule_id == "SECURITY003"));
+    }
+
+    // ===== Branch Protection Tests (SEC007-010) =====
+
+    #[tokio::test]
+    async fn test_check_branch_protection_no_settings_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert!(findings.iter().any(|f| f.rule_id == "SEC007"));
+        assert!(findings.iter().any(|f| f.severity == Severity::Info));
+    }
+
+    #[tokio::test]
+    async fn test_check_branch_protection_no_branches_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+
+        fs::write(
+            github_dir.join("settings.yml"),
+            r#"
+repository:
+  name: my-repo
+  description: A test repo
+"#,
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert!(findings.iter().any(|f| f.rule_id == "SEC008"));
+    }
+
+    #[tokio::test]
+    async fn test_check_branch_protection_no_pr_reviews() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+
+        fs::write(
+            github_dir.join("settings.yml"),
+            r#"
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        strict: true
+        contexts:
+          - ci
+"#,
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        // Should have SEC009 (no PR reviews) but not SEC010 (has status checks)
+        assert!(findings.iter().any(|f| f.rule_id == "SEC009"));
+        assert!(!findings.iter().any(|f| f.rule_id == "SEC010"));
+    }
+
+    #[tokio::test]
+    async fn test_check_branch_protection_no_status_checks() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+
+        fs::write(
+            github_dir.join("settings.yml"),
+            r#"
+branches:
+  - name: main
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+"#,
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        // Should have SEC010 (no status checks) but not SEC009 (has PR reviews)
+        assert!(!findings.iter().any(|f| f.rule_id == "SEC009"));
+        assert!(findings.iter().any(|f| f.rule_id == "SEC010"));
+    }
+
+    #[tokio::test]
+    async fn test_check_branch_protection_both_missing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+
+        fs::write(
+            github_dir.join("settings.yml"),
+            r#"
+branches:
+  - name: main
+    protection:
+      enforce_admins: true
+"#,
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        // Should have both SEC009 and SEC010
+        assert!(findings.iter().any(|f| f.rule_id == "SEC009"));
+        assert!(findings.iter().any(|f| f.rule_id == "SEC010"));
+    }
+
+    #[tokio::test]
+    async fn test_check_branch_protection_fully_configured() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+
+        fs::write(
+            github_dir.join("settings.yml"),
+            r#"
+branches:
+  - name: main
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 2
+        dismiss_stale_reviews: true
+      required_status_checks:
+        strict: true
+        contexts:
+          - ci
+          - tests
+      enforce_admins: true
+"#,
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        // No findings when fully configured
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_branch_protection_invalid_yaml() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+
+        fs::write(github_dir.join("settings.yml"), "invalid: yaml: content: [").unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        // Should not crash, just return empty findings for invalid YAML
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_branch_protection_multiple_branches() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+
+        fs::write(
+            github_dir.join("settings.yml"),
+            r#"
+branches:
+  - name: main
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+  - name: develop
+    protection:
+      required_status_checks:
+        strict: true
+        contexts:
+          - ci
+"#,
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let findings = check_branch_protection(&scanner).await.unwrap();
+
+        // Both rules are satisfied across branches
+        assert!(findings.is_empty());
     }
 }

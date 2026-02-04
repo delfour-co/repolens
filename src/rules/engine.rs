@@ -6,8 +6,8 @@ use tracing::{debug, info, span, Level};
 
 use super::categories::{
     custom::CustomRules, dependencies::DependencyRules, docker::DockerRules, docs::DocsRules,
-    files::FilesRules, licenses::LicenseRules, quality::QualityRules, secrets::SecretsRules,
-    security::SecurityRules, workflows::WorkflowsRules,
+    files::FilesRules, git::GitRules, licenses::LicenseRules, quality::QualityRules,
+    secrets::SecretsRules, security::SecurityRules, workflows::WorkflowsRules,
 };
 use super::results::AuditResults;
 use crate::config::Config;
@@ -123,6 +123,7 @@ impl RulesEngine {
             Box::new(DependencyRules),
             Box::new(LicenseRules),
             Box::new(DockerRules),
+            Box::new(GitRules),
             Box::new(CustomRules),
         ];
 

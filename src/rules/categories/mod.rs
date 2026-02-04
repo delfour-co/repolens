@@ -5,6 +5,7 @@ pub mod dependencies;
 pub mod docker;
 pub mod docs;
 pub mod files;
+pub mod git;
 pub mod licenses;
 pub mod quality;
 pub mod secrets;

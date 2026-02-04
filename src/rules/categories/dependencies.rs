@@ -22,11 +22,164 @@ impl RuleCategory for DependencyRules {
         if config.is_rule_enabled("dependencies/vulnerabilities") {
             findings.extend(check_vulnerabilities(scanner, config).await?);
         }
+        if config.is_rule_enabled("dependencies/lock-files") {
+            findings.extend(check_lock_files(scanner).await?);
+        }
         Ok(findings)
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Lock file mapping for each ecosystem
+/// Maps manifest files to their corresponding lock files
+struct LockFileMapping {
+    manifest: &'static str,
+    lock_files: &'static [&'static str],
+    ecosystem: &'static str,
+}
+
+const LOCK_FILE_MAPPINGS: &[LockFileMapping] = &[
+    LockFileMapping {
+        manifest: "Cargo.toml",
+        lock_files: &["Cargo.lock"],
+        ecosystem: "Rust",
+    },
+    LockFileMapping {
+        manifest: "package.json",
+        lock_files: &["package-lock.json", "yarn.lock", "pnpm-lock.yaml"],
+        ecosystem: "Node.js",
+    },
+    LockFileMapping {
+        manifest: "pyproject.toml",
+        lock_files: &["poetry.lock", "uv.lock"],
+        ecosystem: "Python",
+    },
+    LockFileMapping {
+        manifest: "Pipfile",
+        lock_files: &["Pipfile.lock"],
+        ecosystem: "Python (Pipenv)",
+    },
+    LockFileMapping {
+        manifest: "go.mod",
+        lock_files: &["go.sum"],
+        ecosystem: "Go",
+    },
+    LockFileMapping {
+        manifest: "composer.json",
+        lock_files: &["composer.lock"],
+        ecosystem: "PHP",
+    },
+    LockFileMapping {
+        manifest: "Gemfile",
+        lock_files: &["Gemfile.lock"],
+        ecosystem: "Ruby",
+    },
+    LockFileMapping {
+        manifest: "pubspec.yaml",
+        lock_files: &["pubspec.lock"],
+        ecosystem: "Dart/Flutter",
+    },
+    LockFileMapping {
+        manifest: "Package.swift",
+        lock_files: &["Package.resolved"],
+        ecosystem: "Swift",
+    },
+    LockFileMapping {
+        manifest: "Podfile",
+        lock_files: &["Podfile.lock"],
+        ecosystem: "CocoaPods",
+    },
+];
+
+/// Check for lock files corresponding to detected ecosystems
+///
+/// Verifies that lock files exist for each detected package manifest.
+/// Lock files ensure reproducible builds and protect against supply chain attacks.
+///
+/// # Arguments
+///
+/// * `scanner` - The scanner to access repository files
+///
+/// # Returns
+///
+/// A vector of findings for missing lock files
+async fn check_lock_files(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
+    let mut findings = Vec::new();
+
+    // Check standard manifest -> lock file mappings
+    for mapping in LOCK_FILE_MAPPINGS {
+        if scanner.file_exists(mapping.manifest) {
+            let has_lock_file = mapping.lock_files.iter().any(|lf| scanner.file_exists(lf));
+            if !has_lock_file {
+                let lock_files_str = mapping.lock_files.join(" or ");
+                findings.push(
+                    Finding::new(
+                        "DEP003",
+                        "dependencies",
+                        Severity::Warning,
+                        format!(
+                            "Lock file missing for {} ecosystem (expected {})",
+                            mapping.ecosystem, lock_files_str
+                        ),
+                    )
+                    .with_location(mapping.manifest)
+                    .with_description(
+                        "Lock files ensure reproducible builds and protect against supply chain attacks by pinning exact dependency versions."
+                    )
+                    .with_remediation(format!(
+                        "Run your package manager to generate a lock file: {}",
+                        get_lock_file_command(mapping.manifest)
+                    )),
+                );
+            }
+        }
+    }
+
+    // Check for .csproj files -> packages.lock.json
+    let csproj_files = scanner.files_matching_pattern("*.csproj");
+    if !csproj_files.is_empty() && !scanner.file_exists("packages.lock.json") {
+        findings.push(
+            Finding::new(
+                "DEP003",
+                "dependencies",
+                Severity::Warning,
+                "Lock file missing for .NET ecosystem (expected packages.lock.json)",
+            )
+            .with_location(
+                csproj_files
+                    .first()
+                    .map(|f| f.path.as_str())
+                    .unwrap_or("*.csproj"),
+            )
+            .with_description(
+                "Lock files ensure reproducible builds and protect against supply chain attacks by pinning exact dependency versions."
+            )
+            .with_remediation(
+                "Enable lock file generation: set RestorePackagesWithLockFile to true in your .csproj or run 'dotnet restore --use-lock-file'"
+            ),
+        );
+    }
+
+    Ok(findings)
+}
+
+/// Get the command to generate a lock file for a given manifest
+fn get_lock_file_command(manifest: &str) -> &'static str {
+    match manifest {
+        "Cargo.toml" => "cargo build (or cargo generate-lockfile)",
+        "package.json" => "npm install (or yarn install, pnpm install)",
+        "pyproject.toml" => "poetry lock (or uv lock)",
+        "Pipfile" => "pipenv lock",
+        "go.mod" => "go mod tidy",
+        "composer.json" => "composer install",
+        "Gemfile" => "bundle install",
+        "pubspec.yaml" => "dart pub get (or flutter pub get)",
+        "Package.swift" => "swift package resolve",
+        "Podfile" => "pod install",
+        _ => "run your package manager's install command",
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Ecosystem {
     Cargo,
     Npm,
@@ -34,6 +187,11 @@ pub enum Ecosystem {
     Go,
     Maven,
     Packagist,
+    NuGet,     // .NET - OSV supported
+    RubyGems,  // Ruby - OSV supported
+    CocoaPods, // iOS - NOT in OSV
+    SwiftPM,   // Swift - NOT in OSV
+    Pub,       // Dart/Flutter - OSV supported
 }
 
 impl Ecosystem {
@@ -45,7 +203,17 @@ impl Ecosystem {
             Ecosystem::Go => "Go",
             Ecosystem::Maven => "Maven",
             Ecosystem::Packagist => "Packagist",
+            Ecosystem::NuGet => "NuGet",
+            Ecosystem::RubyGems => "RubyGems",
+            Ecosystem::CocoaPods => "CocoaPods",
+            Ecosystem::SwiftPM => "SwiftPM",
+            Ecosystem::Pub => "Pub",
         }
+    }
+
+    /// Check if the ecosystem is supported by the OSV vulnerability database
+    pub fn is_osv_supported(&self) -> bool {
+        !matches!(self, Ecosystem::CocoaPods | Ecosystem::SwiftPM)
     }
 }
 
@@ -179,16 +347,71 @@ async fn check_vulnerabilities(
     } else if let Ok(deps) = parse_composer_json(scanner) {
         all_deps.extend(deps);
     }
+    // New ecosystems
+    if let Ok(deps) = parse_nuget_lock(scanner) {
+        all_deps.extend(deps);
+    }
+    if let Ok(deps) = parse_gemfile_lock(scanner) {
+        all_deps.extend(deps);
+    }
+    if let Ok(deps) = parse_podfile_lock(scanner) {
+        all_deps.extend(deps);
+    }
+    if let Ok(deps) = parse_package_resolved(scanner) {
+        all_deps.extend(deps);
+    }
+    if let Ok(deps) = parse_pubspec_lock(scanner) {
+        all_deps.extend(deps);
+    }
     if all_deps.is_empty() {
         return Ok(findings);
     }
+
+    // Check for ecosystems not supported by OSV and add info findings
+    let unsupported_ecosystems: Vec<_> = all_deps
+        .iter()
+        .filter(|d| !d.ecosystem.is_osv_supported())
+        .collect();
+    if !unsupported_ecosystems.is_empty() {
+        let mut seen_ecosystems = std::collections::HashSet::new();
+        for dep in &unsupported_ecosystems {
+            if seen_ecosystems.insert(dep.ecosystem) {
+                let ecosystem_name = dep.ecosystem.as_str();
+                let lock_file = get_ecosystem_lock_file(dep.ecosystem);
+                findings.push(
+                    Finding::new(
+                        format!("DEP004-{}", ecosystem_name),
+                        "dependencies",
+                        Severity::Info,
+                        format!(
+                            "{} dependencies detected but vulnerability scanning is not available",
+                            ecosystem_name
+                        ),
+                    )
+                    .with_description(format!(
+                        "The {} ecosystem is not supported by the OSV vulnerability database. \
+                         Dependencies from {} cannot be checked for known vulnerabilities.",
+                        ecosystem_name, lock_file
+                    ))
+                    .with_location(lock_file),
+                );
+            }
+        }
+    }
+
+    // Filter to only OSV-supported ecosystems for vulnerability queries
+    let osv_supported_deps: Vec<_> = all_deps
+        .iter()
+        .filter(|d| d.ecosystem.is_osv_supported())
+        .cloned()
+        .collect();
 
     // Use a HashSet to deduplicate vulnerabilities by ID
     use std::collections::HashSet;
     let mut seen_vuln_ids: HashSet<String> = HashSet::new();
 
-    // Query OSV API
-    match query_osv_batch(&all_deps).await {
+    // Query OSV API (only for supported ecosystems)
+    match query_osv_batch(&osv_supported_deps).await {
         Ok(vulns) => {
             for (dep, vuln_list) in vulns {
                 for vuln in vuln_list {
@@ -236,14 +459,7 @@ async fn check_vulnerabilities(
                         )
                     };
                     f = f.with_remediation(rem);
-                    let loc = match dep.ecosystem {
-                        Ecosystem::Cargo => "Cargo.lock",
-                        Ecosystem::Npm => "package-lock.json",
-                        Ecosystem::PyPI => "requirements.txt",
-                        Ecosystem::Go => "go.sum",
-                        Ecosystem::Maven => "pom.xml",
-                        Ecosystem::Packagist => "composer.lock",
-                    };
+                    let loc = get_ecosystem_lock_file(dep.ecosystem);
                     f = f.with_location(loc);
                     findings.push(f);
                 }
@@ -254,8 +470,8 @@ async fn check_vulnerabilities(
         }
     }
 
-    // Query GitHub Advisory Database
-    match query_github_advisories(&all_deps).await {
+    // Query GitHub Advisory Database (only for supported ecosystems)
+    match query_github_advisories(&osv_supported_deps).await {
         Ok(vulns) => {
             for (dep, vuln_list) in vulns {
                 for vuln in vuln_list {
@@ -295,14 +511,7 @@ async fn check_vulnerabilities(
                             dep.name, vuln.id
                         ));
                     }
-                    let loc = match dep.ecosystem {
-                        Ecosystem::Cargo => "Cargo.lock",
-                        Ecosystem::Npm => "package-lock.json",
-                        Ecosystem::PyPI => "requirements.txt",
-                        Ecosystem::Go => "go.sum",
-                        Ecosystem::Maven => "pom.xml",
-                        Ecosystem::Packagist => "composer.lock",
-                    };
+                    let loc = get_ecosystem_lock_file(dep.ecosystem);
                     f = f.with_location(loc);
                     findings.push(f);
                 }
@@ -313,8 +522,8 @@ async fn check_vulnerabilities(
         }
     }
 
-    // If both sources failed, add a warning
-    if findings.is_empty() && !all_deps.is_empty() {
+    // If both sources failed, add a warning (only for OSV-supported deps)
+    if findings.is_empty() && !osv_supported_deps.is_empty() {
         findings.push(
             Finding::new(
                 "DEP000",
@@ -330,6 +539,23 @@ async fn check_vulnerabilities(
     }
 
     Ok(findings)
+}
+
+/// Get the lock file path for an ecosystem
+fn get_ecosystem_lock_file(ecosystem: Ecosystem) -> &'static str {
+    match ecosystem {
+        Ecosystem::Cargo => "Cargo.lock",
+        Ecosystem::Npm => "package-lock.json",
+        Ecosystem::PyPI => "requirements.txt",
+        Ecosystem::Go => "go.sum",
+        Ecosystem::Maven => "pom.xml",
+        Ecosystem::Packagist => "composer.lock",
+        Ecosystem::NuGet => "packages.lock.json",
+        Ecosystem::RubyGems => "Gemfile.lock",
+        Ecosystem::CocoaPods => "Podfile.lock",
+        Ecosystem::SwiftPM => "Package.resolved",
+        Ecosystem::Pub => "pubspec.lock",
+    }
 }
 
 pub fn parse_cargo_lock(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
@@ -674,6 +900,328 @@ pub fn parse_composer_json(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLen
     Ok(deps)
 }
 
+/// Parse NuGet packages.lock.json for .NET projects
+/// Falls back to parsing *.csproj files if lock file not found
+pub fn parse_nuget_lock(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+
+    // Try packages.lock.json first (preferred)
+    if scanner.file_exists("packages.lock.json") {
+        let content = scanner.read_file("packages.lock.json").map_err(|e| {
+            RepoLensError::Scan(crate::error::ScanError::FileRead {
+                path: "packages.lock.json".to_string(),
+                source: e,
+            })
+        })?;
+        let lock: serde_json::Value = serde_json::from_str(&content)?;
+
+        // packages.lock.json format: { "version": 1, "dependencies": { "targetFramework": { "packageName": { "resolved": "version" } } } }
+        if let Some(dependencies) = lock.get("dependencies").and_then(|d| d.as_object()) {
+            for (_framework, packages) in dependencies {
+                if let Some(packages_obj) = packages.as_object() {
+                    for (name, info) in packages_obj {
+                        if let Some(resolved) = info.get("resolved").and_then(|v| v.as_str()) {
+                            deps.push(Dependency {
+                                name: name.clone(),
+                                version: resolved.to_string(),
+                                ecosystem: Ecosystem::NuGet,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        return Ok(deps);
+    }
+
+    // Fallback to parsing *.csproj files
+    let csproj_files = scanner.files_matching_pattern("*.csproj");
+    // Pre-compile regexes outside the loop
+    let re = Regex::new(r#"<PackageReference\s+Include\s*=\s*"([^"]+)"\s+Version\s*=\s*"([^"]+)""#)
+        .unwrap();
+    let re_alt = Regex::new(
+        r#"<PackageReference\s+Include\s*=\s*"([^"]+)"[^>]*>\s*<Version>([^<]+)</Version>"#,
+    )
+    .unwrap();
+    for file in csproj_files {
+        if let Ok(content) = scanner.read_file(&file.path) {
+            // Match PackageReference elements: <PackageReference Include="Name" Version="Version" />
+            for cap in re.captures_iter(&content) {
+                let name = cap[1].to_string();
+                let version = cap[2].to_string();
+                // Skip version placeholders
+                if !version.starts_with("$(") {
+                    deps.push(Dependency {
+                        name,
+                        version,
+                        ecosystem: Ecosystem::NuGet,
+                    });
+                }
+            }
+
+            // Also match the alternative format: <PackageReference Include="Name"><Version>Version</Version></PackageReference>
+            for cap in re_alt.captures_iter(&content) {
+                let name = cap[1].to_string();
+                let version = cap[2].to_string();
+                if !version.starts_with("$(") {
+                    deps.push(Dependency {
+                        name,
+                        version,
+                        ecosystem: Ecosystem::NuGet,
+                    });
+                }
+            }
+        }
+    }
+    Ok(deps)
+}
+
+/// Parse Gemfile.lock for Ruby projects
+pub fn parse_gemfile_lock(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+    if !scanner.file_exists("Gemfile.lock") {
+        return Ok(deps);
+    }
+    let content = scanner.read_file("Gemfile.lock").map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "Gemfile.lock".to_string(),
+            source: e,
+        })
+    })?;
+
+    // Gemfile.lock format has specs section with indented gem entries:
+    // GEM
+    //   specs:
+    //     gem-name (1.2.3)
+    //       dependency1 (~> 1.0)
+    let mut in_specs = false;
+    let gem_re = Regex::new(r"^\s{4}([a-zA-Z0-9_-]+)\s+\(([^)]+)\)$").unwrap();
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "specs:" {
+            in_specs = true;
+            continue;
+        }
+
+        // Exit specs section when we hit a non-indented line (or empty line followed by section header)
+        if in_specs && !line.starts_with(' ') && !trimmed.is_empty() {
+            in_specs = false;
+        }
+
+        if in_specs {
+            // Match gem lines (4 spaces indent, gem-name (version))
+            if let Some(cap) = gem_re.captures(line) {
+                let name = cap[1].to_string();
+                let version = cap[2].to_string();
+                deps.push(Dependency {
+                    name,
+                    version,
+                    ecosystem: Ecosystem::RubyGems,
+                });
+            }
+        }
+    }
+    Ok(deps)
+}
+
+/// Parse Podfile.lock for iOS/CocoaPods projects
+pub fn parse_podfile_lock(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+    if !scanner.file_exists("Podfile.lock") {
+        return Ok(deps);
+    }
+    let content = scanner.read_file("Podfile.lock").map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "Podfile.lock".to_string(),
+            source: e,
+        })
+    })?;
+
+    // Parse YAML - Podfile.lock format:
+    // PODS:
+    //   - PodName (1.2.3):
+    //     - Dependency
+    //   - AnotherPod (2.0.0)
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "Podfile.lock".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),
+        })
+    })?;
+
+    if let Some(pods) = parsed.get("PODS").and_then(|p| p.as_sequence()) {
+        for pod in pods {
+            // Each pod can be a string "Name (version)" or a mapping with the name as key
+            let pod_str = if let Some(s) = pod.as_str() {
+                s.to_string()
+            } else if let Some(mapping) = pod.as_mapping() {
+                // Get the first key which is the pod name with version
+                mapping
+                    .keys()
+                    .next()
+                    .and_then(|k| k.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+            } else {
+                continue;
+            };
+
+            // Parse "PodName (1.2.3)" format
+            if let Some(paren_pos) = pod_str.find('(') {
+                if let Some(end_pos) = pod_str.find(')') {
+                    let name = pod_str[..paren_pos].trim().to_string();
+                    let version = pod_str[paren_pos + 1..end_pos].trim().to_string();
+                    if !name.is_empty() && !version.is_empty() {
+                        deps.push(Dependency {
+                            name,
+                            version,
+                            ecosystem: Ecosystem::CocoaPods,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    Ok(deps)
+}
+
+/// Parse Package.resolved for Swift Package Manager projects
+pub fn parse_package_resolved(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+
+    // Package.resolved can be at root or in Package.swift directory
+    let resolved_paths = ["Package.resolved", ".package.resolved"];
+    let mut content = None;
+    let mut found_path = "";
+
+    for path in resolved_paths {
+        if scanner.file_exists(path) {
+            content = scanner.read_file(path).ok();
+            found_path = path;
+            break;
+        }
+    }
+
+    let content = match content {
+        Some(c) => c,
+        None => return Ok(deps),
+    };
+
+    let resolved: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: found_path.to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),
+        })
+    })?;
+
+    // Package.resolved format v2 (Swift 5.6+):
+    // { "pins": [ { "identity": "name", "state": { "version": "1.0.0" } } ] }
+    // Format v1:
+    // { "object": { "pins": [ { "package": "name", "state": { "version": "1.0.0" } } ] } }
+
+    // Try v2 format first
+    if let Some(pins) = resolved.get("pins").and_then(|p| p.as_array()) {
+        for pin in pins {
+            let name = pin
+                .get("identity")
+                .and_then(|i| i.as_str())
+                .map(|s| s.to_string());
+            let version = pin
+                .get("state")
+                .and_then(|s| s.get("version"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            if let (Some(name), Some(version)) = (name, version) {
+                deps.push(Dependency {
+                    name,
+                    version,
+                    ecosystem: Ecosystem::SwiftPM,
+                });
+            }
+        }
+    }
+    // Try v1 format
+    else if let Some(pins) = resolved
+        .get("object")
+        .and_then(|o| o.get("pins"))
+        .and_then(|p| p.as_array())
+    {
+        for pin in pins {
+            let name = pin
+                .get("package")
+                .and_then(|p| p.as_str())
+                .map(|s| s.to_string());
+            let version = pin
+                .get("state")
+                .and_then(|s| s.get("version"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            if let (Some(name), Some(version)) = (name, version) {
+                deps.push(Dependency {
+                    name,
+                    version,
+                    ecosystem: Ecosystem::SwiftPM,
+                });
+            }
+        }
+    }
+
+    Ok(deps)
+}
+
+/// Parse pubspec.lock for Dart/Flutter projects
+pub fn parse_pubspec_lock(scanner: &Scanner) -> Result<Vec<Dependency>, RepoLensError> {
+    let mut deps = Vec::new();
+    if !scanner.file_exists("pubspec.lock") {
+        return Ok(deps);
+    }
+    let content = scanner.read_file("pubspec.lock").map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "pubspec.lock".to_string(),
+            source: e,
+        })
+    })?;
+
+    // Parse YAML - pubspec.lock format:
+    // packages:
+    //   package_name:
+    //     dependency: "direct main"
+    //     version: "1.2.3"
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| {
+        RepoLensError::Scan(crate::error::ScanError::FileRead {
+            path: "pubspec.lock".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),
+        })
+    })?;
+
+    if let Some(packages) = parsed.get("packages").and_then(|p| p.as_mapping()) {
+        for (name, info) in packages {
+            let name = match name.as_str() {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+
+            let version = info
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim_matches('"').to_string());
+
+            if let Some(version) = version {
+                deps.push(Dependency {
+                    name,
+                    version,
+                    ecosystem: Ecosystem::Pub,
+                });
+            }
+        }
+    }
+    Ok(deps)
+}
+
 async fn query_osv_batch(
     deps: &[Dependency],
 ) -> Result<Vec<(Dependency, Vec<OsvVulnerability>)>, String> {
@@ -747,6 +1295,11 @@ async fn query_github_advisories(
             Ecosystem::Go => "go",
             Ecosystem::Maven => "maven",
             Ecosystem::Packagist => "composer",
+            Ecosystem::NuGet => "nuget",
+            Ecosystem::RubyGems => "rubygems",
+            Ecosystem::Pub => "pub",
+            // CocoaPods and SwiftPM are not supported by GitHub Advisory DB either
+            Ecosystem::CocoaPods | Ecosystem::SwiftPM => continue,
         };
 
         // Use GitHub's REST API for security advisories
@@ -1418,5 +1971,683 @@ dependencies {
         assert_eq!(Ecosystem::Packagist, Ecosystem::Packagist);
         assert_ne!(Ecosystem::Maven, Ecosystem::Packagist);
         assert_ne!(Ecosystem::Maven, Ecosystem::Cargo);
+    }
+
+    // ===== Lock Files (DEP003) Tests =====
+
+    #[tokio::test]
+    async fn test_check_lock_files_cargo_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
+        // No Cargo.lock
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Rust"));
+        assert!(findings[0].message.contains("Cargo.lock"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_cargo_present() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
+        fs::write(tmp.path().join("Cargo.lock"), "[[package]]").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_npm_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("package.json"), r#"{"name":"test"}"#).unwrap();
+        // No lock file
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Node.js"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_npm_with_package_lock() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("package.json"), r#"{"name":"test"}"#).unwrap();
+        fs::write(tmp.path().join("package-lock.json"), "{}").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_npm_with_yarn_lock() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("package.json"), r#"{"name":"test"}"#).unwrap();
+        fs::write(tmp.path().join("yarn.lock"), "").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_npm_with_pnpm_lock() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("package.json"), r#"{"name":"test"}"#).unwrap();
+        fs::write(tmp.path().join("pnpm-lock.yaml"), "").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_python_pyproject_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("pyproject.toml"), "[tool.poetry]").unwrap();
+        // No poetry.lock or uv.lock
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Python"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_python_with_poetry_lock() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("pyproject.toml"), "[tool.poetry]").unwrap();
+        fs::write(tmp.path().join("poetry.lock"), "").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_python_with_uv_lock() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("pyproject.toml"), "[tool.poetry]").unwrap();
+        fs::write(tmp.path().join("uv.lock"), "").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_pipenv_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Pipfile"), "[packages]").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Pipenv"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_go_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("go.mod"), "module test").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Go"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_go_present() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("go.mod"), "module test").unwrap();
+        fs::write(tmp.path().join("go.sum"), "").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_composer_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("composer.json"), "{}").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("PHP"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_gemfile_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Gemfile"), "source 'https://rubygems.org'").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Ruby"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_pubspec_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("pubspec.yaml"), "name: test").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Dart"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_swift_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Package.swift"),
+            "// swift-tools-version:5.5",
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("Swift"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_podfile_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("Podfile"), "platform :ios, '13.0'").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "DEP003");
+        assert!(findings[0].message.contains("CocoaPods"));
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_no_manifest() {
+        let tmp = TempDir::new().unwrap();
+        // No manifest files
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_check_lock_files_multiple_ecosystems() {
+        let tmp = TempDir::new().unwrap();
+        // Multiple manifests without lock files
+        fs::write(tmp.path().join("Cargo.toml"), "[package]").unwrap();
+        fs::write(tmp.path().join("package.json"), "{}").unwrap();
+        fs::write(tmp.path().join("go.mod"), "module test").unwrap();
+
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let findings = check_lock_files(&scanner).await.unwrap();
+
+        assert_eq!(findings.len(), 3);
+        assert!(findings.iter().all(|f| f.rule_id == "DEP003"));
+    }
+
+    // ===== NuGet Tests =====
+
+    #[test]
+    fn test_parse_nuget_lock_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("packages.lock.json"),
+            r#"{
+    "version": 1,
+    "dependencies": {
+        "net6.0": {
+            "Newtonsoft.Json": {
+                "resolved": "13.0.1"
+            },
+            "Serilog": {
+                "resolved": "2.12.0"
+            }
+        }
+    }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_nuget_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "Newtonsoft.Json" && d.version == "13.0.1"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "Serilog" && d.version == "2.12.0"));
+        assert!(deps.iter().all(|d| d.ecosystem == Ecosystem::NuGet));
+    }
+
+    #[test]
+    fn test_parse_nuget_lock_multiple_frameworks() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("packages.lock.json"),
+            r#"{
+    "version": 1,
+    "dependencies": {
+        "net6.0": {
+            "Newtonsoft.Json": {
+                "resolved": "13.0.1"
+            }
+        },
+        "net7.0": {
+            "System.Text.Json": {
+                "resolved": "7.0.0"
+            }
+        }
+    }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_nuget_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|d| d.name == "Newtonsoft.Json"));
+        assert!(deps.iter().any(|d| d.name == "System.Text.Json"));
+    }
+
+    #[test]
+    fn test_parse_nuget_lock_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_nuget_lock(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_parse_nuget_csproj_fallback() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("MyProject.csproj"),
+            r#"<Project>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0" />
+  </ItemGroup>
+</Project>"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_nuget_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "Newtonsoft.Json" && d.version == "13.0.1"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "Microsoft.Extensions.Logging" && d.version == "7.0.0"));
+    }
+
+    // ===== Ruby Gemfile.lock Tests =====
+
+    #[test]
+    fn test_parse_gemfile_lock_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Gemfile.lock"),
+            r#"GEM
+  remote: https://rubygems.org/
+  specs:
+    rails (7.0.4)
+    nokogiri (1.14.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  rails
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_gemfile_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "rails" && d.version == "7.0.4"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "nokogiri" && d.version == "1.14.0"));
+        assert!(deps.iter().all(|d| d.ecosystem == Ecosystem::RubyGems));
+    }
+
+    #[test]
+    fn test_parse_gemfile_lock_with_dependencies() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Gemfile.lock"),
+            r#"GEM
+  remote: https://rubygems.org/
+  specs:
+    rack (3.0.2)
+    rails (7.0.4)
+      actionpack (= 7.0.4)
+    actionpack (7.0.4)
+      rack (>= 2.2.0)
+
+PLATFORMS
+  ruby
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_gemfile_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 3);
+        assert!(deps.iter().any(|d| d.name == "rack"));
+        assert!(deps.iter().any(|d| d.name == "rails"));
+        assert!(deps.iter().any(|d| d.name == "actionpack"));
+    }
+
+    #[test]
+    fn test_parse_gemfile_lock_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_gemfile_lock(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== CocoaPods Podfile.lock Tests =====
+
+    #[test]
+    fn test_parse_podfile_lock_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Podfile.lock"),
+            r#"PODS:
+  - Alamofire (5.6.4)
+  - SwiftyJSON (5.0.1)
+
+DEPENDENCIES:
+  - Alamofire
+  - SwiftyJSON
+
+SPEC CHECKSUMS:
+  Alamofire: abc123
+  SwiftyJSON: def456
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_podfile_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "Alamofire" && d.version == "5.6.4"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "SwiftyJSON" && d.version == "5.0.1"));
+        assert!(deps.iter().all(|d| d.ecosystem == Ecosystem::CocoaPods));
+    }
+
+    #[test]
+    fn test_parse_podfile_lock_with_dependencies() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Podfile.lock"),
+            r#"PODS:
+  - Firebase/Core (10.3.0):
+    - FirebaseAnalytics
+  - FirebaseAnalytics (10.3.0)
+
+DEPENDENCIES:
+  - Firebase/Core
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_podfile_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "Firebase/Core" && d.version == "10.3.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "FirebaseAnalytics" && d.version == "10.3.0"));
+    }
+
+    #[test]
+    fn test_parse_podfile_lock_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_podfile_lock(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== Swift Package.resolved Tests =====
+
+    #[test]
+    fn test_parse_package_resolved_v2() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Package.resolved"),
+            r#"{
+  "pins": [
+    {
+      "identity": "swift-argument-parser",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/apple/swift-argument-parser.git",
+      "state": {
+        "revision": "abc123",
+        "version": "1.2.0"
+      }
+    },
+    {
+      "identity": "swift-log",
+      "kind": "remoteSourceControl",
+      "location": "https://github.com/apple/swift-log.git",
+      "state": {
+        "revision": "def456",
+        "version": "1.5.2"
+      }
+    }
+  ],
+  "version": 2
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_package_resolved(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "swift-argument-parser" && d.version == "1.2.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "swift-log" && d.version == "1.5.2"));
+        assert!(deps.iter().all(|d| d.ecosystem == Ecosystem::SwiftPM));
+    }
+
+    #[test]
+    fn test_parse_package_resolved_v1() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("Package.resolved"),
+            r#"{
+  "object": {
+    "pins": [
+      {
+        "package": "Alamofire",
+        "repositoryURL": "https://github.com/Alamofire/Alamofire.git",
+        "state": {
+          "branch": null,
+          "revision": "abc123",
+          "version": "5.6.4"
+        }
+      }
+    ]
+  },
+  "version": 1
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_package_resolved(&scanner).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "Alamofire" && d.version == "5.6.4"));
+    }
+
+    #[test]
+    fn test_parse_package_resolved_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_package_resolved(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== Dart/Flutter pubspec.lock Tests =====
+
+    #[test]
+    fn test_parse_pubspec_lock_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("pubspec.lock"),
+            r#"packages:
+  http:
+    dependency: "direct main"
+    description:
+      name: http
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.13.5"
+  json_annotation:
+    dependency: transitive
+    description:
+      name: json_annotation
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.8.0"
+sdks:
+  dart: ">=2.18.0 <4.0.0"
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_pubspec_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "http" && d.version == "0.13.5"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "json_annotation" && d.version == "4.8.0"));
+        assert!(deps.iter().all(|d| d.ecosystem == Ecosystem::Pub));
+    }
+
+    #[test]
+    fn test_parse_pubspec_lock_flutter() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("pubspec.lock"),
+            r#"packages:
+  flutter:
+    dependency: "direct main"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
+  provider:
+    dependency: "direct main"
+    description:
+      name: provider
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.5"
+sdks:
+  dart: ">=3.0.0 <4.0.0"
+"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_pubspec_lock(&scanner).unwrap();
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "provider" && d.version == "6.0.5"));
+    }
+
+    #[test]
+    fn test_parse_pubspec_lock_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_pubspec_lock(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== Ecosystem Tests =====
+
+    #[test]
+    fn test_ecosystem_is_osv_supported() {
+        assert!(Ecosystem::Cargo.is_osv_supported());
+        assert!(Ecosystem::Npm.is_osv_supported());
+        assert!(Ecosystem::PyPI.is_osv_supported());
+        assert!(Ecosystem::Go.is_osv_supported());
+        assert!(Ecosystem::Maven.is_osv_supported());
+        assert!(Ecosystem::Packagist.is_osv_supported());
+        assert!(Ecosystem::NuGet.is_osv_supported());
+        assert!(Ecosystem::RubyGems.is_osv_supported());
+        assert!(Ecosystem::Pub.is_osv_supported());
+        // Not supported
+        assert!(!Ecosystem::CocoaPods.is_osv_supported());
+        assert!(!Ecosystem::SwiftPM.is_osv_supported());
+    }
+
+    #[test]
+    fn test_get_ecosystem_lock_file() {
+        assert_eq!(get_ecosystem_lock_file(Ecosystem::Cargo), "Cargo.lock");
+        assert_eq!(get_ecosystem_lock_file(Ecosystem::Npm), "package-lock.json");
+        assert_eq!(
+            get_ecosystem_lock_file(Ecosystem::NuGet),
+            "packages.lock.json"
+        );
+        assert_eq!(get_ecosystem_lock_file(Ecosystem::RubyGems), "Gemfile.lock");
+        assert_eq!(
+            get_ecosystem_lock_file(Ecosystem::CocoaPods),
+            "Podfile.lock"
+        );
+        assert_eq!(
+            get_ecosystem_lock_file(Ecosystem::SwiftPM),
+            "Package.resolved"
+        );
+        assert_eq!(get_ecosystem_lock_file(Ecosystem::Pub), "pubspec.lock");
     }
 }
