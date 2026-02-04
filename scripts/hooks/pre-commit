@@ -1,10 +1,11 @@
 #!/bin/bash
 #
 # Pre-commit hook for RepoLens
-# Runs cargo fmt and cargo clippy before each commit
+# - Vérifie que l'email Git est bien kevin@delfour.co
+# - Lance cargo fmt et cargo clippy
 #
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -14,13 +15,37 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Running pre-commit checks...${NC}"
 
+########################################
+# 1) Vérifier l'email Git
+########################################
+
+EXPECTED_EMAIL="kevin@delfour.co"
+CURRENT_EMAIL="$(git config user.email || echo "")"
+
+if [[ "$CURRENT_EMAIL" != "$EXPECTED_EMAIL" ]]; then
+    echo -e "${RED}Error: git user.email is '$CURRENT_EMAIL'${NC}"
+    echo -e "Expected: ${YELLOW}$EXPECTED_EMAIL${NC}"
+    echo -e "Fix it with:"
+    echo -e "  ${YELLOW}git config user.email \"$EXPECTED_EMAIL\"${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Git email OK ($CURRENT_EMAIL)${NC}"
+
+########################################
+# 2) Vérifier cargo est dispo
+########################################
+
 # Check if cargo is available
 if ! command -v cargo &> /dev/null; then
     echo -e "${RED}Error: cargo is not installed${NC}"
     exit 1
 fi
 
-# Run cargo fmt check
+########################################
+# 3) Run cargo fmt check
+########################################
+
 echo -e "\n${YELLOW}Checking formatting (cargo fmt)...${NC}"
 if ! cargo fmt --all -- --check; then
     echo -e "${RED}Formatting check failed!${NC}"
@@ -29,7 +54,10 @@ if ! cargo fmt --all -- --check; then
 fi
 echo -e "${GREEN}Formatting OK${NC}"
 
-# Run cargo clippy
+########################################
+# 4) Run cargo clippy
+########################################
+
 echo -e "\n${YELLOW}Running linter (cargo clippy)...${NC}"
 if ! cargo clippy --all-targets --all-features -- -D warnings; then
     echo -e "${RED}Clippy check failed!${NC}"
