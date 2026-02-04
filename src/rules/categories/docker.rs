@@ -33,11 +33,11 @@ impl RuleCategory for DockerRules {
             findings.extend(check_dockerignore(scanner).await?);
         }
 
-        if config.is_rule_enabled("docker/pinned-tag") {
+        if config.is_rule_enabled("docker/from-pinning") {
             findings.extend(check_pinned_tag(scanner).await?);
         }
 
-        if config.is_rule_enabled("docker/user-instruction") {
+        if config.is_rule_enabled("docker/user") {
             findings.extend(check_user_instruction(scanner).await?);
         }
 
@@ -45,7 +45,7 @@ impl RuleCategory for DockerRules {
             findings.extend(check_healthcheck(scanner).await?);
         }
 
-        if config.is_rule_enabled("docker/multi-stage") {
+        if config.is_rule_enabled("docker/multistage") {
             findings.extend(check_multi_stage(scanner).await?);
         }
 
