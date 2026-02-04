@@ -381,6 +381,11 @@ pub fn collect_dependency_licenses(scanner: &Scanner) -> Vec<DependencyLicense> 
     licenses.extend(parse_go_mod_licenses(scanner));
     licenses.extend(parse_pom_xml_licenses(scanner));
     licenses.extend(parse_composer_json_licenses(scanner));
+    // New ecosystems
+    licenses.extend(parse_nuget_licenses(scanner));
+    licenses.extend(parse_gemspec_licenses(scanner));
+    licenses.extend(parse_podspec_licenses(scanner));
+    licenses.extend(parse_pubspec_licenses(scanner));
 
     licenses
 }
@@ -938,6 +943,99 @@ pub fn is_compatible(project_license: &str, dependency_license: &str) -> bool {
 
     // Unknown combination: consider incompatible
     false
+}
+
+/// Parse NuGet licenses - returns empty vec as NuGet doesn't embed licenses
+/// in the lock file. License information would need to be fetched from NuGet API.
+fn parse_nuget_licenses(_scanner: &Scanner) -> Vec<DependencyLicense> {
+    // NuGet doesn't embed licenses in packages.lock.json or .csproj files
+    // License info would require fetching from nuget.org API
+    Vec::new()
+}
+
+/// Parse *.gemspec files for license information
+fn parse_gemspec_licenses(scanner: &Scanner) -> Vec<DependencyLicense> {
+    let mut licenses = Vec::new();
+    let gemspec_files = scanner.files_matching_pattern("*.gemspec");
+
+    // Pre-compile regexes outside the loop
+    let license_re = Regex::new(r#"(?:spec|s)\.license\s*=\s*['"]([^'"]+)['"]"#).unwrap();
+    let name_re = Regex::new(r#"(?:spec|s)\.name\s*=\s*['"]([^'"]+)['"]"#).unwrap();
+
+    for file in gemspec_files {
+        if let Ok(content) = scanner.read_file(&file.path) {
+            // Match spec.license = 'MIT' or s.license = "MIT"
+
+            let license = license_re.captures(&content).map(|c| c[1].to_string());
+            let name = name_re
+                .captures(&content)
+                .map(|c| c[1].to_string())
+                .unwrap_or_else(|| {
+                    file.path
+                        .trim_end_matches(".gemspec")
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string()
+                });
+
+            licenses.push(DependencyLicense {
+                name,
+                license: license.map(|l| normalize_license(&l)),
+                source_file: file.path.clone(),
+            });
+        }
+    }
+    licenses
+}
+
+/// Parse *.podspec files for license information
+fn parse_podspec_licenses(scanner: &Scanner) -> Vec<DependencyLicense> {
+    let mut licenses = Vec::new();
+    let podspec_files = scanner.files_matching_pattern("*.podspec");
+
+    // Pre-compile regexes outside the loop
+    let license_simple_re = Regex::new(r#"(?:spec|s)\.license\s*=\s*['"]([^'"]+)['"]"#).unwrap();
+    let license_hash_re =
+        Regex::new(r#"(?:spec|s)\.license\s*=\s*\{[^}]*:type\s*=>\s*['"]([^'"]+)['"]"#).unwrap();
+    let name_re = Regex::new(r#"(?:spec|s)\.name\s*=\s*['"]([^'"]+)['"]"#).unwrap();
+
+    for file in podspec_files {
+        if let Ok(content) = scanner.read_file(&file.path) {
+            // Match s.license = 'MIT' or s.license = { :type => 'MIT' }
+
+            let license = license_simple_re
+                .captures(&content)
+                .or_else(|| license_hash_re.captures(&content))
+                .map(|c| c[1].to_string());
+            let name = name_re
+                .captures(&content)
+                .map(|c| c[1].to_string())
+                .unwrap_or_else(|| {
+                    file.path
+                        .trim_end_matches(".podspec")
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("unknown")
+                        .to_string()
+                });
+
+            licenses.push(DependencyLicense {
+                name,
+                license: license.map(|l| normalize_license(&l)),
+                source_file: file.path.clone(),
+            });
+        }
+    }
+    licenses
+}
+
+/// Parse pubspec.yaml/pubspec.lock for Dart/Flutter - returns empty vec
+/// as Pub doesn't embed license information in lock files
+fn parse_pubspec_licenses(_scanner: &Scanner) -> Vec<DependencyLicense> {
+    // Pub doesn't embed license information in pubspec.lock or pubspec.yaml
+    // License info would require fetching from pub.dev API
+    Vec::new()
 }
 
 #[cfg(test)]
