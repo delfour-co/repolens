@@ -27,6 +27,7 @@ coverage/
 .env
 .env.local
 *.local.toml
+.tools/*
 
 # Auto Claude data directory
 .auto-claude/
