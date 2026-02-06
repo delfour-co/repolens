@@ -120,6 +120,7 @@ predicates = "3"
 pretty_assertions = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 futures = "0.3"
+serial_test = "3.3.1"
 
 [[bench]]
 name = "parse_benchmark"

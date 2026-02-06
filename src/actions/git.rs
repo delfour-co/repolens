@@ -300,14 +300,10 @@ pub fn is_git_repository(root: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs;
     use std::process::Command;
-    use std::sync::Mutex;
     use tempfile::TempDir;
-
-    // Global mutex to serialize tests that change the current directory
-    // Using std::sync::Mutex instead of tokio::sync::Mutex for cross-runtime compatibility
-    static DIR_MUTEX: Mutex<()> = Mutex::new(());
 
     fn init_git_repo(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
         Command::new("git")
@@ -355,8 +351,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_create_branch() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -393,8 +389,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_has_changes() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -424,8 +420,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_stage_all_changes() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -463,8 +459,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_create_commit() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -503,8 +499,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_stage_files() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -555,8 +551,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_stage_files_empty() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -581,8 +577,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_default_branch() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -611,8 +607,8 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_current_branch() {
-        let _guard = DIR_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
