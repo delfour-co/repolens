@@ -138,24 +138,14 @@ impl ActionExecutor {
 mod tests {
     use super::*;
     use crate::actions::plan::{Action, ActionOperation, ActionPlan};
+    use serial_test::serial;
     use std::collections::HashMap;
-    use std::sync::OnceLock;
     use tempfile::TempDir;
-    use tokio::sync::Mutex;
-
-    // Global mutex to serialize tests that change the current directory
-    // This prevents race conditions when tests run in parallel
-    static DIR_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-
-    fn get_dir_mutex() -> &'static Mutex<()> {
-        DIR_MUTEX.get_or_init(|| Mutex::new(()))
-    }
 
     #[tokio::test]
+    #[serial]
     #[cfg_attr(tarpaulin, ignore)]
     async fn test_execute_action_update_gitignore() {
-        let _guard = get_dir_mutex().lock().await;
-
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
         let root_abs = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -210,8 +200,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_execute_action_create_file() {
-        let _guard = get_dir_mutex().lock().await;
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
@@ -251,8 +241,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_execute_all_actions() {
-        let _guard = get_dir_mutex().lock().await;
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 
@@ -290,8 +280,8 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_execute_handles_errors_gracefully() {
-        let _guard = get_dir_mutex().lock().await;
         let temp_dir = TempDir::new().unwrap();
         let root = temp_dir.path();
 

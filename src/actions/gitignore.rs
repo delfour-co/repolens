@@ -93,6 +93,7 @@ pub fn update_gitignore(entries: &[String]) -> Result<(), RepoLensError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use tempfile::tempdir;
 
     #[test]
@@ -199,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_update_gitignore_current_dir() {
         let dir = tempdir().unwrap();
         let original_dir = std::env::current_dir().unwrap();
