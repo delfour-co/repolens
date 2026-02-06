@@ -1,0 +1,34 @@
+Source: repolens
+Section: devel
+Priority: optional
+Maintainer: Kevin Delfour <kevin@delfour.co>
+Build-Depends: debhelper-compat (= 13),
+               cargo (>= 1.74),
+               rustc (>= 1.74),
+               libssl-dev,
+               pkg-config,
+               git
+Standards-Version: 4.6.2
+Homepage: https://github.com/kdelfour/repolens
+Vcs-Browser: https://github.com/kdelfour/repolens
+Vcs-Git: https://github.com/kdelfour/repolens.git
+Rules-Requires-Root: no
+
+Package: repolens
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         git
+Recommends: gh
+Description: CLI tool to audit repositories for best practices
+ RepoLens is a command-line tool that audits GitHub repositories
+ for best practices, security issues, and compliance with open-source
+ standards.
+ .
+ Features:
+  - Audit repositories for security vulnerabilities
+  - Check for required files (README, LICENSE, etc.)
+  - Detect exposed secrets and credentials
+  - Verify CI/CD workflow configurations
+  - Generate detailed compliance reports
+  - Support for multiple presets (opensource, enterprise, strict)

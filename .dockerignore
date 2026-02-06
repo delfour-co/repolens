@@ -1,0 +1,84 @@
+# ==============================================================================
+# Docker Build Context Exclusions
+# ==============================================================================
+
+# Build artifacts
+target/
+debug/
+*.pdb
+
+# Git
+.git/
+.gitignore
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.profraw
+*.profdata
+coverage/
+tests/
+benches/
+
+# Documentation (not needed for runtime)
+docs/
+wiki/
+*.md
+!README.md
+
+# Development files
+.claude/
+.auto-claude/
+.auto-claude-security.json
+.auto-claude-status
+.claude_settings.json
+.worktrees/
+.security-key
+logs/
+
+# Scripts (not needed for runtime)
+scripts/
+
+# Configuration files (not needed in image)
+.repolens.toml
+.repolens.example.toml
+.github/
+deny.toml
+CLAUDE.md
+DEVELOPMENT.md
+RELEASE.md
+TEST.md
+TODO.md
+
+# Examples
+examples/
+
+# Schemas README (schema files are needed for build)
+schemas/README.md
+
+# Temporary files
+*.tmp
+.scripts/*
+*.key
+.tools/*
+.env
+.env.local
+*.local.toml
+
+# Docker files (no need to include in context)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Cargo lock is needed, but not cargo config
+!Cargo.lock
+.cargo/

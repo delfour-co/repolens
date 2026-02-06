@@ -1,0 +1,49 @@
+#!/usr/bin/make -f
+
+# Debian rules file for repolens
+# See debhelper(7) for more information
+
+export DH_VERBOSE = 1
+export CARGO_HOME = $(CURDIR)/debian/cargo
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# Determine the target triple
+DEB_HOST_RUST_TYPE ?= $(shell dpkg-architecture -qDEB_HOST_RUST_TYPE)
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	rm -rf target
+	rm -rf $(CARGO_HOME)
+
+override_dh_auto_configure:
+	mkdir -p $(CARGO_HOME)
+	cargo fetch --locked
+
+override_dh_auto_build:
+	cargo build --release --frozen
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	cargo test --release --frozen
+endif
+
+override_dh_auto_install:
+	# Install binary
+	install -D -m 755 target/release/repolens \
+		debian/repolens/usr/bin/repolens
+
+override_dh_installchangelogs:
+	dh_installchangelogs CHANGELOG.md
+
+override_dh_installdocs:
+	dh_installdocs README.md
+
+# Don't strip - cargo already handles this with profile.release.strip
+override_dh_strip:
+	@echo "Skipping dh_strip - binary already stripped by cargo"
+
+# Disable dwz as it may cause issues with Rust binaries
+override_dh_dwz:
+	@echo "Skipping dh_dwz for Rust binary"

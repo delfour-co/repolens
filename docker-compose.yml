@@ -1,0 +1,50 @@
+# ==============================================================================
+# RepoLens Docker Compose Configuration
+# ==============================================================================
+#
+# Usage:
+#   # Build the image
+#   docker compose build
+#
+#   # Run repolens on current directory
+#   docker compose run --rm repolens plan
+#
+#   # Run with a specific command
+#   docker compose run --rm repolens report --format html
+#
+#   # Interactive mode
+#   docker compose run --rm repolens apply --interactive
+#
+# ==============================================================================
+
+services:
+  repolens:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/delfour-co/repolens:latest
+    container_name: repolens
+
+    # Mount current directory as the repository to audit
+    volumes:
+      - .:/repo:ro
+      # Mount git config for repository detection
+      - ~/.gitconfig:/home/repolens/.gitconfig:ro
+      # Mount GitHub CLI config for API access
+      - ~/.config/gh:/home/repolens/.config/gh:ro
+
+    # Enable TTY for interactive mode
+    tty: true
+    stdin_open: true
+
+    # Set working directory
+    working_dir: /repo
+
+    # Security: run as non-root
+    user: "1000:1000"
+
+    # Environment variables (optional)
+    environment:
+      - TERM=xterm-256color
+      # Uncomment to set GitHub token directly
+      # - GITHUB_TOKEN=${GITHUB_TOKEN}
