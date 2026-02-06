@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-02-06
+
+### Added
+
+#### Docker Distribution
+- Official Docker image published to GitHub Container Registry (`ghcr.io/delfour-co/repolens`)
+- Multi-architecture support (linux/amd64, linux/arm64)
+- Multi-stage build for optimized image size (Alpine-based)
+- `docker-compose.yml` for easy local usage
+- Image verification job in CI/CD pipeline
+
+#### Package Managers
+- **Homebrew**: Formula for macOS and Linux (`brew install repolens`)
+- **Scoop**: Manifest for Windows (`scoop install repolens`)
+- **AUR**: PKGBUILD for Arch Linux (`yay -S repolens`)
+- **Debian**: Packaging files for .deb distribution
+
+#### CI/CD Integration Templates
+- GitHub Actions reusable workflow (`integrations/github-actions/repolens.yml`)
+- GitLab CI configuration (`integrations/gitlab-ci/.gitlab-ci.yml`)
+- CircleCI configuration (`integrations/circleci/config.yml`)
+- Jenkins declarative pipeline (`integrations/jenkins/Jenkinsfile`)
+- Azure DevOps pipeline (`integrations/azure-devops/azure-pipelines.yml`)
+
+#### Documentation
+- `docs/docker.md` - Docker usage guide
+- `docs/installation.md` - Comprehensive installation guide
+- `docs/ci-cd-integration.md` - CI/CD integration guide for all platforms
+
+## [1.2.0] - 2026-02-06
+
+### Added
+
+#### CLI Improvements
+- **-C/--directory option**: Audit a different directory without changing current working directory
+- **Environment variables configuration**: Configure RepoLens via `REPOLENS_*` environment variables
+  - `REPOLENS_PRESET` - Default preset to use
+  - `REPOLENS_VERBOSE` - Verbosity level (0-3)
+  - `REPOLENS_CONFIG` - Path to config file
+  - `REPOLENS_NO_CACHE` - Disable caching
+  - `REPOLENS_GITHUB_TOKEN` - GitHub token for API calls
+- **Verbose mode with timing**: Display execution time per category (`-v`, `-vv`, `-vvv`)
+
+#### Error Handling
+- Improved error messages with context and suggestions
+- Colored error output for better readability
+- `RepolensError` enum with structured error types
+
+### Fixed
+- Flaky tests due to parallel execution changing current directory (using `serial_test` crate)
+- E2E tests excluded from tarpaulin coverage runs to prevent orphan processes
+
+## [1.1.0] - 2026-02-06
+
+### Added
+
+#### Git Hygiene Rules
+- **GIT001** (warning): Large binary files detected (>1MB, should use Git LFS)
+- **GIT002** (info): `.gitattributes` file missing
+- **GIT003** (warning): Sensitive files tracked (.env, *.key, *.pem, credentials, *_rsa)
+
+#### Branch Protection Rules
+- **SEC007** (info): `.github/settings.yml` missing
+- **SEC008** (warning): No branch protection rules in settings.yml
+- **SEC009** (warning): `required_pull_request_reviews` not configured
+- **SEC010** (warning): `required_status_checks` not configured
+
+#### Lock File Rules
+- **DEP003** (warning): Lock file missing for detected ecosystem
+
+#### New Ecosystems Support
+- **.NET (NuGet)**: `*.csproj` / `packages.lock.json` - OSV supported
+- **Ruby (Bundler)**: `Gemfile` / `Gemfile.lock` - OSV supported
+- **Dart/Flutter (Pub)**: `pubspec.yaml` / `pubspec.lock` - OSV supported
+- **Swift (SPM)**: `Package.swift` / `Package.resolved` - No OSV support
+- **iOS (CocoaPods)**: `Podfile` / `Podfile.lock` - No OSV support
+
+#### Additional Rules
+- Docker best practices rules
+- CI/CD configuration rules
+- CHANGELOG validation rules
+- Java (Maven/Gradle) and PHP (Composer) ecosystem support
+
+#### Testing
+- Comprehensive E2E test suite (38 tests)
+- Test coverage improvements
+
 ## [1.0.1] - 2026-01-30
 
 ### Fixed
@@ -122,5 +209,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wiki documentation
 - Configuration and preset examples
 
+[1.3.0]: https://github.com/delfour-co/repolens/releases/tag/v1.3.0
+[1.2.0]: https://github.com/delfour-co/repolens/releases/tag/v1.2.0
+[1.1.0]: https://github.com/delfour-co/repolens/releases/tag/v1.1.0
 [1.0.1]: https://github.com/delfour-co/repolens/releases/tag/v1.0.1
 [1.0.0]: https://github.com/delfour-co/repolens/releases/tag/v1.0.0
