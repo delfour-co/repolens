@@ -305,9 +305,13 @@ repolens install-hooks --remove     # Supprimer les hooks RepoLens
 
 ## Priorité de configuration
 
-1. **Fichier `.repolens.toml`** : Configuration locale (priorité la plus haute)
-2. **Preset** : Configuration du preset sélectionné
-3. **Valeurs par défaut** : Valeurs par défaut de RepoLens
+L'ordre de priorité (du plus haut au plus bas) :
+
+1. **Options CLI** : Flags passés en ligne de commande (ex: `--preset enterprise`)
+2. **Variables d'environnement** : Variables `REPOLENS_*` (ex: `REPOLENS_PRESET=enterprise`)
+3. **Fichier `.repolens.toml`** : Configuration locale du projet
+4. **Preset** : Configuration du preset sélectionné
+5. **Valeurs par défaut** : Valeurs par défaut de RepoLens
 
 ## Validation de la configuration
 
@@ -321,14 +325,55 @@ repolens init --validate
 
 ## Variables d'environnement
 
-Certaines options peuvent être surchargées via des variables d'environnement :
+RepoLens peut être configuré via des variables d'environnement. L'ordre de priorité est :
+**CLI > Variables d'environnement > Fichier de configuration > Valeurs par défaut**
+
+### Variables supportées
+
+| Variable | Description | Valeurs | Exemple |
+|----------|-------------|---------|---------|
+| `REPOLENS_PRESET` | Preset par défaut | `opensource`, `enterprise`, `strict` | `enterprise` |
+| `REPOLENS_VERBOSE` | Niveau de verbosité | `0` à `3` | `2` |
+| `REPOLENS_CONFIG` | Chemin du fichier de configuration | Chemin absolu ou relatif | `/path/to/.repolens.toml` |
+| `REPOLENS_NO_CACHE` | Désactiver le cache | `true`, `false`, `1`, `0` | `true` |
+| `REPOLENS_GITHUB_TOKEN` | Token GitHub pour les appels API | Token `ghp_xxx` | `ghp_xxxxxxxxxxxx` |
+
+### Exemples d'utilisation
 
 ```bash
-# Désactiver l'application automatique
-export REPOLENS_DRY_RUN=true
+# Configurer le preset par défaut
+export REPOLENS_PRESET=enterprise
 
-# Niveau de log
+# Activer le mode verbose
+export REPOLENS_VERBOSE=2
+
+# Désactiver le cache
+export REPOLENS_NO_CACHE=true
+
+# Spécifier un token GitHub
+export REPOLENS_GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+
+# Exécuter avec la configuration d'environnement
+repolens plan
+```
+
+### Niveaux de verbosité
+
+| Niveau | Description | Affichage |
+|--------|-------------|-----------|
+| `0` | Normal | Résultats uniquement |
+| `1` | Basique (`-v`) | + Timing total |
+| `2` | Détaillé (`-vv`) | + Timing par catégorie |
+| `3` | Debug (`-vvv`) | + Informations de debug |
+
+### Variables de debug
+
+```bash
+# Niveau de log Rust (pour le développement)
 export RUST_LOG=debug
+
+# Désactiver les couleurs
+export NO_COLOR=1
 ```
 
 ## Prochaines étapes

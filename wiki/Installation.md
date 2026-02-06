@@ -13,7 +13,88 @@ Ce guide vous explique comment installer RepoLens sur votre système.
 - **Git** : Pour la gestion de version
 - **GitHub CLI** (`gh`) : Optionnel, pour les fonctionnalités GitHub (installation via `gh auth login`)
 
-## Installation via binaires pré-compilés (recommandé)
+## Docker (recommandé)
+
+La méthode la plus simple pour utiliser RepoLens sans installation locale.
+
+```bash
+# Tirer l'image officielle
+docker pull ghcr.io/delfour-co/repolens:latest
+
+# Auditer le répertoire courant
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens plan
+
+# Générer un rapport
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens report --format json
+```
+
+Pour l'accès à l'API GitHub, montez votre configuration gh :
+
+```bash
+docker run --rm \
+  -v "$(pwd)":/repo \
+  -v ~/.config/gh:/home/repolens/.config/gh:ro \
+  ghcr.io/delfour-co/repolens plan
+```
+
+Tags disponibles :
+- `latest` - Dernière version stable
+- `v1.0.0`, `v1.1.0`, etc. - Versions spécifiques
+- `sha-abc1234` - Commit spécifique
+
+Voir [docs/docker.md](../docs/docker.md) pour plus de détails.
+
+## Gestionnaires de paquets
+
+### Homebrew (macOS/Linux)
+
+```bash
+brew tap delfour-co/repolens
+brew install repolens
+```
+
+Mise à jour :
+```bash
+brew upgrade repolens
+```
+
+### Scoop (Windows)
+
+```powershell
+scoop bucket add delfour-co https://github.com/delfour-co/scoop-bucket
+scoop install repolens
+```
+
+Mise à jour :
+```powershell
+scoop update repolens
+```
+
+### AUR (Arch Linux)
+
+```bash
+# Avec yay
+yay -S repolens
+
+# Ou manuellement
+git clone https://aur.archlinux.org/repolens.git
+cd repolens
+makepkg -si
+```
+
+### Debian/Ubuntu
+
+```bash
+# Ajouter le dépôt
+curl -fsSL https://delfour-co.github.io/repolens-apt/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/repolens.gpg
+echo "deb [signed-by=/usr/share/keyrings/repolens.gpg] https://delfour-co.github.io/repolens-apt stable main" | sudo tee /etc/apt/sources.list.d/repolens.list
+
+# Installer
+sudo apt update
+sudo apt install repolens
+```
+
+## Installation via binaires pré-compilés
 
 Des binaires pré-compilés sont disponibles pour toutes les plateformes majeures. Rendez-vous sur la [page Releases](https://github.com/delfour-co/cli--repolens/releases) pour télécharger la dernière version.
 
