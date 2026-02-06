@@ -3,7 +3,11 @@
 //! This module defines custom error types using `thiserror` for better error handling
 //! and more descriptive error messages throughout the application.
 
+use colored::Colorize;
 use thiserror::Error;
+
+/// Valid preset names for error messages
+pub const VALID_PRESETS: &[&str] = &["opensource", "enterprise", "strict"];
 
 /// Main error type for RepoLens
 #[derive(Error, Debug)]
@@ -33,6 +37,56 @@ pub enum RepoLensError {
     Cache(#[from] CacheError),
 }
 
+impl RepoLensError {
+    /// Get a user-friendly suggestion for how to fix this error
+    pub fn suggestion(&self) -> Option<String> {
+        match self {
+            RepoLensError::Config(ConfigError::ConfigNotFound { .. }) => {
+                Some("Run 'repolens init' to create a configuration file.".to_string())
+            }
+            RepoLensError::Config(ConfigError::InvalidPreset { .. }) => {
+                Some(format!("Valid presets are: {}", VALID_PRESETS.join(", ")))
+            }
+            RepoLensError::Config(ConfigError::Parse { .. }) => {
+                Some("Check your .repolens.toml file for syntax errors.".to_string())
+            }
+            RepoLensError::Provider(ProviderError::GitNotRepository { .. }) => {
+                Some("Run 'git init' to initialize a git repository.".to_string())
+            }
+            RepoLensError::Provider(ProviderError::NotAuthenticated) => {
+                Some("Run 'gh auth login' to authenticate with GitHub.".to_string())
+            }
+            RepoLensError::Provider(ProviderError::GitHubCliNotAvailable) => {
+                Some("Install GitHub CLI from https://cli.github.com/".to_string())
+            }
+            RepoLensError::Action(ActionError::FileWrite { path, .. }) => Some(format!(
+                "Check that you have write permissions for '{}'.",
+                path
+            )),
+            RepoLensError::Action(ActionError::DirectoryCreate { path, .. }) => Some(format!(
+                "Check that you have permissions to create directories in '{}'.",
+                path
+            )),
+            _ => None,
+        }
+    }
+
+    /// Format the error for display with colors and suggestions
+    pub fn display_formatted(&self) -> String {
+        let mut output = String::new();
+
+        // Main error message in red
+        output.push_str(&format!("{} {}\n", "Error:".red().bold(), self));
+
+        // Add suggestion if available
+        if let Some(suggestion) = self.suggestion() {
+            output.push_str(&format!("\n  {} {}\n", "Hint:".cyan().bold(), suggestion));
+        }
+
+        output
+    }
+}
+
 /// Errors that occur during repository scanning
 #[derive(Error, Debug)]
 pub enum ScanError {
@@ -49,6 +103,14 @@ pub enum ScanError {
 /// Errors that occur during configuration loading and parsing
 #[derive(Error, Debug)]
 pub enum ConfigError {
+    /// Configuration file not found
+    #[allow(dead_code)]
+    #[error("Configuration file not found")]
+    ConfigNotFound {
+        /// Path where configuration was expected
+        path: String,
+    },
+
     /// Failed to read configuration file
     #[error("Failed to read configuration file '{path}': {source}")]
     FileRead {
@@ -73,11 +135,31 @@ pub enum ConfigError {
     },
 
     /// Invalid preset name
-    #[error("Invalid preset name: {name}")]
+    #[error("Invalid preset '{name}'")]
     InvalidPreset {
         /// The invalid preset name
         name: String,
     },
+}
+
+impl ConfigError {
+    /// Get a user-friendly description of the error
+    #[allow(dead_code)]
+    pub fn description(&self) -> String {
+        match self {
+            ConfigError::ConfigNotFound { path } => {
+                format!("No .repolens.toml found at '{}'.", path)
+            }
+            ConfigError::InvalidPreset { name } => {
+                format!(
+                    "The preset '{}' is not valid. Valid presets are: {}",
+                    name,
+                    VALID_PRESETS.join(", ")
+                )
+            }
+            _ => self.to_string(),
+        }
+    }
 }
 
 /// Errors that occur when interacting with external providers (GitHub API, etc.)
@@ -101,6 +183,14 @@ pub enum ProviderError {
     #[error("Not in a GitHub repository or not authenticated")]
     NotAuthenticated,
 
+    /// Not in a git repository
+    #[allow(dead_code)]
+    #[error("Not a git repository")]
+    GitNotRepository {
+        /// The path that was checked
+        path: String,
+    },
+
     /// Invalid repository name format
     #[error("Invalid repository name format: {name}")]
     InvalidRepoName {
@@ -111,6 +201,26 @@ pub enum ProviderError {
     /// GitHub CLI not available
     #[error("GitHub CLI (gh) is not available or not authenticated")]
     GitHubCliNotAvailable,
+}
+
+impl ProviderError {
+    /// Get a user-friendly description of the error
+    #[allow(dead_code)]
+    pub fn description(&self) -> String {
+        match self {
+            ProviderError::GitNotRepository { path } => {
+                format!("The directory '{}' is not a git repository.", path)
+            }
+            ProviderError::GitHubCliNotAvailable => {
+                "The GitHub CLI (gh) is not installed or not in PATH.".to_string()
+            }
+            ProviderError::NotAuthenticated => "You are not authenticated with GitHub.".to_string(),
+            ProviderError::CommandFailed { command, .. } => {
+                format!("The command '{}' failed to execute.", command)
+            }
+            _ => self.to_string(),
+        }
+    }
 }
 
 /// Errors that occur during action execution
@@ -542,5 +652,153 @@ mod tests {
         let err: RepoLensError = ser_err.into();
         let msg = format!("{}", err);
         assert!(msg.contains("Config error"));
+    }
+
+    // New tests for improved error handling
+
+    #[test]
+    fn test_config_not_found_error() {
+        let err = ConfigError::ConfigNotFound {
+            path: ".repolens.toml".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Configuration file not found"));
+    }
+
+    #[test]
+    fn test_config_not_found_description() {
+        let err = ConfigError::ConfigNotFound {
+            path: ".repolens.toml".to_string(),
+        };
+        let desc = err.description();
+        assert!(desc.contains(".repolens.toml"));
+    }
+
+    #[test]
+    fn test_invalid_preset_description() {
+        let err = ConfigError::InvalidPreset {
+            name: "foo".to_string(),
+        };
+        let desc = err.description();
+        assert!(desc.contains("foo"));
+        assert!(desc.contains("opensource"));
+        assert!(desc.contains("enterprise"));
+        assert!(desc.contains("strict"));
+    }
+
+    #[test]
+    fn test_git_not_repository_error() {
+        let err = ProviderError::GitNotRepository {
+            path: "/some/path".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Not a git repository"));
+    }
+
+    #[test]
+    fn test_git_not_repository_description() {
+        let err = ProviderError::GitNotRepository {
+            path: "/some/path".to_string(),
+        };
+        let desc = err.description();
+        assert!(desc.contains("/some/path"));
+        assert!(desc.contains("not a git repository"));
+    }
+
+    #[test]
+    fn test_repolens_error_suggestion_config_not_found() {
+        let err = RepoLensError::Config(ConfigError::ConfigNotFound {
+            path: ".repolens.toml".to_string(),
+        });
+        let suggestion = err.suggestion();
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("repolens init"));
+    }
+
+    #[test]
+    fn test_repolens_error_suggestion_invalid_preset() {
+        let err = RepoLensError::Config(ConfigError::InvalidPreset {
+            name: "foo".to_string(),
+        });
+        let suggestion = err.suggestion();
+        assert!(suggestion.is_some());
+        let s = suggestion.unwrap();
+        assert!(s.contains("opensource"));
+        assert!(s.contains("enterprise"));
+        assert!(s.contains("strict"));
+    }
+
+    #[test]
+    fn test_repolens_error_suggestion_git_not_repo() {
+        let err = RepoLensError::Provider(ProviderError::GitNotRepository {
+            path: ".".to_string(),
+        });
+        let suggestion = err.suggestion();
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("git init"));
+    }
+
+    #[test]
+    fn test_repolens_error_suggestion_not_authenticated() {
+        let err = RepoLensError::Provider(ProviderError::NotAuthenticated);
+        let suggestion = err.suggestion();
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("gh auth login"));
+    }
+
+    #[test]
+    fn test_repolens_error_suggestion_github_cli_not_available() {
+        let err = RepoLensError::Provider(ProviderError::GitHubCliNotAvailable);
+        let suggestion = err.suggestion();
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("cli.github.com"));
+    }
+
+    #[test]
+    fn test_repolens_error_suggestion_file_write() {
+        let err = RepoLensError::Action(ActionError::FileWrite {
+            path: "/some/file.txt".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
+        });
+        let suggestion = err.suggestion();
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("/some/file.txt"));
+    }
+
+    #[test]
+    fn test_repolens_error_no_suggestion() {
+        let err = RepoLensError::Cache(CacheError::Parse {
+            message: "some error".to_string(),
+        });
+        let suggestion = err.suggestion();
+        assert!(suggestion.is_none());
+    }
+
+    #[test]
+    fn test_display_formatted_with_suggestion() {
+        let err = RepoLensError::Config(ConfigError::ConfigNotFound {
+            path: ".repolens.toml".to_string(),
+        });
+        let formatted = err.display_formatted();
+        // Should contain the error message
+        assert!(formatted.contains("Configuration file not found"));
+    }
+
+    #[test]
+    fn test_display_formatted_without_suggestion() {
+        let err = RepoLensError::Cache(CacheError::Parse {
+            message: "parse error".to_string(),
+        });
+        let formatted = err.display_formatted();
+        // Should contain the error message
+        assert!(formatted.contains("parse error"));
+    }
+
+    #[test]
+    fn test_valid_presets_constant() {
+        assert!(VALID_PRESETS.contains(&"opensource"));
+        assert!(VALID_PRESETS.contains(&"enterprise"));
+        assert!(VALID_PRESETS.contains(&"strict"));
+        assert_eq!(VALID_PRESETS.len(), 3);
     }
 }

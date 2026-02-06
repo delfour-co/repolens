@@ -1,5 +1,7 @@
 //! Preset configurations for different use cases
 
+use std::str::FromStr;
+
 /// Available presets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
@@ -9,6 +11,14 @@ pub enum Preset {
     Enterprise,
     /// Strict mode - maximum security and compliance
     Strict,
+}
+
+impl FromStr for Preset {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_name(s).ok_or_else(|| format!("Invalid preset: {}", s))
+    }
 }
 
 impl Preset {

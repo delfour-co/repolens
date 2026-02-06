@@ -14,7 +14,9 @@ use crate::error::RepoLensError;
 use crate::exit_codes;
 use crate::rules::engine::RulesEngine;
 use crate::scanner::Scanner;
+use crate::utils::format_duration;
 use colored::Colorize;
+use std::time::Duration;
 
 /// Execute the plan command
 ///
@@ -96,20 +98,43 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
         engine.set_skip_categories(skip.clone());
     }
 
-    // Set up progress callback
-    engine.set_progress_callback(Box::new(|category_name, current, total| {
-        eprintln!(
-            "  {} {} ({}/{})...",
-            "→".dimmed(),
-            category_name.cyan(),
-            current,
-            total
-        );
+    // Capture verbosity for progress callback
+    let verbose = args.verbose;
+
+    // Set up progress callback with timing info
+    engine.set_progress_callback(Box::new(move |category_name, current, total, timing| {
+        if let Some((findings_count, duration_ms)) = timing {
+            // After execution - show timing info based on verbosity
+            if verbose >= 1 {
+                let duration = Duration::from_millis(duration_ms);
+                let duration_str = format_duration(duration);
+                eprintln!(
+                    "  {} {} ({}/{}) - {} findings ({})",
+                    "✓".green(),
+                    category_name.cyan(),
+                    current,
+                    total,
+                    findings_count,
+                    duration_str.dimmed()
+                );
+            }
+        } else {
+            // Before execution
+            if verbose == 0 {
+                eprintln!(
+                    "  {} {} ({}/{})...",
+                    "→".dimmed(),
+                    category_name.cyan(),
+                    current,
+                    total
+                );
+            }
+        }
     }));
 
-    // Execute audit
+    // Execute audit with timing
     eprintln!("{}", "Exécution de l'audit...".dimmed());
-    let audit_results = engine.run(&scanner).await?;
+    let (audit_results, timing) = engine.run_with_timing(&scanner).await?;
 
     // Save cache if enabled
     if let Some(cache) = engine.take_cache() {
@@ -118,7 +143,28 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
         }
     }
 
-    eprintln!("{} {}", "✓".green(), "Audit terminé.".green());
+    // Show completion with total timing
+    eprintln!(
+        "{} {} ({})",
+        "✓".green(),
+        "Audit terminé.".green(),
+        timing.total_duration_formatted().dimmed()
+    );
+
+    // In verbose mode, show category timing summary
+    if verbose >= 2 {
+        eprintln!("\n{}", "Timing breakdown:".dimmed());
+        for cat_timing in timing.categories() {
+            eprintln!(
+                "  {} {}: {} findings ({})",
+                "•".dimmed(),
+                cat_timing.name.cyan(),
+                cat_timing.findings_count,
+                cat_timing.duration_formatted().dimmed()
+            );
+        }
+        eprintln!();
+    }
 
     eprintln!("{}", "Génération du plan d'action...".dimmed());
     // Generate action plan
