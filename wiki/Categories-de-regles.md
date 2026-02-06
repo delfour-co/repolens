@@ -6,7 +6,7 @@
 
 # Catégories de règles
 
-RepoLens organise ses règles d'audit en neuf catégories.
+RepoLens organise ses règles d'audit en dix catégories.
 
 ## 🔒 Secrets
 
@@ -95,12 +95,21 @@ security = true
 
 **Objectif** : Vérifier les bonnes pratiques de sécurité et auditer le code pour les vulnérabilités.
 
+### Règles de protection de branche
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| SEC007 | Info | Fichier `.github/settings.yml` absent |
+| SEC008 | Warning | Pas de règles de protection de branche dans settings.yml |
+| SEC009 | Warning | `required_pull_request_reviews` non configuré |
+| SEC010 | Warning | `required_status_checks` non configuré |
+
 ### Vérifications
 
 - Présence de SECURITY.md
 - Configuration sécurisée des workflows
 - Configuration sécurisée de Git
-- Protection des branches
+- Protection des branches (via `.github/settings.yml`)
 - Présence de CODEOWNERS pour les reviews obligatoires
 - Fichiers de verrouillage des dépendances (lock files)
 - Fichiers de version runtime pour la reproductibilité
@@ -123,12 +132,36 @@ require_lock_files = true
 require_runtime_versions = true
 ```
 
+### Exemple de `.github/settings.yml`
+
+```yaml
+repository:
+  name: my-repo
+  private: false
+
+branches:
+  - name: main
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+      required_status_checks:
+        strict: true
+        contexts:
+          - ci/test
+          - ci/lint
+      enforce_admins: true
+      restrictions: null
+```
+
 ### Bonnes pratiques
 
 - ✅ Avoir une politique de sécurité claire (SECURITY.md)
+- ✅ Configurer `.github/settings.yml` pour la protection des branches
+- ✅ Exiger des reviews de code avant merge (SEC009)
+- ✅ Exiger des status checks avant merge (SEC010)
 - ✅ Activer les alertes de vulnérabilité GitHub
 - ✅ Utiliser Dependabot pour les mises à jour
-- ✅ Protéger les branches principales
 - ✅ Exiger des reviews de code (CODEOWNERS)
 - ✅ Utiliser des fichiers de verrouillage pour les dépendances
 - ✅ Spécifier les versions runtime (`.nvmrc`, `.python-version`, etc.)
@@ -159,11 +192,45 @@ require_runtime_versions = true
 
 **Objectif** : Vérifier la sécurité des dépendances et détecter les vulnérabilités connues.
 
-### Vérifications
+### Règles
 
-- Vulnérabilités dans les dépendances via l'API OSV (Open Source Vulnerabilities)
-- Vulnérabilités via GitHub Security Advisories
-- Support multi-écosystèmes : Cargo (Rust), npm (Node.js), PyPI (Python), Go modules
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| DEP001 | Critical/Warning | Vulnérabilité détectée dans une dépendance |
+| DEP002 | Warning | Version de dépendance obsolète |
+| DEP003 | Warning | Fichier de verrouillage (lock file) manquant pour l'écosystème détecté |
+
+### Lock files requis par écosystème
+
+| Manifest | Lock File Attendu |
+|----------|-------------------|
+| `Cargo.toml` | `Cargo.lock` |
+| `package.json` | `package-lock.json`, `yarn.lock`, ou `pnpm-lock.yaml` |
+| `pyproject.toml` | `poetry.lock` ou `uv.lock` |
+| `Pipfile` | `Pipfile.lock` |
+| `go.mod` | `go.sum` |
+| `composer.json` | `composer.lock` |
+| `Gemfile` | `Gemfile.lock` |
+| `*.csproj` | `packages.lock.json` |
+| `pubspec.yaml` | `pubspec.lock` |
+| `Package.swift` | `Package.resolved` |
+| `Podfile` | `Podfile.lock` |
+
+### Écosystèmes supportés
+
+| Écosystème | Manifest | Lock File | Support OSV |
+|------------|----------|-----------|-------------|
+| Rust (Cargo) | `Cargo.toml` | `Cargo.lock` | ✅ Oui |
+| Node.js (npm) | `package.json` | `package-lock.json` | ✅ Oui |
+| Python (pip/poetry) | `pyproject.toml` | `poetry.lock` | ✅ Oui |
+| Go | `go.mod` | `go.sum` | ✅ Oui |
+| .NET (NuGet) | `*.csproj` | `packages.lock.json` | ✅ Oui |
+| Ruby (Bundler) | `Gemfile` | `Gemfile.lock` | ✅ Oui |
+| Dart/Flutter (Pub) | `pubspec.yaml` | `pubspec.lock` | ✅ Oui |
+| Swift (SPM) | `Package.swift` | `Package.resolved` | ❌ Non |
+| iOS (CocoaPods) | `Podfile` | `Podfile.lock` | ❌ Non |
+
+> **Note** : Les écosystèmes sans support OSV (Swift, CocoaPods) sont détectés et listés, mais aucune vérification de vulnérabilité n'est effectuée. Un finding informatif (DEP004) est généré pour ces cas.
 
 ### Sources de données
 
@@ -195,12 +262,17 @@ dependencies = true  # Activer la catégorie dependencies
    Description: Remote code execution vulnerability
    Remediation: Upgrade serde to version 1.0.150 or later
    Location: Cargo.lock
+
+🟡 Warning: Lock file missing for detected ecosystem
+   Ecosystem: Node.js (npm)
+   Expected: package-lock.json, yarn.lock, or pnpm-lock.yaml
+   Location: package.json
 ```
 
 ### Bonnes pratiques
 
 - ✅ Mettre à jour régulièrement les dépendances
-- ✅ Utiliser des fichiers de verrouillage (Cargo.lock, package-lock.json, etc.)
+- ✅ **Toujours commiter les fichiers de verrouillage** (DEP003)
 - ✅ Vérifier les vulnérabilités avant chaque release
 - ✅ Configurer Dependabot pour les mises à jour automatiques
 - ✅ Surveiller les alertes de sécurité GitHub
@@ -292,6 +364,32 @@ denied_licenses = ["GPL-3.0", "AGPL-3.0"]
 - Vérifier la compatibilité des licences avant d'ajouter une dépendance
 - Surveiller les dépendances sans licence (LIC004)
 
+## 🔧 Git
+
+**Objectif** : Vérifier l'hygiène du dépôt Git et les bonnes pratiques de gestion de version.
+
+### Règles
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| GIT001 | Warning | Fichiers binaires volumineux (> 1 MB) détectés - devrait utiliser Git LFS |
+| GIT002 | Info | Fichier `.gitattributes` absent |
+| GIT003 | Warning | Fichiers sensibles trackés (.env, *.key, *.pem, credentials, *_rsa) |
+
+### Bonnes pratiques
+
+- ✅ Utiliser Git LFS pour les fichiers binaires volumineux
+- ✅ Configurer `.gitattributes` pour définir les comportements de diff et merge
+- ✅ Ne jamais tracker de fichiers sensibles (utiliser `.gitignore`)
+- ✅ Vérifier régulièrement les fichiers trackés par erreur
+
+### Configuration
+
+```toml
+[rules]
+git = true  # Activer la catégorie git
+```
+
 ## 🛠️ Custom (Règles personnalisées)
 
 **Objectif** : Permettre aux utilisateurs de définir leurs propres règles d'audit via patterns regex ou commandes shell.
@@ -330,6 +428,7 @@ workflows = true
 quality = true
 licenses = true     # Conformité des licences
 dependencies = true # Vérification des dépendances
+git = true          # Hygiène Git
 custom = true       # Règles personnalisées
 ```
 

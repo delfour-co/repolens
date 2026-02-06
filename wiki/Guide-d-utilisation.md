@@ -53,6 +53,16 @@ repolens plan
 
 Affiche les résultats de l'audit dans le terminal avec un formatage coloré.
 
+### Auditer un autre répertoire
+
+```bash
+# Auditer un répertoire différent avec l'option -C
+repolens -C /chemin/vers/projet plan
+
+# Peut être combiné avec d'autres options
+repolens -C ../autre-projet plan --format json
+```
+
 ### Formats de sortie
 
 ```bash
@@ -78,15 +88,23 @@ repolens plan -q
 # Mode normal (par défaut)
 repolens plan
 
-# Mode verbeux
+# Mode verbeux (-v) : affiche le timing total
 repolens plan -v
+# Sortie: Audit completed in 1.23s
 
-# Mode très verbeux (debug)
+# Mode très verbeux (-vv) : affiche le timing par catégorie
 repolens plan -vv
+# Sortie:
+# [secrets] 245ms
+# [files] 12ms
+# [security] 890ms
+# Total: 1.23s
 
-# Mode trace (maximum de détails)
+# Mode trace (-vvv) : informations de debug détaillées
 repolens plan -vvv
 ```
+
+Le niveau de verbosité peut aussi être configuré via la variable d'environnement `REPOLENS_VERBOSE` (0-3).
 
 ### Filtrer par catégories
 
@@ -333,6 +351,36 @@ repolens plan --only dependencies
 repolens plan --only security,dependencies -v
 ```
 
+### Exemple 5 : Utilisation via Docker
+
+```bash
+# Audit rapide du répertoire courant
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens plan
+
+# Générer un rapport JSON
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens report --format json
+
+# Avec accès à l'API GitHub
+docker run --rm \
+  -v "$(pwd)":/repo \
+  -v ~/.config/gh:/home/repolens/.config/gh:ro \
+  ghcr.io/delfour-co/repolens plan
+```
+
+### Exemple 6 : Configuration via variables d'environnement
+
+```bash
+# Configurer le preset et le niveau de verbosité
+export REPOLENS_PRESET=enterprise
+export REPOLENS_VERBOSE=2
+
+# Tous les audits utiliseront ces paramètres
+repolens plan
+
+# Les options CLI surchargent les variables d'environnement
+repolens plan --preset strict  # Utilise strict malgré REPOLENS_PRESET=enterprise
+```
+
 ### Exemple 5 : Utilisation des règles personnalisées
 
 ```bash
@@ -385,9 +433,79 @@ repolens plan -vvv
 
 ## Nouvelles fonctionnalités
 
+### Variables d'environnement (v1.2.0)
+
+Configurez RepoLens via des variables d'environnement :
+
+| Variable | Description |
+|----------|-------------|
+| `REPOLENS_PRESET` | Preset par défaut (opensource, enterprise, strict) |
+| `REPOLENS_VERBOSE` | Niveau de verbosité (0-3) |
+| `REPOLENS_CONFIG` | Chemin du fichier de configuration |
+| `REPOLENS_NO_CACHE` | Désactiver le cache (true/false) |
+| `REPOLENS_GITHUB_TOKEN` | Token GitHub pour les appels API |
+
+### Option -C (v1.2.0)
+
+Auditez un répertoire différent sans changer de répertoire courant :
+
+```bash
+repolens -C /chemin/vers/projet plan
+```
+
+### Timing détaillé (v1.2.0)
+
+Le mode verbose affiche maintenant le temps d'exécution par catégorie :
+
+```bash
+repolens plan -vv
+# [secrets] 245ms
+# [files] 12ms
+# Total: 1.23s
+```
+
+### Hygiène Git (v1.1.0)
+
+Nouvelles règles pour l'hygiène du dépôt Git :
+- **GIT001** : Fichiers binaires volumineux (devrait utiliser Git LFS)
+- **GIT002** : Fichier `.gitattributes` absent
+- **GIT003** : Fichiers sensibles trackés
+
+### Protection des branches (v1.1.0)
+
+Vérification de la configuration de protection des branches :
+- **SEC007-010** : Validation de `.github/settings.yml`
+
+### Nouveaux écosystèmes (v1.1.0)
+
+9 écosystèmes supportés pour le scan de vulnérabilités :
+- Rust, Node.js, Python, Go (existants)
+- .NET (NuGet), Ruby (Bundler), Dart/Flutter (Pub)
+- Swift (SPM), iOS (CocoaPods) - sans support OSV
+
+### Distribution Docker (v1.3.0)
+
+Image Docker officielle multi-architecture :
+
+```bash
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens plan
+```
+
+### Gestionnaires de paquets (v1.3.0)
+
+Installation facilitée via :
+- **Homebrew** : `brew install repolens`
+- **Scoop** : `scoop install repolens`
+- **AUR** : `yay -S repolens`
+- **Debian/Ubuntu** : `apt install repolens`
+
+### Intégration CI/CD (v1.3.0)
+
+Templates prêts à l'emploi pour GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps.
+
 ### Vérification de la sécurité des dépendances
 
-RepoLens vérifie automatiquement les vulnérabilités dans vos dépendances via l'API OSV et GitHub Security Advisories. Support multi-écosystèmes : Rust, Node.js, Python, Go.
+RepoLens vérifie automatiquement les vulnérabilités dans vos dépendances via l'API OSV et GitHub Security Advisories.
 
 ```bash
 # Vérifier les dépendances

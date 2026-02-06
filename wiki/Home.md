@@ -12,26 +12,32 @@ Bienvenue dans la documentation de RepoLens, un outil CLI pour auditer les dép�
 
 RepoLens est un outil en ligne de commande écrit en Rust qui permet d'auditer automatiquement vos dépôts GitHub pour :
 
-- 🔒 **Sécurité** : Détection de secrets exposés, audit de sécurité du code, validation des politiques de sécurité
+- 🔒 **Sécurité** : Détection de secrets exposés, audit de sécurité du code, protection des branches, validation des politiques de sécurité
 - 📋 **Conformité** : Vérification des fichiers requis (README, LICENSE, CONTRIBUTING, etc.)
 - 📚 **Documentation** : Validation de la qualité et de la complétude de la documentation
 - ⚙️ **CI/CD** : Validation des workflows GitHub Actions
 - 🎯 **Qualité** : Standards de qualité de code avec vérification de la couverture de tests (≥80%)
-- 📦 **Dépendances** : Vérification de la sécurité des dépendances via OSV API et GitHub Advisories
+- 📦 **Dépendances** : Vérification de la sécurité des dépendances (9 écosystèmes supportés) via OSV API et GitHub Advisories
+- 🔧 **Git** : Hygiène Git (binaires volumineux, fichiers sensibles, gitattributes)
 - 🛠️ **Règles personnalisées** : Support des règles d'audit personnalisées via regex ou commandes shell
 
 ## Navigation
 
 ### Pour les Utilisateurs
 
-- [Installation](Installation) - Comment installer RepoLens
+- [Installation](Installation) - Comment installer RepoLens (binaires, Docker, Homebrew, Scoop, AUR)
 - [Guide d'utilisation](Guide-d-utilisation) - Utilisation de base et exemples
-- [Configuration](Configuration) - Configuration avancée
+- [Configuration](Configuration) - Configuration avancée et variables d'environnement
 - [Presets](Presets) - Presets disponibles (opensource, enterprise, strict)
 - [Catégories de règles](Categories-de-regles) - Détails des règles d'audit
 - [Règles personnalisées](Custom-Rules) - Créer vos propres règles d'audit
 - [Changelog Automatique](Changelog-Automatique) - Génération automatique du changelog
 - [Bonnes pratiques](Bonnes-pratiques) - Recommandations et préconisations
+
+### Distribution & CI/CD
+
+- [Docker](../docs/docker.md) - Utilisation avec Docker
+- [Intégration CI/CD](../docs/ci-cd-integration.md) - GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps
 
 ### Pour les Développeurs
 
@@ -42,17 +48,26 @@ RepoLens est un outil en ligne de commande écrit en Rust qui permet d'auditer a
 ## Démarrage rapide
 
 ```bash
-# Installation via crates.io
-cargo install repolens
+# Installation via Docker (recommandé)
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens plan
 
-# Ou télécharger le binaire pré-compilé depuis les releases :
-# https://github.com/kdelfour/repolens/releases
+# Ou via Homebrew (macOS/Linux)
+brew tap delfour-co/repolens && brew install repolens
+
+# Ou via cargo
+cargo install repolens
 
 # Initialisation
 repolens init --preset opensource
 
 # Audit
 repolens plan
+
+# Audit d'un autre répertoire
+repolens -C /path/to/project plan
+
+# Mode verbose avec timing
+repolens plan -vv
 
 # Application des correctifs (mode interactif ou automatique)
 repolens apply --interactive
@@ -78,23 +93,45 @@ Pour l'intégration CI/CD, utilisez l'Action GitHub officielle :
 
 ## Fonctionnalités principales
 
+### Audit & Sécurité
 - ✅ Audit automatique des dépôts GitHub
 - ✅ Détection de secrets et credentials exposés
 - ✅ **Audit de sécurité du code** : Détection de code unsafe, analyse Semgrep, vérification des patterns dangereux
-- ✅ **Vérification de la sécurité des dépendances** : Scan multi-écosystèmes (Rust, Node.js, Python, Go) via OSV API et GitHub Advisories
-- ✅ **Couverture de tests** : Vérification de la couverture minimale de 80% avec quality gates configurables
-- ✅ **Règles personnalisées** : Support des règles d'audit personnalisées via patterns regex ou commandes shell
+- ✅ **Protection des branches** : Vérification de la configuration de protection (SEC007-010)
+- ✅ **Hygiène Git** : Détection des binaires volumineux, fichiers sensibles, gitattributes (GIT001-003)
+
+### Dépendances
+- ✅ **Scan multi-écosystèmes** : 9 écosystèmes supportés (Rust, Node.js, Python, Go, .NET, Ruby, Dart/Flutter, Swift, iOS)
+- ✅ **Vulnérabilités** : Détection via OSV API et GitHub Advisories (DEP001-002)
+- ✅ **Lock files** : Vérification de la présence des fichiers de verrouillage (DEP003)
+- ✅ **Conformité des licences** : Vérification de la compatibilité des licences (LIC001-LIC004)
+
+### CLI & Configuration
+- ✅ **Variables d'environnement** : Configuration via `REPOLENS_*` (preset, verbose, token, etc.)
+- ✅ **Option -C** : Audit d'un répertoire différent (`repolens -C /path/to/project plan`)
+- ✅ **Mode verbose** : Timing détaillé par catégorie (`-v`, `-vv`, `-vvv`)
+- ✅ **Messages d'erreur améliorés** : Suggestions et contexte pour résoudre les problèmes
+
+### Qualité & Documentation
 - ✅ Vérification des fichiers requis
 - ✅ Validation des workflows GitHub Actions
+- ✅ **Couverture de tests** : Vérification minimale de 80% avec quality gates configurables
+- ✅ **Règles personnalisées** : Patterns regex ou commandes shell
+
+### Outils
 - ✅ Génération de plans d'action
 - ✅ Application automatique des correctifs
 - ✅ Formats de sortie multiples (Terminal, JSON, SARIF, Markdown, HTML)
-- ✅ **Cache d'audit** : Système de cache avec invalidation SHA256 pour des audits plus rapides
-- ✅ **Git hooks** : Hooks pre-commit (secrets) et pre-push (audit complet) intégrés
-- ✅ **Comparaison de rapports** : Comparaison de deux rapports JSON pour détecter régressions et améliorations
-- ✅ **JSON Schema** : Schéma JSON (draft-07) pour valider les rapports d'audit
-- ✅ **Conformité des licences** : Vérification de la compatibilité des licences des dépendances (LIC001-LIC004)
-- ✅ **Changelog automatique** : Génération automatique du CHANGELOG à partir des commits
+- ✅ **Cache d'audit** : Invalidation SHA256 pour des audits plus rapides
+- ✅ **Git hooks** : Pre-commit (secrets) et pre-push (audit complet)
+- ✅ **Comparaison de rapports** : Détection des régressions et améliorations
+- ✅ **JSON Schema** : Schéma (draft-07) pour valider les rapports
+- ✅ **Changelog automatique** : Génération à partir des commits
+
+### Distribution
+- ✅ **Docker** : Image officielle multi-architecture (amd64, arm64)
+- ✅ **Gestionnaires de paquets** : Homebrew, Scoop, AUR, Debian
+- ✅ **Intégration CI/CD** : GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps
 
 ## Support
 

@@ -15,6 +15,45 @@ A CLI tool to audit GitHub repositories for best practices, security, and compli
 
 ## Installation
 
+### Docker (Recommended)
+
+The easiest way to use RepoLens without local installation:
+
+```bash
+# Pull the official image
+docker pull ghcr.io/delfour-co/repolens:latest
+
+# Audit current directory
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens plan
+
+# Generate a report
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens report --format json
+```
+
+See [docs/docker.md](docs/docker.md) for detailed Docker usage.
+
+### Package Managers
+
+#### Homebrew (macOS/Linux)
+
+```bash
+brew tap delfour-co/repolens
+brew install repolens
+```
+
+#### Scoop (Windows)
+
+```powershell
+scoop bucket add delfour-co https://github.com/delfour-co/scoop-bucket
+scoop install repolens
+```
+
+#### AUR (Arch Linux)
+
+```bash
+yay -S repolens
+```
+
 ### From crates.io
 
 ```bash
@@ -23,11 +62,6 @@ cargo install repolens
 
 ### Pre-built Binaries
 
-Download the latest release from the [Releases page](https://github.com/kdelfour/repolens/releases):
-
-```bash
-# Download and install
-wget https://github.com/kdelfour/repolens/releases/download/v1.0.0/repolens-linux-x86_64.tar.gz
 Pre-built binaries are available for all major platforms. Download the latest release from the [Releases page](https://github.com/delfour-co/cli--repolens/releases).
 
 #### Supported Platforms
@@ -202,10 +236,18 @@ repolens init --skip-checks
 # Generate audit plan
 repolens plan
 
+# Audit a different directory
+repolens -C /path/to/project plan
+
 # Output in different formats
 repolens plan --format json
 repolens plan --format sarif
 repolens plan --format markdown
+
+# Verbose mode with timing information
+repolens plan -v      # Basic timing
+repolens plan -vv     # Detailed timing per category
+repolens plan -vvv    # Debug level
 ```
 
 ### Apply Fixes
@@ -417,6 +459,25 @@ repolens plan --cache-dir /tmp/repolens-cache
 The same options are available for the `report` command.
 ```
 
+### Environment Variables
+
+RepoLens can be configured via environment variables. Priority order: CLI flags > Environment variables > Config file > Defaults.
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `REPOLENS_PRESET` | Default preset to use | `enterprise` |
+| `REPOLENS_VERBOSE` | Verbosity level (0-3) | `2` |
+| `REPOLENS_CONFIG` | Path to config file | `/path/to/.repolens.toml` |
+| `REPOLENS_NO_CACHE` | Disable caching | `true` |
+| `REPOLENS_GITHUB_TOKEN` | GitHub token for API calls | `ghp_xxx` |
+
+```bash
+# Example usage
+export REPOLENS_PRESET=enterprise
+export REPOLENS_VERBOSE=2
+repolens plan
+```
+
 ### Git Hooks
 
 RepoLens can install Git hooks to automatically check your code before commits and pushes.
@@ -480,10 +541,53 @@ When `fail_on_warnings` is `true`, hooks will also fail on warning-level finding
 - **secrets**: Detect exposed API keys, tokens, passwords
 - **files**: Check for required repository files
 - **docs**: Documentation completeness and quality
-- **security**: Security best practices and policies
+- **security**: Security best practices, branch protection (SEC007-010)
 - **workflows**: CI/CD and GitHub Actions validation
 - **quality**: Code quality standards
 - **licenses**: License compliance checking (LIC001-LIC004)
+- **dependencies**: Vulnerability scanning via OSV API (DEP001-003)
+- **git**: Git hygiene rules (GIT001-003)
+
+### Git Hygiene Rules
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| GIT001 | Warning | Large binary files detected (should use Git LFS) |
+| GIT002 | Info | `.gitattributes` file missing |
+| GIT003 | Warning | Sensitive files tracked (.env, *.key, *.pem, credentials) |
+
+### Branch Protection Rules
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| SEC007 | Info | `.github/settings.yml` missing |
+| SEC008 | Warning | No branch protection rules in settings.yml |
+| SEC009 | Warning | `required_pull_request_reviews` not configured |
+| SEC010 | Warning | `required_status_checks` not configured |
+
+### Dependency Rules
+
+| Rule | Severity | Description |
+|------|----------|-------------|
+| DEP001 | Critical/Warning | Vulnerability detected in dependency |
+| DEP002 | Warning | Outdated dependency version |
+| DEP003 | Warning | Lock file missing for detected ecosystem |
+
+### Supported Ecosystems
+
+RepoLens supports vulnerability scanning for multiple ecosystems:
+
+| Ecosystem | Manifest | Lock File | OSV Support |
+|-----------|----------|-----------|-------------|
+| Rust (Cargo) | `Cargo.toml` | `Cargo.lock` | Yes |
+| Node.js (npm) | `package.json` | `package-lock.json` | Yes |
+| Python (pip/poetry) | `pyproject.toml` | `poetry.lock` | Yes |
+| Go | `go.mod` | `go.sum` | Yes |
+| .NET (NuGet) | `*.csproj` | `packages.lock.json` | Yes |
+| Ruby (Bundler) | `Gemfile` | `Gemfile.lock` | Yes |
+| Dart/Flutter (Pub) | `pubspec.yaml` | `pubspec.lock` | Yes |
+| Swift (SPM) | `Package.swift` | `Package.resolved` | No |
+| iOS (CocoaPods) | `Podfile` | `Podfile.lock` | No |
 
 ### License Compliance Rules
 
@@ -582,6 +686,18 @@ See the [`examples/github-action/`](examples/github-action/) directory for compl
 - [`basic.yml`](examples/github-action/basic.yml) -- Basic usage on push and pull requests
 - [`sarif-upload.yml`](examples/github-action/sarif-upload.yml) -- SARIF upload for GitHub Security
 - [`pr-comment.yml`](examples/github-action/pr-comment.yml) -- Post results as a PR comment
+
+## CI/CD Integration
+
+RepoLens integrates with all major CI/CD platforms. See [docs/ci-cd-integration.md](docs/ci-cd-integration.md) for detailed guides.
+
+| Platform | Template |
+|----------|----------|
+| GitHub Actions | [integrations/github-actions/repolens.yml](integrations/github-actions/repolens.yml) |
+| GitLab CI | [integrations/gitlab-ci/.gitlab-ci.yml](integrations/gitlab-ci/.gitlab-ci.yml) |
+| CircleCI | [integrations/circleci/config.yml](integrations/circleci/config.yml) |
+| Jenkins | [integrations/jenkins/Jenkinsfile](integrations/jenkins/Jenkinsfile) |
+| Azure DevOps | [integrations/azure-devops/azure-pipelines.yml](integrations/azure-devops/azure-pipelines.yml) |
 
 ## Contributing
 
