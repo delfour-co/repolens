@@ -1,6 +1,14 @@
 //! RepoLens - A CLI tool to audit and prepare repositories for open source or enterprise standards
 //!
 //! This is the main entry point for the CLI application.
+//!
+//! # Configuration Sources
+//!
+//! Configuration is loaded with the following priority (highest to lowest):
+//! 1. CLI flags (-c, -C, -v, etc.)
+//! 2. Environment variables (REPOLENS_CONFIG, REPOLENS_VERBOSE, etc.)
+//! 3. Configuration file (.repolens.toml)
+//! 4. Default values
 
 use clap::Parser;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -17,6 +25,7 @@ mod rules;
 mod scanner;
 mod utils;
 
+use config::get_env_verbosity;
 use error::RepoLensError;
 
 /// Exit codes for the CLI
@@ -38,15 +47,44 @@ async fn main() -> Result<(), RepoLensError> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
+    // Determine verbosity: CLI flag > env var > default (0)
+    let verbosity = if cli.verbose > 0 {
+        cli.verbose
+    } else {
+        get_env_verbosity().unwrap_or(0)
+    };
+
     // Setup logging based on verbosity
-    setup_logging(cli.verbose);
+    setup_logging(verbosity);
+
+    // Change to specified directory if provided via -C flag
+    if let Some(ref directory) = cli.directory {
+        if !directory.exists() {
+            eprintln!("Error: Directory '{}' does not exist", directory.display());
+            std::process::exit(exit_codes::ERROR);
+        }
+        if let Err(e) = std::env::set_current_dir(directory) {
+            eprintln!(
+                "Error: Cannot access directory '{}': {}",
+                directory.display(),
+                e
+            );
+            std::process::exit(exit_codes::ERROR);
+        }
+    }
 
     // Execute the appropriate command
     let result = match cli.command {
         Commands::Init(args) => cli::commands::init::execute(args).await,
-        Commands::Plan(args) => cli::commands::plan::execute(args).await,
+        Commands::Plan(mut args) => {
+            args.verbose = verbosity;
+            cli::commands::plan::execute(args).await
+        }
         Commands::Apply(args) => cli::commands::apply::execute(args).await,
-        Commands::Report(args) => cli::commands::report::execute(args).await,
+        Commands::Report(mut args) => {
+            args.verbose = verbosity;
+            cli::commands::report::execute(args).await
+        }
         Commands::Schema(args) => cli::commands::schema::execute(args).await,
         Commands::Compare(args) => cli::commands::compare::execute(args).await,
         Commands::InstallHooks(args) => cli::commands::install_hooks::execute(args).await,
@@ -56,8 +94,8 @@ async fn main() -> Result<(), RepoLensError> {
     match result {
         Ok(exit_code) => std::process::exit(exit_code),
         Err(e) => {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
+            eprint!("{}", e.display_formatted());
+            std::process::exit(exit_codes::ERROR);
         }
     }
 }

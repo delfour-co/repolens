@@ -61,6 +61,10 @@ pub struct PlanArgs {
     /// Custom cache directory path
     #[arg(long, value_name = "DIR")]
     pub cache_dir: Option<PathBuf>,
+
+    /// Verbosity level (passed from global args)
+    #[arg(skip)]
+    pub verbose: u8,
 }
 
 /// Arguments for the apply command
@@ -133,6 +137,10 @@ pub struct ReportArgs {
     /// Custom cache directory path
     #[arg(long, value_name = "DIR")]
     pub cache_dir: Option<PathBuf>,
+
+    /// Verbosity level (passed from global args)
+    #[arg(skip)]
+    pub verbose: u8,
 }
 
 /// Arguments for the schema command

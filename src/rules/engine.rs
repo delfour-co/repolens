@@ -2,6 +2,7 @@
 
 use crate::cache::AuditCache;
 use crate::error::RepoLensError;
+use crate::utils::{AuditTiming, CategoryTiming, Timer};
 use tracing::{debug, info, span, Level};
 
 use super::categories::{
@@ -28,8 +29,8 @@ pub trait RuleCategory: Send + Sync {
 }
 
 /// Callback function type for progress reporting
-/// Parameters: (category_name, current_index, total_count)
-pub type ProgressCallback = Box<dyn Fn(&str, usize, usize) + Send + Sync>;
+/// Parameters: (category_name, current_index, total_count, findings_count, duration_ms)
+pub type ProgressCallback = Box<dyn Fn(&str, usize, usize, Option<(usize, u64)>) + Send + Sync>;
 
 /// Main rules evaluation engine
 pub struct RulesEngine {
@@ -106,7 +107,19 @@ impl RulesEngine {
 
     /// Run all enabled rules and return results
     pub async fn run(&self, scanner: &Scanner) -> Result<AuditResults, RepoLensError> {
+        let (results, _) = self.run_with_timing(scanner).await?;
+        Ok(results)
+    }
+
+    /// Run all enabled rules and return results along with timing information
+    pub async fn run_with_timing(
+        &self,
+        scanner: &Scanner,
+    ) -> Result<(AuditResults, AuditTiming), RepoLensError> {
         info!("Starting audit with preset: {}", self.config.preset);
+
+        let total_timer = Timer::start();
+        let mut audit_timing = AuditTiming::new();
 
         let repo_name = scanner.repository_name();
         let repo_name_ref = &repo_name;
@@ -144,8 +157,9 @@ impl RulesEngine {
             }
 
             current += 1;
+            // Call progress callback with None timing (before execution)
             if let Some(ref callback) = self.progress_callback {
-                callback(category_name, current, total);
+                callback(category_name, current, total, None);
             }
 
             let span = span!(Level::INFO, "category", category = category_name, repository = %repo_name_ref);
@@ -153,34 +167,72 @@ impl RulesEngine {
 
             debug!(category = category_name, "Running category");
 
+            // Time the category execution
+            let category_timer = Timer::start();
+
             match category.run(scanner, &self.config).await {
                 Ok(findings) => {
-                    let count = findings.len();
+                    let category_duration = category_timer.elapsed();
+                    let findings_count = findings.len();
                     debug!(
                         category = category_name,
-                        findings_count = count,
+                        findings_count = findings_count,
+                        duration_ms = category_duration.as_millis(),
                         "Category completed"
                     );
+
+                    // Record timing (rule_count is findings_count as we don't have individual rule counts yet)
+                    audit_timing.add_category(CategoryTiming::new(
+                        category_name,
+                        0, // We don't track individual rules yet
+                        findings_count,
+                        category_duration,
+                    ));
+
+                    // Call progress callback with timing info (after execution)
+                    if let Some(ref callback) = self.progress_callback {
+                        callback(
+                            category_name,
+                            current,
+                            total,
+                            Some((findings_count, category_duration.as_millis() as u64)),
+                        );
+                    }
+
                     results.add_findings(findings);
                 }
                 Err(e) => {
+                    let category_duration = category_timer.elapsed();
                     tracing::warn!(
                         category = category_name,
                         error = %e,
+                        duration_ms = category_duration.as_millis(),
                         "Error running category"
                     );
+
+                    // Still record timing for failed categories
+                    audit_timing.add_category(CategoryTiming::new(
+                        category_name,
+                        0,
+                        0,
+                        category_duration,
+                    ));
                 }
             }
         }
 
+        // Set total duration
+        audit_timing.set_total_duration(total_timer.elapsed());
+
         info!(
-            "Audit complete: {} critical, {} warnings, {} info",
+            "Audit complete: {} critical, {} warnings, {} info (total time: {})",
             results.count_by_severity(super::Severity::Critical),
             results.count_by_severity(super::Severity::Warning),
             results.count_by_severity(super::Severity::Info),
+            audit_timing.total_duration_formatted(),
         );
 
-        Ok(results)
+        Ok((results, audit_timing))
     }
 }
 
@@ -335,7 +387,7 @@ mod tests {
         let call_count = Arc::new(AtomicUsize::new(0));
         let call_count_clone = call_count.clone();
 
-        engine.set_progress_callback(Box::new(move |_name, _current, _total| {
+        engine.set_progress_callback(Box::new(move |_name, _current, _total, _timing| {
             call_count_clone.fetch_add(1, Ordering::SeqCst);
         }));
 
@@ -382,7 +434,7 @@ mod tests {
         let call_count = Arc::new(AtomicUsize::new(0));
         let call_count_clone = call_count.clone();
 
-        engine.set_progress_callback(Box::new(move |_name, _current, _total| {
+        engine.set_progress_callback(Box::new(move |_name, _current, _total, _timing| {
             call_count_clone.fetch_add(1, Ordering::SeqCst);
         }));
 
@@ -405,5 +457,77 @@ mod tests {
 
         let results = engine.run(&scanner).await.unwrap();
         assert_eq!(results.preset, "opensource");
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_run_with_timing() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("README.md"), "# Test Project").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let engine = RulesEngine::new(config);
+
+        let (results, timing) = engine.run_with_timing(&scanner).await.unwrap();
+
+        // Verify results are returned
+        assert_eq!(results.preset, "opensource");
+
+        // Verify timing information is populated
+        assert!(!timing.categories().is_empty());
+        assert!(timing.total_duration.as_nanos() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_timing_captures_category_durations() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("README.md"), "# Test").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut engine = RulesEngine::new(config);
+        engine.set_only_categories(vec!["files".to_string()]);
+
+        let (_, timing) = engine.run_with_timing(&scanner).await.unwrap();
+
+        // Should have exactly one category timing
+        assert_eq!(timing.categories().len(), 1);
+        assert_eq!(timing.categories()[0].name, "files");
+    }
+
+    #[tokio::test]
+    async fn test_rules_engine_timing_with_progress_callback() {
+        use std::sync::{Arc, Mutex};
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        fs::write(root.join("README.md"), "# Test").unwrap();
+
+        let config = Config::default();
+        let scanner = Scanner::new(root.to_path_buf());
+        let mut engine = RulesEngine::new(config);
+        engine.set_only_categories(vec!["files".to_string()]);
+
+        // Track timing info received in callback
+        let timing_info = Arc::new(Mutex::new(Vec::new()));
+        let timing_info_clone = timing_info.clone();
+
+        engine.set_progress_callback(Box::new(move |name, _current, _total, timing| {
+            if let Some((findings, duration_ms)) = timing {
+                timing_info_clone
+                    .lock()
+                    .unwrap()
+                    .push((name.to_string(), findings, duration_ms));
+            }
+        }));
+
+        let _ = engine.run_with_timing(&scanner).await.unwrap();
+
+        let captured = timing_info.lock().unwrap();
+        // Should have captured timing for files category
+        assert!(!captured.is_empty());
+        assert_eq!(captured[0].0, "files");
     }
 }

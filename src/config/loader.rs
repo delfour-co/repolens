@@ -1,9 +1,15 @@
 //! Configuration loader
+//!
+//! Configuration priority (highest to lowest):
+//! 1. CLI flags (handled by clap)
+//! 2. Environment variables (REPOLENS_*)
+//! 3. Configuration file (.repolens.toml)
+//! 4. Default values
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::{ConfigError, RepoLensError};
 
@@ -14,6 +20,42 @@ use super::{
 };
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
+
+/// Environment variable names for configuration
+pub mod env_vars {
+    /// Preset name (opensource, enterprise, strict)
+    pub const REPOLENS_PRESET: &str = "REPOLENS_PRESET";
+    /// Path to config file (alternative to -c flag)
+    pub const REPOLENS_CONFIG: &str = "REPOLENS_CONFIG";
+    /// Verbosity level (0-3)
+    pub const REPOLENS_VERBOSE: &str = "REPOLENS_VERBOSE";
+    /// Disable cache (true/false)
+    pub const REPOLENS_NO_CACHE: &str = "REPOLENS_NO_CACHE";
+    /// GitHub token for API calls
+    pub const REPOLENS_GITHUB_TOKEN: &str = "REPOLENS_GITHUB_TOKEN";
+}
+
+/// Get verbosity level from environment variable
+pub fn get_env_verbosity() -> Option<u8> {
+    std::env::var(env_vars::REPOLENS_VERBOSE)
+        .ok()
+        .and_then(|v| v.parse::<u8>().ok())
+        .map(|v| v.min(3)) // Clamp to max 3
+}
+
+/// Get config path from environment variable
+pub fn get_env_config_path() -> Option<PathBuf> {
+    std::env::var(env_vars::REPOLENS_CONFIG)
+        .ok()
+        .map(PathBuf::from)
+}
+
+/// Parse boolean environment variable
+fn parse_bool_env(name: &str) -> Option<bool> {
+    std::env::var(name)
+        .ok()
+        .map(|v| matches!(v.to_lowercase().as_str(), "true" | "1" | "yes" | "on"))
+}
 
 /// Main configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,13 +128,54 @@ impl Default for Config {
 
 impl Config {
     /// Load configuration from file or return default
+    ///
+    /// Priority: CLI flags > env vars > config file > defaults
     pub fn load_or_default() -> Result<Self, RepoLensError> {
-        let config_path = Path::new(CONFIG_FILENAME);
+        // Check REPOLENS_CONFIG env var first
+        let config_path = get_env_config_path()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from(CONFIG_FILENAME));
 
-        if config_path.exists() {
-            Self::load_from_file(config_path)
+        let mut config = if config_path.exists() {
+            Self::load_from_file(&config_path)?
+        } else if get_env_config_path().is_some() {
+            // If env var specified a path that doesn't exist, error
+            return Err(RepoLensError::Config(ConfigError::FileRead {
+                path: config_path.display().to_string(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Configuration file not found",
+                ),
+            }));
         } else {
-            Ok(Self::default())
+            Self::default()
+        };
+
+        // Apply environment variable overrides
+        config.apply_env_overrides();
+
+        Ok(config)
+    }
+
+    /// Apply environment variable overrides to configuration
+    fn apply_env_overrides(&mut self) {
+        // REPOLENS_PRESET
+        if let Ok(preset_str) = std::env::var(env_vars::REPOLENS_PRESET) {
+            if let Ok(preset) = preset_str.parse::<Preset>() {
+                let preset_config = Config::from_preset(preset);
+                self.preset = preset_config.preset;
+                self.actions = preset_config.actions;
+            }
+        }
+
+        // REPOLENS_NO_CACHE
+        if let Some(true) = parse_bool_env(env_vars::REPOLENS_NO_CACHE) {
+            self.cache.enabled = false;
+        }
+
+        // REPOLENS_GITHUB_TOKEN - forward to GH_TOKEN for gh CLI
+        if let Ok(token) = std::env::var(env_vars::REPOLENS_GITHUB_TOKEN) {
+            std::env::set_var("GH_TOKEN", token);
         }
     }
 

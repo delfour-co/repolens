@@ -1105,11 +1105,7 @@ async fn e2e_verbose_option() {
     // Test passes if command runs without error - verbose output depends on implementation
 }
 
-// FIXME: The -C option is defined in the CLI but not implemented.
-// See: https://github.com/delfour-co/repolens/issues/166
-// The directory option is parsed but commands use current_dir() instead.
 #[tokio::test]
-#[ignore = "CLI bug: -C option is not implemented (uses current_dir instead)"]
 async fn e2e_directory_option() {
     let temp_dir = TempDir::new().unwrap();
     create_rust_project(temp_dir.path());
