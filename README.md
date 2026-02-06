@@ -119,7 +119,33 @@ cargo build --release
 
 Nightly builds are available for testing. See the [Releases page](https://github.com/delfour-co/cli--repolens/releases) for nightly builds (marked as pre-release).
 
-⚠️ **Warning**: Nightly builds may be unstable. Use at your own risk.
+**Warning**: Nightly builds may be unstable. Use at your own risk.
+
+### Docker
+
+RepoLens is available as a Docker image for easy deployment:
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/delfour-co/cli--audit-github-project:latest
+
+# Run on current directory
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/cli--audit-github-project plan
+
+# Generate a report
+docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/cli--audit-github-project report
+```
+
+For GitHub API access, mount your GitHub CLI config:
+
+```bash
+docker run --rm \
+  -v "$(pwd)":/repo \
+  -v ~/.config/gh:/home/repolens/.config/gh:ro \
+  ghcr.io/delfour-co/cli--audit-github-project plan
+```
+
+See [docs/docker.md](docs/docker.md) for detailed Docker usage instructions.
 
 ## Prerequisites
 

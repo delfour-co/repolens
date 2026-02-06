@@ -1,0 +1,72 @@
+# Maintainer: Kevin Delfour <kevin@delfour.co>
+# Contributor: Kevin Delfour <kevin@delfour.co>
+
+pkgname=repolens
+pkgver=__VERSION__
+pkgrel=1
+pkgdesc="CLI tool to audit repositories for best practices, security, and compliance"
+arch=('x86_64' 'aarch64')
+url="https://github.com/kdelfour/repolens"
+license=('MIT')
+depends=('git' 'openssl' 'gcc-libs')
+makedepends=('rust' 'cargo')
+optdepends=('github-cli: for GitHub API integration')
+provides=('repolens')
+conflicts=('repolens-bin' 'repolens-git')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/kdelfour/repolens/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('__SHA256__')
+
+# Disable automatic stripping, as cargo handles this with profile.release.strip
+options=('!strip')
+
+prepare() {
+    cd "${pkgname}-${pkgver}"
+
+    # Fetch dependencies before build
+    export CARGO_HOME="${srcdir}/cargo"
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "${pkgname}-${pkgver}"
+
+    export CARGO_HOME="${srcdir}/cargo"
+    export CARGO_TARGET_DIR=target
+
+    # Build with release profile
+    cargo build --frozen --release
+}
+
+check() {
+    cd "${pkgname}-${pkgver}"
+
+    export CARGO_HOME="${srcdir}/cargo"
+    export CARGO_TARGET_DIR=target
+
+    # Run tests
+    cargo test --frozen --release
+}
+
+package() {
+    cd "${pkgname}-${pkgver}"
+
+    # Install binary
+    install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+
+    # Install license
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+
+    # Install documentation
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+    install -Dm644 CHANGELOG.md "${pkgdir}/usr/share/doc/${pkgname}/CHANGELOG.md"
+
+    # Install shell completions (if the binary supports generating them)
+    # "${pkgdir}/usr/bin/${pkgname}" completions bash > "${srcdir}/repolens.bash"
+    # "${pkgdir}/usr/bin/${pkgname}" completions zsh > "${srcdir}/_repolens"
+    # "${pkgdir}/usr/bin/${pkgname}" completions fish > "${srcdir}/repolens.fish"
+    # install -Dm644 "${srcdir}/repolens.bash" "${pkgdir}/usr/share/bash-completion/completions/repolens"
+    # install -Dm644 "${srcdir}/_repolens" "${pkgdir}/usr/share/zsh/site-functions/_repolens"
+    # install -Dm644 "${srcdir}/repolens.fish" "${pkgdir}/usr/share/fish/vendor_completions.d/repolens.fish"
+}
+
+# vim: set ts=4 sw=4 et:

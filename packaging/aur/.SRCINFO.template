@@ -1,0 +1,27 @@
+# This is a template file. Generate .SRCINFO using:
+#   makepkg --printsrcinfo > .SRCINFO
+#
+# The generated file should look similar to:
+#
+# pkgbase = repolens
+# 	pkgdesc = CLI tool to audit repositories for best practices, security, and compliance
+# 	pkgver = __VERSION__
+# 	pkgrel = 1
+# 	url = https://github.com/kdelfour/repolens
+# 	arch = x86_64
+# 	arch = aarch64
+# 	license = MIT
+# 	makedepends = rust
+# 	makedepends = cargo
+# 	depends = git
+# 	depends = openssl
+# 	depends = gcc-libs
+# 	optdepends = github-cli: for GitHub API integration
+# 	provides = repolens
+# 	conflicts = repolens-bin
+# 	conflicts = repolens-git
+# 	options = !strip
+# 	source = repolens-__VERSION__.tar.gz::https://github.com/kdelfour/repolens/archive/refs/tags/v__VERSION__.tar.gz
+# 	sha256sums = __SHA256__
+#
+# pkgname = repolens

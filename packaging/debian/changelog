@@ -1,0 +1,9 @@
+repolens (__VERSION__-1) unstable; urgency=medium
+
+  * Initial release.
+  * CLI tool to audit repositories for best practices
+  * Support for multiple presets (opensource, enterprise, strict)
+  * Security vulnerability detection
+  * Compliance reporting
+
+ -- Kevin Delfour <kevin@delfour.co>  __DATE__
