@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-02-07
+
+### Security
+
+- **CVE-2026-0007**: Fixed integer overflow vulnerability in `bytes` crate by updating to version 1.11.1
+- **Secure file permissions**: Configuration file `.repolens.toml` now uses chmod 600 on Unix systems to protect sensitive data
+- **Custom rules security**: Added documentation warning about shell command injection risks in custom rules
+
+### Added
+
+#### Code Quality
+- **Command execution utilities** (`src/utils/command.rs`): New helper functions for standardized command execution with consistent error handling
+- **Category validation** (`src/rules/constants.rs`): New `filter_valid_categories()` function to validate user-provided categories against allowed values
+- **Standardized exit codes** (`src/cli/exit_codes.rs`): Documented exit codes (0-4) for CI/CD integration
+- **Man page generation**: New `generate-man` command to create man pages from CLI definition
+- **File permissions module** (`src/utils/permissions.rs`): Secure file permission helpers for Unix systems
+
+#### Testing
+- 17 new unit tests for v1.4.0 modules:
+  - `src/rules/constants.rs`: 7 tests for category validation
+  - `src/utils/command.rs`: 5 tests for command execution
+  - `src/utils/permissions.rs`: 3 tests for permission handling
+  - `src/cli/exit_codes.rs`: 2 tests for exit code validation
+
+### Fixed
+
+- **Docker workflow**: Fixed authentication for image verification step in CI/CD pipeline
+- **Clippy warnings**: Added `#[allow(dead_code)]` annotations to intentionally kept public API functions
+
+### Documentation
+
+- Updated custom rules wiki with security considerations
+- Added exit codes reference to README
+
 ## [1.3.0] - 2026-02-06
 
 ### Added
@@ -209,6 +243,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wiki documentation
 - Configuration and preset examples
 
+[1.4.0]: https://github.com/delfour-co/repolens/releases/tag/v1.4.0
 [1.3.0]: https://github.com/delfour-co/repolens/releases/tag/v1.3.0
 [1.2.0]: https://github.com/delfour-co/repolens/releases/tag/v1.2.0
 [1.1.0]: https://github.com/delfour-co/repolens/releases/tag/v1.1.0

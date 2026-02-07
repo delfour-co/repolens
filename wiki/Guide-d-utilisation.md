@@ -503,6 +503,47 @@ Installation facilitée via :
 
 Templates prêts à l'emploi pour GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps.
 
+### Codes de sortie standardisés (v1.4.0)
+
+RepoLens utilise des codes de sortie standardisés pour l'intégration CI/CD :
+
+| Code | Signification | Exemple |
+|------|--------------|---------|
+| 0 | Succès | Audit terminé, pas de problèmes critiques |
+| 1 | Problèmes critiques | Secrets exposés, vulnérabilités critiques |
+| 2 | Avertissements | Fichiers manquants, findings non critiques |
+| 3 | Erreur d'exécution | Fichier non trouvé, erreur réseau |
+| 4 | Arguments invalides | Catégorie inconnue, preset invalide |
+
+```bash
+# Exemple d'utilisation en CI/CD
+repolens plan
+case $? in
+  0) echo "Tout est OK!" ;;
+  1) echo "Problèmes critiques - blocage de release" && exit 1 ;;
+  2) echo "Avertissements - revue recommandée" ;;
+  3) echo "Erreur lors de l'audit" && exit 1 ;;
+  4) echo "Arguments invalides" && exit 1 ;;
+esac
+```
+
+### Permissions sécurisées (v1.4.0)
+
+Le fichier de configuration `.repolens.toml` est automatiquement protégé avec les permissions `600` (lecture/écriture propriétaire uniquement) sur les systèmes Unix pour protéger les données sensibles.
+
+### Validation des catégories (v1.4.0)
+
+Les catégories fournies via `--only` et `--skip` sont maintenant validées. Les catégories invalides génèrent un avertissement et sont ignorées.
+
+```bash
+# Les catégories valides sont :
+# secrets, files, docs, security, workflows, quality,
+# dependencies, licenses, docker, git, custom
+
+repolens plan --only secrets,invalid
+# Warning: Unknown category 'invalid' ignored. Valid categories: secrets, files, ...
+```
+
 ### Vérification de la sécurité des dépendances
 
 RepoLens vérifie automatiquement les vulnérabilités dans vos dépendances via l'API OSV et GitHub Security Advisories.

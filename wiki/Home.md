@@ -128,6 +128,13 @@ Pour l'intégration CI/CD, utilisez l'Action GitHub officielle :
 - ✅ **JSON Schema** : Schéma (draft-07) pour valider les rapports
 - ✅ **Changelog automatique** : Génération à partir des commits
 
+### Stabilité & Sécurité (v1.4.0)
+- ✅ **CVE-2026-0007** : Correction d'une vulnérabilité dans le crate `bytes`
+- ✅ **Permissions sécurisées** : `.repolens.toml` protégé avec chmod 600 sur Unix
+- ✅ **Codes de sortie standardisés** : 0=succès, 1=critique, 2=warning, 3=erreur, 4=args invalides
+- ✅ **Validation des catégories** : Les catégories invalides génèrent un avertissement
+- ✅ **17 nouveaux tests** : Couverture améliorée des modules de stabilité
+
 ### Distribution
 - ✅ **Docker** : Image officielle multi-architecture (amd64, arm64)
 - ✅ **Gestionnaires de paquets** : Homebrew, Scoop, AUR, Debian

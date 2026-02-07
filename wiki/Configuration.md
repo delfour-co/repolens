@@ -376,6 +376,45 @@ export RUST_LOG=debug
 export NO_COLOR=1
 ```
 
+## Sécurité du fichier de configuration (v1.4.0)
+
+Le fichier `.repolens.toml` peut contenir des informations sensibles (patterns de secrets à ignorer, configuration personnalisée). Sur les systèmes Unix, RepoLens applique automatiquement les permissions `600` (lecture/écriture propriétaire uniquement) lors de la création du fichier via `repolens init`.
+
+```bash
+# Vérifier les permissions
+ls -la .repolens.toml
+# -rw-------  1 user  group  1234 Feb  7 10:00 .repolens.toml
+```
+
+> **Note** : Sur Windows, le système de permissions est différent et cette protection n'est pas appliquée automatiquement.
+
+## Codes de sortie (v1.4.0)
+
+RepoLens utilise des codes de sortie standardisés pour l'intégration CI/CD :
+
+| Code | Constante | Signification |
+|------|-----------|---------------|
+| 0 | `SUCCESS` | Succès - pas de problèmes critiques |
+| 1 | `CRITICAL_ISSUES` | Problèmes critiques détectés |
+| 2 | `WARNINGS` | Avertissements détectés |
+| 3 | `ERROR` | Erreur d'exécution |
+| 4 | `INVALID_ARGS` | Arguments invalides |
+
+```bash
+# Utilisation dans un script CI/CD
+repolens plan
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -eq 0 ]; then
+  echo "✅ Audit réussi"
+elif [ $EXIT_CODE -eq 1 ]; then
+  echo "❌ Problèmes critiques - blocage"
+  exit 1
+elif [ $EXIT_CODE -eq 2 ]; then
+  echo "⚠️ Avertissements - revue recommandée"
+fi
+```
+
 ## Prochaines étapes
 
 - Consultez les [Presets](Presets) pour des configurations prédéfinies
