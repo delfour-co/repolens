@@ -74,7 +74,10 @@ pub fn has_changes(root: &Path) -> Result<bool, RepoLensError> {
     Ok(!status.trim().is_empty())
 }
 
-/// Stage all changes in the repository
+/// Stage all changes in the repository.
+///
+/// Part of the public API - provides a convenient way to stage
+/// all changes when applying fixes programmatically.
 ///
 /// # Arguments
 ///
@@ -206,7 +209,10 @@ pub fn push_branch(root: &Path, branch_name: &str) -> Result<(), RepoLensError> 
     Ok(())
 }
 
-/// Get the current branch name
+/// Get the current branch name.
+///
+/// Part of the public API - useful for external code that needs
+/// to determine the current working branch.
 ///
 /// # Arguments
 ///

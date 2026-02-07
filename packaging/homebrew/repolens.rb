@@ -38,8 +38,9 @@ class Repolens < Formula
     # Generate shell completions
     generate_completions_from_executable(bin/"repolens", "completions")
 
-    # Install man page if available
-    # man1.install "docs/repolens.1" if File.exist?("docs/repolens.1")
+    # Generate and install man page
+    system bin/"repolens", "generate-man", "--output", buildpath
+    man1.install "repolens.1"
   end
 
   def caveats

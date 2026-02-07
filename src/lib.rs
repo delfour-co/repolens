@@ -17,14 +17,5 @@ pub mod utils;
 
 pub use error::RepoLensError;
 
-/// Exit codes for the CLI
-pub mod exit_codes {
-    /// Success - no issues found
-    pub const SUCCESS: i32 = 0;
-    /// Critical issues found that block release
-    pub const CRITICAL_ISSUES: i32 = 1;
-    /// Warnings found but not blocking
-    pub const WARNINGS: i32 = 2;
-    /// Configuration or runtime error
-    pub const ERROR: i32 = 3;
-}
+// Re-export exit_codes from cli module for public API
+pub use cli::exit_codes;

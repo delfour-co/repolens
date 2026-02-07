@@ -135,6 +135,7 @@ pub enum ConfigError {
     },
 
     /// Invalid preset name
+    #[allow(dead_code)]
     #[error("Invalid preset '{name}'")]
     InvalidPreset {
         /// The invalid preset name

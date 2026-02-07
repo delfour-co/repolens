@@ -425,6 +425,8 @@ invert = true  # Fail if uncommitted changes
 message = "Working directory is not clean"
 ```
 
+> **Security Warning**: Custom rules with shell commands execute arbitrary code on your system. Only use commands from trusted sources. Never commit or run `.repolens.toml` files from untrusted repositories without reviewing them first.
+
 See the [Custom Rules documentation](wiki/Custom-Rules.md) for more examples and details.
 
 ### Cache
@@ -476,6 +478,30 @@ RepoLens can be configured via environment variables. Priority order: CLI flags 
 export REPOLENS_PRESET=enterprise
 export REPOLENS_VERBOSE=2
 repolens plan
+```
+
+### Exit Codes
+
+RepoLens uses standard exit codes for CI/CD integration:
+
+| Code | Meaning | Example |
+|------|---------|---------|
+| 0 | Success | Audit completed, no critical issues |
+| 1 | Critical issues | Secrets exposed, critical vulnerabilities |
+| 2 | Warnings | Missing files, non-critical findings |
+| 3 | Runtime error | File not found, network error |
+| 4 | Invalid arguments | Unknown category, invalid preset |
+
+```bash
+# Example usage in CI/CD
+repolens plan
+case $? in
+  0) echo "All clear!" ;;
+  1) echo "Critical issues found - blocking release" && exit 1 ;;
+  2) echo "Warnings found - review recommended" ;;
+  3) echo "Error running audit" && exit 1 ;;
+  4) echo "Invalid arguments" && exit 1 ;;
+esac
 ```
 
 ### Git Hooks

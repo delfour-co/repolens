@@ -1,13 +1,15 @@
 //! CLI module - Command line interface definition and handlers
 
 pub mod commands;
+pub mod exit_codes;
 pub mod output;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use commands::{
-    ApplyArgs, CompareArgs, InitArgs, InstallHooksArgs, PlanArgs, ReportArgs, SchemaArgs,
+    ApplyArgs, CompareArgs, GenerateManArgs, InitArgs, InstallHooksArgs, PlanArgs, ReportArgs,
+    SchemaArgs,
 };
 
 /// RepoLens - Audit and prepare repositories for open source or enterprise standards
@@ -54,4 +56,8 @@ pub enum Commands {
 
     /// Install or remove Git hooks (pre-commit, pre-push)
     InstallHooks(InstallHooksArgs),
+
+    /// Generate man page (hidden, for packaging)
+    #[command(hide = true)]
+    GenerateMan(GenerateManArgs),
 }

@@ -239,7 +239,10 @@ impl Config {
         self.rules.get(rule_id).map(|r| r.enabled).unwrap_or(true)
     }
 
-    /// Get severity override for a rule
+    /// Get severity override for a rule.
+    ///
+    /// Part of the public API for configuration rule customization.
+    /// Allows external code to query custom severity levels for specific rules.
     #[allow(dead_code)]
     pub fn get_rule_severity(&self, rule_id: &str) -> Option<&str> {
         self.rules.get(rule_id).and_then(|r| r.severity.as_deref())
@@ -261,7 +264,10 @@ impl Config {
             .any(|pattern| glob_match(pattern, path))
     }
 
-    /// Check if a URL is allowed (for enterprise mode)
+    /// Check if a URL is allowed (for enterprise mode).
+    ///
+    /// Part of the public API for enterprise URL filtering.
+    /// Allows external code to check if internal URLs are permitted.
     #[allow(dead_code)]
     pub fn is_url_allowed(&self, url: &str) -> bool {
         if self.urls.allowed_internal.is_empty() {

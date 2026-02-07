@@ -6,8 +6,11 @@ use std::fs;
 use std::path::Path;
 
 use super::InitArgs;
+use crate::config::presets::VALID_PRESETS;
 use crate::config::{Config, Preset};
 use crate::error::{ActionError, RepoLensError};
+use crate::exit_codes;
+use crate::utils::permissions::set_secure_permissions;
 use crate::utils::prerequisites::{
     display_error_summary, display_report, display_warnings, run_all_checks, CheckOptions,
 };
@@ -32,7 +35,7 @@ pub async fn execute(args: InitArgs) -> Result<i32, RepoLensError> {
             display_error_summary(&report);
 
             if args.non_interactive {
-                return Ok(crate::exit_codes::ERROR);
+                return Ok(exit_codes::ERROR);
             }
 
             // Ask if user wants to continue anyway
@@ -47,7 +50,7 @@ pub async fn execute(args: InitArgs) -> Result<i32, RepoLensError> {
                 })?;
 
             if !continue_anyway {
-                return Ok(crate::exit_codes::ERROR);
+                return Ok(exit_codes::ERROR);
             }
 
             println!();
@@ -63,7 +66,7 @@ pub async fn execute(args: InitArgs) -> Result<i32, RepoLensError> {
                 "{} Configuration file already exists. Use --force to overwrite.",
                 "Error:".red().bold()
             );
-            return Ok(1);
+            return Ok(exit_codes::ERROR);
         }
 
         let overwrite = Confirm::new()
@@ -78,15 +81,24 @@ pub async fn execute(args: InitArgs) -> Result<i32, RepoLensError> {
 
         if !overwrite {
             println!("{}", "Aborted.".yellow());
-            return Ok(0);
+            return Ok(exit_codes::SUCCESS);
         }
     }
 
-    // Determine preset
+    // Determine preset with validation
     let preset = if let Some(preset_name) = args.preset {
-        Preset::from_name(&preset_name).ok_or(RepoLensError::Config(
-            crate::error::ConfigError::InvalidPreset { name: preset_name },
-        ))?
+        match Preset::from_name(&preset_name) {
+            Some(p) => p,
+            None => {
+                eprintln!(
+                    "{} Unknown preset '{}'. Valid presets: {}",
+                    "Error:".red().bold(),
+                    preset_name,
+                    VALID_PRESETS.join(", ")
+                );
+                return Ok(exit_codes::INVALID_ARGS);
+            }
+        }
     } else if args.non_interactive {
         Preset::OpenSource
     } else {
@@ -105,6 +117,16 @@ pub async fn execute(args: InitArgs) -> Result<i32, RepoLensError> {
         })
     })?;
 
+    // Set secure permissions (owner read/write only) on Unix systems
+    set_secure_permissions(config_path).map_err(|e| {
+        RepoLensError::Action(ActionError::ExecutionFailed {
+            message: format!(
+                "Failed to set secure permissions on {}: {}",
+                CONFIG_FILENAME, e
+            ),
+        })
+    })?;
+
     println!(
         "{} Created {} with preset '{}'",
         "Success:".green().bold(),
@@ -117,7 +139,7 @@ pub async fn execute(args: InitArgs) -> Result<i32, RepoLensError> {
     println!("  2. Run {} to see planned actions", "repolens plan".cyan());
     println!("  3. Run {} to apply changes", "repolens apply".cyan());
 
-    Ok(0)
+    Ok(exit_codes::SUCCESS)
 }
 
 fn select_preset() -> Result<Preset, RepoLensError> {
