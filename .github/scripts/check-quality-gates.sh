@@ -96,12 +96,15 @@ MAX_WARNINGS=$(extract_toml_value "clippy" "max_warnings" "0")
 CLIPPY_FILE="${2:-clippy.json}"
 
 if [ -f "$CLIPPY_FILE" ]; then
-    CLIPPY_WARNINGS=$(grep -c '"level":"warning"' "$CLIPPY_FILE" || echo "0")
+    CLIPPY_WARNINGS=$(grep -c '"level":"warning"' "$CLIPPY_FILE" 2>/dev/null || true)
 else
     # Générer le fichier Clippy si absent
     cargo clippy --all-targets --all-features --message-format=json > "$CLIPPY_FILE" 2>&1 || true
-    CLIPPY_WARNINGS=$(grep -c '"level":"warning"' "$CLIPPY_FILE" || echo "0")
+    CLIPPY_WARNINGS=$(grep -c '"level":"warning"' "$CLIPPY_FILE" 2>/dev/null || true)
 fi
+# Ensure CLIPPY_WARNINGS is a valid integer
+CLIPPY_WARNINGS=${CLIPPY_WARNINGS:-0}
+CLIPPY_WARNINGS=$(echo "$CLIPPY_WARNINGS" | tr -d '[:space:]')
 
 if [ "$CLIPPY_WARNINGS" -le "$MAX_WARNINGS" ]; then
     check_result "Clippy warnings" true "$CLIPPY_WARNINGS warnings (maximum: $MAX_WARNINGS)"
@@ -125,9 +128,14 @@ if command -v cargo-audit &> /dev/null; then
     fi
     
     # Compter les vulnérabilités
-    CRITICAL_COUNT=$(echo "$AUDIT_OUTPUT" | grep -c '"severity":"critical"' || echo "0")
-    HIGH_COUNT=$(echo "$AUDIT_OUTPUT" | grep -c '"severity":"high"' || echo "0")
-    
+    CRITICAL_COUNT=$(echo "$AUDIT_OUTPUT" | grep -c '"severity":"critical"' 2>/dev/null || true)
+    HIGH_COUNT=$(echo "$AUDIT_OUTPUT" | grep -c '"severity":"high"' 2>/dev/null || true)
+    # Ensure counts are valid integers
+    CRITICAL_COUNT=${CRITICAL_COUNT:-0}
+    HIGH_COUNT=${HIGH_COUNT:-0}
+    CRITICAL_COUNT=$(echo "$CRITICAL_COUNT" | tr -d '[:space:]')
+    HIGH_COUNT=$(echo "$HIGH_COUNT" | tr -d '[:space:]')
+
     if [ "$CRITICAL_COUNT" -le "$MAX_CRITICAL" ] && [ "$HIGH_COUNT" -le "$MAX_HIGH" ]; then
         check_result "Vulnérabilités de sécurité" true "Critiques: $CRITICAL_COUNT, Importantes: $HIGH_COUNT"
     else
@@ -144,13 +152,16 @@ MAX_OUTDATED=$(extract_toml_value "dependencies" "max_outdated" "5")
 
 if command -v cargo-outdated &> /dev/null; then
     if [ -f "$OUTDATED_FILE" ]; then
-        OUTDATED_COUNT=$(grep -c '"name"' "$OUTDATED_FILE" || echo "0")
+        OUTDATED_COUNT=$(grep -c '"name"' "$OUTDATED_FILE" 2>/dev/null || true)
     else
         # Générer le fichier outdated si absent
         cargo outdated --format json > "$OUTDATED_FILE" 2>&1 || true
-        OUTDATED_COUNT=$(grep -c '"name"' "$OUTDATED_FILE" || echo "0")
+        OUTDATED_COUNT=$(grep -c '"name"' "$OUTDATED_FILE" 2>/dev/null || true)
     fi
-    
+    # Ensure count is valid integer
+    OUTDATED_COUNT=${OUTDATED_COUNT:-0}
+    OUTDATED_COUNT=$(echo "$OUTDATED_COUNT" | tr -d '[:space:]')
+
     if [ "$OUTDATED_COUNT" -le "$MAX_OUTDATED" ]; then
         check_result "Dépendances obsolètes" true "$OUTDATED_COUNT dépendances (maximum: $MAX_OUTDATED)"
     else
@@ -163,7 +174,10 @@ fi
 
 # 5. Vérifier le nombre de tests
 MIN_TESTS=$(extract_toml_value "code_metrics" "min_tests" "20")
-TEST_COUNT=$(cargo test --all-features --lib --tests --no-run --message-format=json 2>&1 | grep -c '"type":"test"' || echo "0")
+TEST_COUNT=$(cargo test --all-features --lib --tests --no-run --message-format=json 2>&1 | grep -c '"type":"test"' 2>/dev/null || true)
+# Ensure count is valid integer
+TEST_COUNT=${TEST_COUNT:-0}
+TEST_COUNT=$(echo "$TEST_COUNT" | tr -d '[:space:]')
 
 if [ "$TEST_COUNT" -ge "$MIN_TESTS" ]; then
     check_result "Nombre de tests" true "$TEST_COUNT tests (minimum: $MIN_TESTS)"
