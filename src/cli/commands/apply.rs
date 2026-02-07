@@ -583,11 +583,21 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
         }
     }
 
-    if error_count > 0 {
-        Ok(exit_codes::ERROR)
+    // Determine exit code based on results:
+    // - All actions succeeded: SUCCESS (0)
+    // - Some actions failed: WARNINGS (2)
+    // - All actions failed: CRITICAL_ISSUES (1)
+    let exit_code = if error_count == 0 {
+        exit_codes::SUCCESS
+    } else if success_count == 0 {
+        // All actions failed
+        exit_codes::CRITICAL_ISSUES
     } else {
-        Ok(exit_codes::SUCCESS)
-    }
+        // Some actions failed (partial success)
+        exit_codes::WARNINGS
+    };
+
+    Ok(exit_code)
 }
 
 /// Create GitHub issues for warning findings grouped by category

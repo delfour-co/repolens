@@ -2,6 +2,7 @@
 
 pub mod apply;
 pub mod compare;
+pub mod generate_man;
 pub mod init;
 pub mod install_hooks;
 pub mod plan;
@@ -118,6 +119,14 @@ pub struct ReportArgs {
     #[arg(long)]
     pub detailed: bool,
 
+    /// Only check specific rule categories
+    #[arg(long, value_delimiter = ',')]
+    pub only: Option<Vec<String>>,
+
+    /// Skip specific rule categories
+    #[arg(long, value_delimiter = ',')]
+    pub skip: Option<Vec<String>>,
+
     /// Include JSON Schema reference ($schema) in JSON output
     #[arg(long)]
     pub schema: bool,
@@ -221,4 +230,12 @@ pub enum CompareFormat {
     Terminal,
     Json,
     Markdown,
+}
+
+/// Arguments for the generate-man command
+#[derive(Args, Debug)]
+pub struct GenerateManArgs {
+    /// Output directory for man pages
+    #[arg(short, long, default_value = ".")]
+    pub output: PathBuf,
 }

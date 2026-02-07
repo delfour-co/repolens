@@ -41,7 +41,6 @@ impl GitHubProvider {
     }
 
     /// Check if GitHub CLI is available and authenticated
-    #[allow(dead_code)]
     pub fn is_available() -> bool {
         Command::new("gh")
             .args(["auth", "status"])
@@ -51,7 +50,6 @@ impl GitHubProvider {
     }
 
     /// Get repository owner and name
-    #[allow(dead_code)]
     fn get_repo_info() -> Result<(String, String), RepoLensError> {
         let output = Command::new("gh")
             .args([
@@ -88,69 +86,6 @@ impl GitHubProvider {
     /// Get the full repository name (owner/name)
     pub fn full_name(&self) -> String {
         format!("{}/{}", self.repo_owner, self.repo_name)
-    }
-
-    /// Get repository visibility
-    #[allow(dead_code)]
-    pub fn get_visibility(&self) -> Result<String, RepoLensError> {
-        let output = Command::new("gh")
-            .args(["repo", "view", "--json", "visibility", "-q", ".visibility"])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: "gh repo view".to_string(),
-                })
-            })?;
-
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_lowercase())
-    }
-
-    /// Check if the repository is public
-    #[allow(dead_code)]
-    pub fn is_public(&self) -> Result<bool, RepoLensError> {
-        Ok(self.get_visibility()? == "public")
-    }
-
-    /// Get list of repository secrets (names only)
-    #[allow(dead_code)]
-    pub fn list_secrets(&self) -> Result<Vec<String>, RepoLensError> {
-        let output = Command::new("gh")
-            .args(["secret", "list", "--json", "name", "-q", ".[].name"])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: "gh secret list".to_string(),
-                })
-            })?;
-
-        if !output.status.success() {
-            return Ok(Vec::new());
-        }
-
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        Ok(output_str.lines().map(|s| s.to_string()).collect())
-    }
-
-    /// Get list of repository variables
-    #[allow(dead_code)]
-    pub fn list_variables(&self) -> Result<Vec<String>, RepoLensError> {
-        let output = Command::new("gh")
-            .args(["variable", "list", "--json", "name", "-q", ".[].name"])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: "gh variable list".to_string(),
-                })
-            })?;
-
-        if !output.status.success() {
-            return Ok(Vec::new());
-        }
-
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        Ok(output_str.lines().map(|s| s.to_string()).collect())
     }
 
     /// Get branch protection status

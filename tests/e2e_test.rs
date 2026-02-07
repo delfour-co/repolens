@@ -1796,3 +1796,304 @@ async fn e2e_report_text_format() {
     let _stdout = String::from_utf8_lossy(&output);
     // Test passes if command runs without error - report writes to file by default
 }
+
+// ============================================================================
+// E2E Tests for Exit Codes
+// ============================================================================
+
+/// Exit code constants for tests
+mod exit_codes {
+    pub const SUCCESS: i32 = 0;
+    pub const CRITICAL_ISSUES: i32 = 1;
+    pub const WARNINGS: i32 = 2;
+    pub const ERROR: i32 = 3;
+    pub const INVALID_ARGS: i32 = 4;
+}
+
+#[tokio::test]
+async fn e2e_exit_code_returns_valid_exit_codes() {
+    // This test verifies that exit codes are within expected range
+    let temp_dir = TempDir::new().unwrap();
+    let temp_path = temp_dir.path().to_path_buf();
+
+    create_rust_project(&temp_path);
+
+    // Add some required files
+    fs::write(
+        temp_path.join("README.md"),
+        "# Test Project\n\nA test project.\n",
+    )
+    .unwrap();
+
+    // Initialize config
+    get_cmd()
+        .current_dir(&temp_path)
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Run plan - should return a valid exit code (0, 1, or 2)
+    get_cmd()
+        .current_dir(&temp_path)
+        .args(["plan"])
+        .assert()
+        .code(predicate::in_iter([
+            exit_codes::SUCCESS,
+            exit_codes::CRITICAL_ISSUES,
+            exit_codes::WARNINGS,
+        ]));
+}
+
+#[tokio::test]
+async fn e2e_exit_code_critical_for_secrets() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Add a file with exposed secrets
+    fs::write(
+        temp_dir.path().join("secrets.rs"),
+        r#"
+// Fake AWS credentials for testing
+const AWS_ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
+const AWS_SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+"#,
+    )
+    .unwrap();
+
+    // Initialize config with strict preset (more likely to detect secrets)
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "strict",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Run plan - should return CRITICAL_ISSUES (1) for exposed secrets
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan"])
+        .assert()
+        .code(predicate::eq(exit_codes::CRITICAL_ISSUES));
+}
+
+#[tokio::test]
+async fn e2e_exit_code_warnings_for_missing_files() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Add README but leave other files missing (warnings, not critical)
+    fs::write(temp_dir.path().join("README.md"), "# Test\n").unwrap();
+
+    // Initialize config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Run plan - should return WARNINGS (2) or CRITICAL_ISSUES (1) depending on findings
+    // Missing LICENSE is typically critical, so we check for non-zero exit
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan"])
+        .assert()
+        .code(predicate::in_iter([
+            exit_codes::CRITICAL_ISSUES,
+            exit_codes::WARNINGS,
+        ]));
+}
+
+#[tokio::test]
+async fn e2e_exit_code_for_missing_config_uses_default() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Without explicit init, CLI uses load_or_default which creates a default config
+    // So plan should run successfully (finding issues in the project)
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["plan"])
+        .assert()
+        .code(predicate::in_iter([
+            exit_codes::SUCCESS,
+            exit_codes::CRITICAL_ISSUES,
+            exit_codes::WARNINGS,
+        ]));
+}
+
+#[tokio::test]
+async fn e2e_exit_code_invalid_args_for_invalid_preset() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Try to init with invalid preset - should return INVALID_ARGS (4)
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "invalid-preset-name",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .code(predicate::eq(exit_codes::INVALID_ARGS));
+}
+
+#[tokio::test]
+async fn e2e_exit_code_error_for_nonexistent_directory() {
+    // Try to run in non-existent directory - should return ERROR (3)
+    get_cmd()
+        .args(["-C", "/nonexistent/directory/path/12345", "plan"])
+        .assert()
+        .code(predicate::eq(exit_codes::ERROR));
+}
+
+#[tokio::test]
+async fn e2e_exit_code_compare_regression() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Initialize config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Generate first report (fewer issues)
+    fs::write(temp_dir.path().join("README.md"), "# Test Project\n").unwrap();
+    let report1_path = temp_dir.path().join("report1.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["report", "--format", "json", "--output"])
+        .arg(&report1_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // Remove README to create a regression
+    fs::remove_file(temp_dir.path().join("README.md")).unwrap();
+
+    // Generate second report (more issues - regression)
+    let report2_path = temp_dir.path().join("report2.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["report", "--format", "json", "--output"])
+        .arg(&report2_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // Compare with --fail-on-regression - should return CRITICAL_ISSUES (1)
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "compare",
+            "--base-file",
+            report1_path.to_str().unwrap(),
+            "--head-file",
+            report2_path.to_str().unwrap(),
+            "--fail-on-regression",
+        ])
+        .assert()
+        .code(predicate::eq(exit_codes::CRITICAL_ISSUES));
+}
+
+#[tokio::test]
+async fn e2e_exit_code_compare_returns_valid_codes() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Initialize config
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Generate first report
+    let report1_path = temp_dir.path().join("report1.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["report", "--format", "json", "--output"])
+        .arg(&report1_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // Add a file
+    fs::write(temp_dir.path().join("README.md"), "# Test Project\n").unwrap();
+
+    // Generate second report
+    let report2_path = temp_dir.path().join("report2.json");
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["report", "--format", "json", "--output"])
+        .arg(&report2_path)
+        .assert()
+        .code(predicate::in_iter([0, 1, 2]));
+
+    // Compare without --fail-on-regression - should always return SUCCESS (0)
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "compare",
+            "--base-file",
+            report1_path.to_str().unwrap(),
+            "--head-file",
+            report2_path.to_str().unwrap(),
+        ])
+        .assert()
+        .code(predicate::eq(exit_codes::SUCCESS));
+
+    // Compare with --fail-on-regression returns SUCCESS or CRITICAL_ISSUES
+    // depending on whether new issues were introduced
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "compare",
+            "--base-file",
+            report1_path.to_str().unwrap(),
+            "--head-file",
+            report2_path.to_str().unwrap(),
+            "--fail-on-regression",
+        ])
+        .assert()
+        .code(predicate::in_iter([
+            exit_codes::SUCCESS,
+            exit_codes::CRITICAL_ISSUES,
+        ]));
+}

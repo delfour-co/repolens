@@ -28,18 +28,8 @@ mod utils;
 use config::get_env_verbosity;
 use error::RepoLensError;
 
-/// Exit codes for the CLI
-pub mod exit_codes {
-    /// Success - no issues found
-    pub const SUCCESS: i32 = 0;
-    /// Critical issues found that block release
-    pub const CRITICAL_ISSUES: i32 = 1;
-    /// Warnings found but not blocking
-    pub const WARNINGS: i32 = 2;
-    /// Configuration or runtime error
-    pub const ERROR: i32 = 3;
-}
-
+// Use exit_codes from cli module
+use cli::exit_codes;
 use cli::{Cli, Commands};
 
 #[tokio::main]
@@ -88,6 +78,7 @@ async fn main() -> Result<(), RepoLensError> {
         Commands::Schema(args) => cli::commands::schema::execute(args).await,
         Commands::Compare(args) => cli::commands::compare::execute(args).await,
         Commands::InstallHooks(args) => cli::commands::install_hooks::execute(args).await,
+        Commands::GenerateMan(args) => cli::commands::generate_man::execute(args).await,
     };
 
     // Handle exit codes for CI integration

@@ -1,6 +1,8 @@
 //! Utility modules for RepoLens
 
+pub mod command;
 pub mod language_detection;
+pub mod permissions;
 pub mod prerequisites;
 pub mod timing;
 

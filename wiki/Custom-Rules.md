@@ -6,6 +6,24 @@
 
 # Règles personnalisées
 
+## Security Considerations
+
+> **Warning: Arbitrary Code Execution Risk**
+>
+> Custom rules that use the `command` parameter execute shell commands directly on your system. This is a powerful feature but comes with significant security risks:
+>
+> - **Only use commands from trusted sources.** A malicious `.repolens.toml` file could execute harmful commands on your system, including data exfiltration, file deletion, or installation of malware.
+>
+> - **Never commit untrusted `.repolens.toml` files.** Before running RepoLens on a cloned repository, always review the `.repolens.toml` file for any suspicious shell commands.
+>
+> - **Review before execution.** When opening a project with a `.repolens.toml` file that contains custom rules with shell commands, RepoLens will display a warning. Take this warning seriously and verify the commands before proceeding.
+>
+> Examples of dangerous commands to watch for:
+> - Commands that download and execute scripts: `curl ... | sh`
+> - Commands that modify system files or configurations
+> - Commands that send data to external servers
+> - Commands with obfuscated or encoded content
+
 RepoLens permet de définir des règles d'audit personnalisées via la configuration TOML. Vous pouvez créer des règles basées sur des patterns regex ou des commandes shell.
 
 ## Syntaxe de base

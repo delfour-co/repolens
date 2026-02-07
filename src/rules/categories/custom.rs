@@ -9,7 +9,18 @@ use crate::rules::{Finding, Severity};
 use crate::scanner::Scanner;
 use regex::Regex;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::debug;
+
+/// Flag to ensure we only print the shell command warning once per run
+static SHELL_WARNING_PRINTED: AtomicBool = AtomicBool::new(false);
+
+/// Print a security warning about shell command execution (only once per run)
+fn warn_about_shell_commands() {
+    if !SHELL_WARNING_PRINTED.swap(true, Ordering::SeqCst) {
+        eprintln!("\n\u{26a0}\u{fe0f}  Warning: Custom rules with shell commands detected. Only use commands from trusted sources.\n");
+    }
+}
 
 /// Custom rules implementation
 pub struct CustomRules;
@@ -173,6 +184,7 @@ impl RuleCategory for CustomRules {
 
             // Handle shell command rules
             if let Some(ref command) = rule.command {
+                warn_about_shell_commands();
                 debug!(rule_id = %rule_id, command = %command, "Processing custom shell command rule");
 
                 match execute_shell_command(command) {

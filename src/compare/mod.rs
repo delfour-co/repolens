@@ -78,7 +78,10 @@ impl CompareReport {
         !self.added_findings.is_empty()
     }
 
-    /// Returns true if there are improvements (issues resolved)
+    /// Returns true if there are improvements (issues resolved).
+    ///
+    /// Part of the public API - allows external code to check
+    /// if a comparison shows improvement in audit results.
     #[allow(dead_code)]
     pub fn has_improvements(&self) -> bool {
         !self.removed_findings.is_empty()

@@ -118,6 +118,14 @@ jobs:
             strip target/${{ matrix.target }}/release/${{ matrix.artifact_name }} || true
           fi
 
+      - name: Generate man page
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }} generate-man --output .
+          gzip -f repolens.1
+          echo "Man page generated: repolens.1.gz"
+
       - name: Create archive (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
@@ -163,6 +171,14 @@ jobs:
           path: |
             target/${{ matrix.target }}/release/${{ matrix.archive_name }}.tar.gz
             target/${{ matrix.target }}/release/${{ matrix.archive_name }}.tar.gz.sha256
+          retention-days: 90
+
+      - name: Upload man page
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: man-page
+          path: repolens.1.gz
           retention-days: 90
 
       - name: Upload artifact (Windows)
@@ -315,6 +331,9 @@ jobs:
           # Copy all archives and individual checksums into release-assets
           find artifacts/ -name '*.tar.gz' -exec cp {} release-assets/ \;
           find artifacts/ -name '*.zip' -exec cp {} release-assets/ \;
+
+          # Copy man page if available
+          find artifacts/ -name 'repolens.1.gz' -exec cp {} release-assets/ \; 2>/dev/null || true
 
           # Generate consolidated checksums file
           cd release-assets

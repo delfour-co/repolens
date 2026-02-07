@@ -162,7 +162,10 @@ impl ActionPlan {
         self.actions.is_empty()
     }
 
-    /// Get the number of actions
+    /// Get the number of actions.
+    ///
+    /// Part of the public API - provides the action count
+    /// for reporting and display purposes.
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.actions.len()

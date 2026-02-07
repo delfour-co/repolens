@@ -5,6 +5,7 @@ use colored::Colorize;
 use super::InstallHooksArgs;
 use crate::config::Config;
 use crate::error::{ActionError, RepoLensError};
+use crate::exit_codes;
 use crate::hooks::{HooksConfig, HooksManager};
 
 pub async fn execute(args: InstallHooksArgs) -> Result<i32, RepoLensError> {
@@ -47,7 +48,7 @@ pub async fn execute(args: InstallHooksArgs) -> Result<i32, RepoLensError> {
         println!("{}", "Done!".green().bold());
     }
 
-    Ok(0)
+    Ok(exit_codes::SUCCESS)
 }
 
 /// Build the HooksConfig based on CLI arguments, falling back to config file values

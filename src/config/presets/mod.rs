@@ -2,6 +2,16 @@
 
 use std::str::FromStr;
 
+/// Valid preset names for --preset option
+pub const VALID_PRESETS: &[&str] = &["opensource", "enterprise", "strict"];
+
+/// Check if a preset name is valid
+#[allow(dead_code)]
+pub fn is_valid_preset(name: &str) -> bool {
+    // Check against canonical names
+    VALID_PRESETS.contains(&name.to_lowercase().as_str()) || Preset::from_name(name).is_some()
+}
+
 /// Available presets
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
@@ -41,7 +51,10 @@ impl Preset {
         }
     }
 
-    /// Get a description of the preset
+    /// Get a description of the preset.
+    ///
+    /// Part of the public API - provides human-readable descriptions
+    /// for UI and documentation purposes.
     #[allow(dead_code)]
     pub fn description(&self) -> &'static str {
         match self {
@@ -51,7 +64,10 @@ impl Preset {
         }
     }
 
-    /// Get the rules that should be enabled for this preset
+    /// Get the rules that should be enabled for this preset.
+    ///
+    /// Part of the public API - allows external code to query
+    /// which rules are active for a given preset configuration.
     #[allow(dead_code)]
     pub fn enabled_rules(&self) -> Vec<&'static str> {
         match self {
@@ -164,7 +180,10 @@ impl Preset {
         }
     }
 
-    /// Get rules with critical severity for this preset
+    /// Get rules with critical severity for this preset.
+    ///
+    /// Part of the public API - allows external code to identify
+    /// which rules are considered critical for a given preset.
     #[allow(dead_code)]
     pub fn critical_rules(&self) -> Vec<&'static str> {
         match self {
@@ -324,5 +343,53 @@ mod tests {
         let preset = Preset::OpenSource;
         let copied = preset;
         assert_eq!(preset, copied);
+    }
+
+    #[test]
+    fn test_valid_presets_constant() {
+        assert_eq!(VALID_PRESETS.len(), 3);
+        assert!(VALID_PRESETS.contains(&"opensource"));
+        assert!(VALID_PRESETS.contains(&"enterprise"));
+        assert!(VALID_PRESETS.contains(&"strict"));
+    }
+
+    #[test]
+    fn test_is_valid_preset_canonical_names() {
+        assert!(is_valid_preset("opensource"));
+        assert!(is_valid_preset("enterprise"));
+        assert!(is_valid_preset("strict"));
+    }
+
+    #[test]
+    fn test_is_valid_preset_aliases() {
+        // OpenSource aliases
+        assert!(is_valid_preset("open-source"));
+        assert!(is_valid_preset("oss"));
+
+        // Enterprise aliases
+        assert!(is_valid_preset("ent"));
+        assert!(is_valid_preset("internal"));
+
+        // Strict aliases
+        assert!(is_valid_preset("secure"));
+        assert!(is_valid_preset("compliance"));
+    }
+
+    #[test]
+    fn test_is_valid_preset_case_insensitive() {
+        assert!(is_valid_preset("OPENSOURCE"));
+        assert!(is_valid_preset("OpenSource"));
+        assert!(is_valid_preset("ENTERPRISE"));
+        assert!(is_valid_preset("Enterprise"));
+        assert!(is_valid_preset("STRICT"));
+        assert!(is_valid_preset("Strict"));
+    }
+
+    #[test]
+    fn test_is_valid_preset_invalid() {
+        assert!(!is_valid_preset("invalid"));
+        assert!(!is_valid_preset("unknown"));
+        assert!(!is_valid_preset(""));
+        assert!(!is_valid_preset("foo"));
     }
 }

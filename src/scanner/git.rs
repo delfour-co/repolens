@@ -51,54 +51,6 @@ fn parse_repo_name_from_url_impl(url: &str) -> Option<String> {
     None
 }
 
-/// Get the default branch name
-#[allow(dead_code)]
-pub fn get_default_branch(root: &Path) -> Option<String> {
-    // Try to get from git symbolic-ref
-    let output = Command::new("git")
-        .args(["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
-        .current_dir(root)
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        let branch = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .trim_start_matches("origin/")
-            .to_string();
-        if !branch.is_empty() {
-            return Some(branch);
-        }
-    }
-
-    // Fall back to checking for main or master
-    let branches = ["main", "master"];
-    for branch in branches {
-        let output = Command::new("git")
-            .args([
-                "show-ref",
-                "--verify",
-                "--quiet",
-                &format!("refs/heads/{}", branch),
-            ])
-            .current_dir(root)
-            .output()
-            .ok()?;
-
-        if output.status.success() {
-            return Some(branch.to_string());
-        }
-    }
-
-    None
-}
-
-/// Check if the repository is a git repository
-#[allow(dead_code)]
-pub fn is_git_repository(root: &Path) -> bool {
-    root.join(".git").exists()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,17 +151,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_git_repository() {
-        // Test with non-git directory
-        let temp_dir = TempDir::new().unwrap();
-        assert!(!is_git_repository(temp_dir.path()));
-
-        // Test with git directory
-        fs::create_dir(temp_dir.path().join(".git")).unwrap();
-        assert!(is_git_repository(temp_dir.path()));
-    }
-
-    #[test]
     fn test_get_repository_name_no_git() {
         let temp_dir = TempDir::new().unwrap();
         // No git repo, should return None
@@ -227,30 +168,6 @@ mod tests {
 
         // Git repo but no remote
         assert!(get_repository_name(temp_dir.path()).is_none());
-    }
-
-    #[test]
-    fn test_get_default_branch_with_main() {
-        let temp_dir = TempDir::new().unwrap();
-        if !init_git_repo(temp_dir.path()) {
-            return; // Skip if git not available
-        }
-        configure_git_user(temp_dir.path());
-        create_initial_commit(temp_dir.path());
-
-        // Should find main or master
-        let branch = get_default_branch(temp_dir.path());
-        // Either returns main/master or None if neither exists
-        if let Some(b) = branch {
-            assert!(b == "main" || b == "master");
-        }
-    }
-
-    #[test]
-    fn test_get_default_branch_no_repo() {
-        let temp_dir = TempDir::new().unwrap();
-        // No git repo
-        assert!(get_default_branch(temp_dir.path()).is_none());
     }
 
     #[test]

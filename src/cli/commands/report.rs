@@ -11,6 +11,7 @@ use crate::config::Config;
 use crate::error::RepoLensError;
 use crate::exit_codes;
 use crate::rules::engine::RulesEngine;
+use crate::rules::filter_valid_categories;
 use crate::scanner::Scanner;
 use crate::utils::format_duration;
 
@@ -52,6 +53,20 @@ pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
     // Set cache in the engine
     if let Some(c) = cache {
         engine.set_cache(c);
+    }
+
+    // Apply filters if specified (with validation)
+    if let Some(only) = args.only {
+        let valid_only = filter_valid_categories(only);
+        if !valid_only.is_empty() {
+            engine.set_only_categories(valid_only);
+        }
+    }
+    if let Some(skip) = args.skip {
+        let valid_skip = filter_valid_categories(skip);
+        if !valid_skip.is_empty() {
+            engine.set_skip_categories(valid_skip);
+        }
     }
 
     // Capture verbosity for progress callback
