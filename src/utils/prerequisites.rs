@@ -457,3 +457,248 @@ pub fn get_repo_info() -> Result<String> {
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    // --- CheckResult tests ---
+    #[test]
+    fn test_check_result_ok() {
+        let result = CheckResult::ok("test", CheckLevel::Required);
+        assert_eq!(result.name, "test");
+        assert_eq!(result.level, CheckLevel::Required);
+        assert_eq!(result.status, CheckStatus::Ok);
+        assert!(result.message.is_none());
+        assert!(result.fix.is_none());
+    }
+
+    #[test]
+    fn test_check_result_failed() {
+        let result = CheckResult::failed(
+            "test",
+            CheckLevel::Required,
+            "Error message",
+            Some("Fix suggestion"),
+        );
+        assert_eq!(result.name, "test");
+        assert_eq!(result.level, CheckLevel::Required);
+        assert_eq!(result.status, CheckStatus::Failed);
+        assert_eq!(result.message, Some("Error message".to_string()));
+        assert_eq!(result.fix, Some("Fix suggestion".to_string()));
+    }
+
+    #[test]
+    fn test_check_result_failed_no_fix() {
+        let result = CheckResult::failed("test", CheckLevel::Optional, "Error message", None);
+        assert_eq!(result.fix, None);
+    }
+
+    #[test]
+    fn test_check_result_skipped() {
+        let result = CheckResult::skipped("test", CheckLevel::Optional);
+        assert_eq!(result.status, CheckStatus::Skipped);
+        assert!(result.message.is_none());
+    }
+
+    #[test]
+    fn test_check_result_is_failed() {
+        let ok = CheckResult::ok("test", CheckLevel::Required);
+        let failed = CheckResult::failed("test", CheckLevel::Required, "msg", None);
+        let skipped = CheckResult::skipped("test", CheckLevel::Required);
+
+        assert!(!ok.is_failed());
+        assert!(failed.is_failed());
+        assert!(!skipped.is_failed());
+    }
+
+    #[test]
+    fn test_check_result_is_required_failure() {
+        let required_ok = CheckResult::ok("test", CheckLevel::Required);
+        let required_failed = CheckResult::failed("test", CheckLevel::Required, "msg", None);
+        let optional_failed = CheckResult::failed("test", CheckLevel::Optional, "msg", None);
+
+        assert!(!required_ok.is_required_failure());
+        assert!(required_failed.is_required_failure());
+        assert!(!optional_failed.is_required_failure());
+    }
+
+    #[test]
+    fn test_check_result_is_optional_failure() {
+        let optional_ok = CheckResult::ok("test", CheckLevel::Optional);
+        let optional_failed = CheckResult::failed("test", CheckLevel::Optional, "msg", None);
+        let required_failed = CheckResult::failed("test", CheckLevel::Required, "msg", None);
+
+        assert!(!optional_ok.is_optional_failure());
+        assert!(optional_failed.is_optional_failure());
+        assert!(!required_failed.is_optional_failure());
+    }
+
+    // --- PrerequisitesReport tests ---
+    #[test]
+    fn test_prerequisites_report_new() {
+        let report = PrerequisitesReport::new();
+        assert!(report.checks.is_empty());
+    }
+
+    #[test]
+    fn test_prerequisites_report_default() {
+        let report = PrerequisitesReport::default();
+        assert!(report.checks.is_empty());
+    }
+
+    #[test]
+    fn test_prerequisites_report_add() {
+        let mut report = PrerequisitesReport::new();
+        report.add(CheckResult::ok("test1", CheckLevel::Required));
+        report.add(CheckResult::ok("test2", CheckLevel::Optional));
+        assert_eq!(report.checks.len(), 2);
+    }
+
+    #[test]
+    fn test_prerequisites_report_all_required_passed() {
+        let mut report = PrerequisitesReport::new();
+        report.add(CheckResult::ok("req1", CheckLevel::Required));
+        report.add(CheckResult::ok("req2", CheckLevel::Required));
+        report.add(CheckResult::failed(
+            "opt1",
+            CheckLevel::Optional,
+            "msg",
+            None,
+        ));
+        assert!(report.all_required_passed());
+    }
+
+    #[test]
+    fn test_prerequisites_report_required_failures() {
+        let mut report = PrerequisitesReport::new();
+        report.add(CheckResult::ok("req1", CheckLevel::Required));
+        report.add(CheckResult::failed(
+            "req2",
+            CheckLevel::Required,
+            "msg",
+            None,
+        ));
+        report.add(CheckResult::failed(
+            "opt1",
+            CheckLevel::Optional,
+            "msg",
+            None,
+        ));
+
+        let failures = report.required_failures();
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].name, "req2");
+    }
+
+    #[test]
+    fn test_prerequisites_report_optional_failures() {
+        let mut report = PrerequisitesReport::new();
+        report.add(CheckResult::ok("opt1", CheckLevel::Optional));
+        report.add(CheckResult::failed(
+            "opt2",
+            CheckLevel::Optional,
+            "msg",
+            None,
+        ));
+        report.add(CheckResult::failed(
+            "req1",
+            CheckLevel::Required,
+            "msg",
+            None,
+        ));
+
+        let warnings = report.optional_failures();
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].name, "opt2");
+    }
+
+    #[test]
+    fn test_prerequisites_report_has_warnings() {
+        let mut report = PrerequisitesReport::new();
+        report.add(CheckResult::ok("test", CheckLevel::Required));
+        assert!(!report.has_warnings());
+
+        report.add(CheckResult::failed(
+            "opt",
+            CheckLevel::Optional,
+            "msg",
+            None,
+        ));
+        assert!(report.has_warnings());
+    }
+
+    // --- Check functions tests ---
+    #[test]
+    fn test_check_git_installed() {
+        // git should be installed on the test machine
+        let result = check_git_installed();
+        assert_eq!(result.level, CheckLevel::Required);
+        // Result depends on system, but should not panic
+        assert!(result.status == CheckStatus::Ok || result.status == CheckStatus::Failed);
+    }
+
+    #[test]
+    fn test_check_gh_installed() {
+        let result = check_gh_installed();
+        assert_eq!(result.level, CheckLevel::Required);
+        // gh may or may not be installed
+        assert!(result.status == CheckStatus::Ok || result.status == CheckStatus::Failed);
+    }
+
+    #[test]
+    fn test_check_gh_authenticated() {
+        let result = check_gh_authenticated();
+        assert_eq!(result.level, CheckLevel::Required);
+        // gh may or may not be authenticated
+        assert!(result.status == CheckStatus::Ok || result.status == CheckStatus::Failed);
+    }
+
+    #[test]
+    fn test_check_remote_origin() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = check_remote_origin(temp_dir.path());
+        assert_eq!(result.level, CheckLevel::Optional);
+        // No git repo, should fail
+        assert_eq!(result.status, CheckStatus::Failed);
+    }
+
+    #[test]
+    fn test_check_remote_is_github() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = check_remote_is_github(temp_dir.path());
+        assert_eq!(result.level, CheckLevel::Optional);
+        // No git repo, should be skipped
+        assert_eq!(result.status, CheckStatus::Skipped);
+    }
+
+    #[test]
+    fn test_run_all_checks() {
+        let temp_dir = TempDir::new().unwrap();
+        let options = CheckOptions {
+            skip_optional: false,
+        };
+        let report = run_all_checks(temp_dir.path(), &options);
+
+        // Should have multiple checks
+        assert!(!report.checks.is_empty());
+
+        // Should have git installed check
+        assert!(report.checks.iter().any(|c| c.name == "Git installed"));
+    }
+
+    // --- Utility function tests ---
+    #[test]
+    fn test_is_gh_available() {
+        // Just verify it doesn't panic
+        let _ = is_gh_available();
+    }
+
+    #[test]
+    fn test_get_repo_info() {
+        // This will fail if not in a git repo with gh configured
+        // Just verify it doesn't panic
+        let _ = get_repo_info();
+    }
+}
