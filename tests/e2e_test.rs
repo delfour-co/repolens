@@ -2097,3 +2097,168 @@ async fn e2e_exit_code_compare_returns_valid_codes() {
             exit_codes::CRITICAL_ISSUES,
         ]));
 }
+
+// ============================================================================
+// E2E Tests for Init Command
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_init_command_creates_config() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Config should not exist initially
+    assert!(!temp_dir.path().join(".repolens.toml").exists());
+
+    // Run init
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "opensource",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Config should now exist
+    assert!(temp_dir.path().join(".repolens.toml").exists());
+
+    // Verify config content
+    let config = fs::read_to_string(temp_dir.path().join(".repolens.toml")).unwrap();
+    assert!(config.contains("preset"));
+}
+
+#[tokio::test]
+async fn e2e_init_command_with_different_presets() {
+    for preset in ["opensource", "enterprise", "strict"] {
+        let temp_dir = TempDir::new().unwrap();
+        create_rust_project(temp_dir.path());
+
+        get_cmd()
+            .current_dir(temp_dir.path())
+            .args([
+                "init",
+                "--preset",
+                preset,
+                "--non-interactive",
+                "--force",
+                "--skip-checks",
+            ])
+            .assert()
+            .success();
+
+        let config = fs::read_to_string(temp_dir.path().join(".repolens.toml")).unwrap();
+        assert!(
+            config.contains(preset),
+            "Config should contain preset '{}'",
+            preset
+        );
+    }
+}
+
+#[tokio::test]
+async fn e2e_init_command_force_overwrites() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Create initial config
+    fs::write(
+        temp_dir.path().join(".repolens.toml"),
+        "[general]\npreset = \"opensource\"\n",
+    )
+    .unwrap();
+
+    // Run init with --force and different preset
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "strict",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .success();
+
+    // Config should be overwritten with new preset
+    let config = fs::read_to_string(temp_dir.path().join(".repolens.toml")).unwrap();
+    assert!(
+        config.contains("strict"),
+        "Config should contain new preset 'strict'"
+    );
+}
+
+#[tokio::test]
+async fn e2e_init_command_invalid_preset_fails() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_project(temp_dir.path());
+
+    // Invalid preset should fail
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args([
+            "init",
+            "--preset",
+            "invalid_preset",
+            "--non-interactive",
+            "--force",
+            "--skip-checks",
+        ])
+        .assert()
+        .code(predicate::ne(0));
+}
+
+// ============================================================================
+// E2E Tests for Generate-Man Command
+// ============================================================================
+
+#[tokio::test]
+async fn e2e_generate_man_command() {
+    let temp_dir = TempDir::new().unwrap();
+    let output_path = temp_dir.path().join("repolens.1");
+
+    // Generate man page
+    get_cmd()
+        .args(["generate-man", "--output"])
+        .arg(temp_dir.path())
+        .assert()
+        .success();
+
+    // Verify man page was created
+    assert!(output_path.exists(), "Man page should be created");
+
+    // Verify content is valid roff format
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(
+        content.contains(".TH"),
+        "Man page should contain .TH header"
+    );
+    assert!(
+        content.contains("repolens") || content.contains("REPOLENS"),
+        "Man page should mention repolens"
+    );
+}
+
+#[tokio::test]
+async fn e2e_generate_man_default_output() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Generate man page to current directory
+    get_cmd()
+        .current_dir(temp_dir.path())
+        .args(["generate-man"])
+        .assert()
+        .success();
+
+    // Verify man page was created in current directory
+    assert!(
+        temp_dir.path().join("repolens.1").exists(),
+        "Man page should be created in current directory"
+    );
+}

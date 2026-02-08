@@ -88,6 +88,62 @@ cargo clippy -- -D warnings
 - Ajouter des exemples dans la documentation
 - Mettre à jour le README si nécessaire
 
+### Conventions de logging
+
+RepoLens utilise deux systèmes de sortie distincts :
+
+#### 1. Output utilisateur (`println!` / `eprintln!`)
+
+Pour les messages destinés à l'utilisateur final :
+
+```rust
+// Progress - messages de progression
+eprintln!("{}", "Analyse du dépôt...".dimmed());
+
+// Success - confirmation d'action
+eprintln!("{} {}", "✓".green(), "Audit terminé.".green());
+
+// Warning - avertissement non bloquant
+eprintln!("{} {}", "Warning:".yellow(), message);
+
+// Error - erreur affichée à l'utilisateur
+eprintln!("{} {}", "Error:".red(), message);
+
+// Output - résultats finaux (stdout)
+println!("{}", rendered_output);
+```
+
+#### 2. Logging structuré (`tracing`)
+
+Pour les informations de debug/développement :
+
+```rust
+// Debug - informations utiles pour le développement
+tracing::debug!("Scanning {} files", file_count);
+
+// Info - informations verboses (visibles avec -v)
+tracing::info!("Cache loaded: {} entries", count);
+
+// Warn - avertissements internes (pas pour l'utilisateur)
+tracing::warn!("Failed to parse optional config: {}", e);
+
+// Trace - détails très verbeux (visibles avec -vvv)
+tracing::trace!("Processing file: {}", path.display());
+```
+
+#### Règles générales
+
+| Type de message | Outil | Quand l'utiliser |
+|-----------------|-------|------------------|
+| Progress/Status | `eprintln!` | Toujours visible, progression utilisateur |
+| Résultats | `println!` | Output final (rapports, plans) |
+| Erreurs utilisateur | `eprintln!` | Erreurs que l'utilisateur doit corriger |
+| Debug interne | `tracing::debug!` | Visible avec `-v` ou `-vv` |
+| Trace détaillé | `tracing::trace!` | Visible avec `-vvv` |
+| Warnings internes | `tracing::warn!` | Problèmes non bloquants internes |
+
+**Important** : Ne jamais mélanger `tracing` et `eprintln!` pour le même type de message dans une fonction.
+
 ### Tests
 
 - Écrire des tests pour chaque nouvelle fonctionnalité

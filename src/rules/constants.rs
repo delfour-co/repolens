@@ -1,5 +1,7 @@
 //! Rule category constants and validation
 
+use colored::Colorize;
+
 /// Valid category names for --only and --skip options
 pub const VALID_CATEGORIES: &[&str] = &[
     "secrets",
@@ -28,9 +30,10 @@ pub fn filter_valid_categories(categories: Vec<String>) -> Vec<String> {
             valid.push(category);
         } else {
             eprintln!(
-                "Warning: Unknown category '{}' ignored. Valid categories: {}",
-                category,
-                VALID_CATEGORIES.join(", ")
+                "{} Unknown category '{}' ignored. Valid categories: {}",
+                "Warning:".yellow(),
+                category.cyan(),
+                VALID_CATEGORIES.join(", ").dimmed()
             );
         }
     }
