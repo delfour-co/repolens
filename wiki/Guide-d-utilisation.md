@@ -433,7 +433,7 @@ repolens plan -vvv
 
 ## Nouvelles fonctionnalités
 
-### Variables d'environnement (v1.2.0)
+### Variables d'environnement
 
 Configurez RepoLens via des variables d'environnement :
 
@@ -445,7 +445,7 @@ Configurez RepoLens via des variables d'environnement :
 | `REPOLENS_NO_CACHE` | Désactiver le cache (true/false) |
 | `REPOLENS_GITHUB_TOKEN` | Token GitHub pour les appels API |
 
-### Option -C (v1.2.0)
+### Option -C
 
 Auditez un répertoire différent sans changer de répertoire courant :
 
@@ -453,7 +453,7 @@ Auditez un répertoire différent sans changer de répertoire courant :
 repolens -C /chemin/vers/projet plan
 ```
 
-### Timing détaillé (v1.2.0)
+### Timing détaillé
 
 Le mode verbose affiche maintenant le temps d'exécution par catégorie :
 
@@ -464,26 +464,26 @@ repolens plan -vv
 # Total: 1.23s
 ```
 
-### Hygiène Git (v1.1.0)
+### Hygiène Git
 
 Nouvelles règles pour l'hygiène du dépôt Git :
 - **GIT001** : Fichiers binaires volumineux (devrait utiliser Git LFS)
 - **GIT002** : Fichier `.gitattributes` absent
 - **GIT003** : Fichiers sensibles trackés
 
-### Protection des branches (v1.1.0)
+### Protection des branches
 
 Vérification de la configuration de protection des branches :
 - **SEC007-010** : Validation de `.github/settings.yml`
 
-### Nouveaux écosystèmes (v1.1.0)
+### Nouveaux écosystèmes
 
 9 écosystèmes supportés pour le scan de vulnérabilités :
 - Rust, Node.js, Python, Go (existants)
 - .NET (NuGet), Ruby (Bundler), Dart/Flutter (Pub)
 - Swift (SPM), iOS (CocoaPods) - sans support OSV
 
-### Distribution Docker (v1.3.0)
+### Distribution Docker
 
 Image Docker officielle multi-architecture :
 
@@ -491,7 +491,7 @@ Image Docker officielle multi-architecture :
 docker run --rm -v "$(pwd)":/repo ghcr.io/delfour-co/repolens plan
 ```
 
-### Gestionnaires de paquets (v1.3.0)
+### Gestionnaires de paquets
 
 Installation facilitée via :
 - **Homebrew** : `brew install repolens`
@@ -499,11 +499,11 @@ Installation facilitée via :
 - **AUR** : `yay -S repolens`
 - **Debian/Ubuntu** : `apt install repolens`
 
-### Intégration CI/CD (v1.3.0)
+### Intégration CI/CD
 
 Templates prêts à l'emploi pour GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps.
 
-### Codes de sortie standardisés (v1.4.0)
+### Codes de sortie standardisés
 
 RepoLens utilise des codes de sortie standardisés pour l'intégration CI/CD :
 
@@ -527,11 +527,11 @@ case $? in
 esac
 ```
 
-### Permissions sécurisées (v1.4.0)
+### Permissions sécurisées
 
 Le fichier de configuration `.repolens.toml` est automatiquement protégé avec les permissions `600` (lecture/écriture propriétaire uniquement) sur les systèmes Unix pour protéger les données sensibles.
 
-### Validation des catégories (v1.4.0)
+### Validation des catégories
 
 Les catégories fournies via `--only` et `--skip` sont maintenant validées. Les catégories invalides génèrent un avertissement et sont ignorées.
 

@@ -376,7 +376,7 @@ export RUST_LOG=debug
 export NO_COLOR=1
 ```
 
-## Sécurité du fichier de configuration (v1.4.0)
+## Sécurité du fichier de configuration
 
 Le fichier `.repolens.toml` peut contenir des informations sensibles (patterns de secrets à ignorer, configuration personnalisée). Sur les systèmes Unix, RepoLens applique automatiquement les permissions `600` (lecture/écriture propriétaire uniquement) lors de la création du fichier via `repolens init`.
 
@@ -388,7 +388,7 @@ ls -la .repolens.toml
 
 > **Note** : Sur Windows, le système de permissions est différent et cette protection n'est pas appliquée automatiquement.
 
-## Codes de sortie (v1.4.0)
+## Codes de sortie
 
 RepoLens utilise des codes de sortie standardisés pour l'intégration CI/CD :
 
