@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-02-11
+
+### Added
+
+#### Documentation
+- Comprehensive module-level documentation with examples for all public APIs
+- Enhanced contribution guide with detailed workflow and code standards
+- Rustdoc documentation for all public types and functions
+
+#### Testing
+- 932 unit tests (up from 850)
+- Test coverage at 86.63% for unit-testable code
+- Tarpaulin configuration for accurate coverage reporting
+- New tests for CLI commands, parsers, and utilities
+
+### Changed
+
+- Updated `regex` dependency to 1.12 for improved performance
+- Refactored code organization for better maintainability
+- Improved error messages and documentation strings
+
+### Fixed
+
+- Minor code quality improvements identified by enhanced test coverage
+
 ## [1.0.0] - 2026-02-08
 
 ### Added
