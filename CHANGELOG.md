@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-02-11
+
+### Fixed
+
+- Fixed scanner including directories in file list, causing "Is a directory" errors when scanning repositories with directories named like files (e.g., `openapi.json/`)
+
 ## [1.1.0] - 2026-02-11
 
 ### Added
