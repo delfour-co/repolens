@@ -5,8 +5,7 @@
 # Builds and publishes the RepoLens Docker image to GitHub Container Registry.
 #
 # Triggers:
-#   - Push to main branch
-#   - Tags matching v*.*.* (releases)
+#   - Tags matching v*.*.* (releases only)
 #   - Pull requests (build only, no push)
 #
 # Features:
@@ -20,8 +19,6 @@ name: Docker
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*.*.*'
   pull_request:
