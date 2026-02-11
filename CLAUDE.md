@@ -55,3 +55,14 @@ Configuration is stored in `.repolens.toml` at the project root.
 - Use `cargo clippy` for linting
 - Use `cargo fmt` for formatting
 - Run `cargo test` before committing
+
+## Commit and PR Rules
+
+**NEVER** use `Co-authored-by` in commit messages or PR descriptions.
+
+- ❌ **FORBIDDEN**: Adding `Co-authored-by: ...` in commit messages
+- ❌ **FORBIDDEN**: Mentioning "Co-authored-by" in PR descriptions
+- ✅ **ALLOWED**: Creating normal commits with a single author
+- ✅ **ALLOWED**: Mentioning contributors in the commit body if needed, but without using the `Co-authored-by` format
+
+This rule ensures each commit remains attributed to a single primary author and avoids confusion in Git history.

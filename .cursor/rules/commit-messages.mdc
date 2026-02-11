@@ -1,0 +1,32 @@
+---
+description: Règles pour les messages de commit et PR - interdiction de Co-authored-by
+alwaysApply: true
+---
+
+# Messages de Commit et Pull Requests
+
+## Interdiction de Co-authored-by
+
+**NE JAMAIS** utiliser `Co-authored-by` dans les messages de commit ou les descriptions de Pull Requests.
+
+### Règles strictes
+
+- ❌ **INTERDIT** : Ajouter `Co-authored-by: ...` dans les messages de commit
+- ❌ **INTERDIT** : Mentionner "Co-authored-by" dans les descriptions de PR
+- ✅ **AUTORISÉ** : Créer des commits normaux avec un seul auteur
+- ✅ **AUTORISÉ** : Mentionner les contributeurs dans le corps du message si nécessaire, mais sans utiliser le format `Co-authored-by`
+
+### Exemples
+
+```bash
+# ❌ MAUVAIS
+git commit -m "Fix bug"
+# Avec Co-authored-by: Assistant <assistant@example.com>
+
+# ✅ BON
+git commit -m "Fix bug in authentication module"
+```
+
+### Raison
+
+Cette règle garantit que chaque commit reste attribué à un seul auteur principal et évite la confusion dans l'historique Git.

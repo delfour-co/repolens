@@ -49,3 +49,6 @@ logs/security/
 
 # RepoLens cache directory
 .repolens/
+
+# RepoLens generated reports
+repolens-report.*
