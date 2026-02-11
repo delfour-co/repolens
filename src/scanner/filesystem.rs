@@ -19,6 +19,7 @@ pub struct FileInfo {
 /// Scan a directory and return information about all files
 ///
 /// Uses parallel processing for better performance on large repositories.
+/// Only returns regular files, not directories.
 pub fn scan_directory(root: &Path) -> Vec<FileInfo> {
     let walker = WalkBuilder::new(root)
         .hidden(false)
@@ -46,6 +47,14 @@ pub fn scan_directory(root: &Path) -> Vec<FileInfo> {
                 return None;
             }
 
+            // Get file metadata
+            let metadata = entry.metadata().ok()?;
+
+            // Skip directories - we only want files
+            if metadata.is_dir() {
+                return None;
+            }
+
             // Get relative path - handle errors gracefully
             let relative_path = match path.strip_prefix(root) {
                 Ok(stripped) => stripped
@@ -61,13 +70,10 @@ pub fn scan_directory(root: &Path) -> Vec<FileInfo> {
                 return None;
             }
 
-            // Get file metadata
-            let metadata = entry.metadata().ok()?;
-
             Some(FileInfo {
                 path: relative_path,
                 size: metadata.len(),
-                is_dir: metadata.is_dir(),
+                is_dir: false, // Always false now since we filter directories
             })
         })
         .collect()
@@ -136,7 +142,8 @@ mod tests {
         let root = dir.path();
 
         let files = scan_directory(root);
-        assert!(files.is_empty() || files.iter().all(|f| f.is_dir));
+        // Empty directory should return no files
+        assert!(files.is_empty());
     }
 
     #[test]
@@ -153,21 +160,26 @@ mod tests {
     }
 
     #[test]
-    fn test_file_info_is_dir() {
+    fn test_scan_excludes_directories() {
         let dir = tempdir().unwrap();
         let root = dir.path();
 
         fs::create_dir(root.join("testdir")).unwrap();
         fs::write(root.join("testfile.txt"), "content").unwrap();
+        fs::write(root.join("testdir/nested.txt"), "nested").unwrap();
 
         let files = scan_directory(root);
 
-        let testdir = files.iter().find(|f| f.path == "testdir");
-        if let Some(dir_info) = testdir {
-            assert!(dir_info.is_dir);
-        }
+        // Directories should not be in the results
+        assert!(!files.iter().any(|f| f.path == "testdir"));
 
-        let testfile = files.iter().find(|f| f.path == "testfile.txt").unwrap();
-        assert!(!testfile.is_dir);
+        // Files should be included
+        assert!(files.iter().any(|f| f.path == "testfile.txt"));
+        assert!(files
+            .iter()
+            .any(|f| f.path == "testdir/nested.txt" || f.path == "testdir\\nested.txt"));
+
+        // All entries should have is_dir = false
+        assert!(files.iter().all(|f| !f.is_dir));
     }
 }
