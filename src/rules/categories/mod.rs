@@ -1,5 +1,6 @@
 //\! Rule categories
 
+pub mod codeowners;
 pub mod custom;
 pub mod dependencies;
 pub mod docker;

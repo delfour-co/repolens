@@ -257,6 +257,15 @@ impl Scanner {
     pub fn all_files(&self) -> &[FileInfo] {
         &self.file_cache
     }
+
+    /// Get the root directory of the repository
+    ///
+    /// # Returns
+    ///
+    /// A reference to the root path
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
 }
 
 /// Simple glob matching

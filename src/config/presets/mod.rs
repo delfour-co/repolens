@@ -86,6 +86,8 @@ impl Preset {
                 "files/gitignore",
                 "security/dependencies",
                 "security/branch-protection",
+                "security/vulnerability-alerts",
+                "security/dependabot-updates",
                 "workflows/secrets",
                 "workflows/permissions",
                 "workflows/linters-in-ci",
@@ -97,6 +99,8 @@ impl Preset {
                 "git/gitattributes",
                 "git/sensitive-files",
                 "dependencies/lock-files",
+                "codeowners/presence",
+                "codeowners/releases",
             ],
             Self::Enterprise => vec![
                 "secrets/hardcoded",
@@ -111,6 +115,15 @@ impl Preset {
                 "security/codeowners",
                 "security/signed-commits",
                 "security/branch-protection",
+                "security/vulnerability-alerts",
+                "security/dependabot-updates",
+                "security/secret-scanning",
+                "security/push-protection",
+                "security/actions-permissions",
+                "security/workflow-permissions",
+                "security/fork-pr-approval",
+                "security/access-control",
+                "security/infrastructure",
                 "workflows/secrets",
                 "workflows/permissions",
                 "workflows/timeout",
@@ -126,6 +139,10 @@ impl Preset {
                 "git/gitattributes",
                 "git/sensitive-files",
                 "dependencies/lock-files",
+                "codeowners/presence",
+                "codeowners/syntax",
+                "codeowners/valid-owners",
+                "codeowners/releases",
             ],
             Self::Strict => vec![
                 "secrets/hardcoded",
@@ -148,6 +165,15 @@ impl Preset {
                 "security/codeowners",
                 "security/signed-commits",
                 "security/branch-protection",
+                "security/vulnerability-alerts",
+                "security/dependabot-updates",
+                "security/secret-scanning",
+                "security/push-protection",
+                "security/actions-permissions",
+                "security/workflow-permissions",
+                "security/fork-pr-approval",
+                "security/access-control",
+                "security/infrastructure",
                 "workflows/secrets",
                 "workflows/permissions",
                 "workflows/pinned-actions",
@@ -176,6 +202,11 @@ impl Preset {
                 "git/gitattributes",
                 "git/sensitive-files",
                 "dependencies/lock-files",
+                "codeowners/presence",
+                "codeowners/syntax",
+                "codeowners/valid-owners",
+                "codeowners/releases",
+                "codeowners/signed-tags",
             ],
         }
     }
@@ -391,5 +422,62 @@ mod tests {
         assert!(!is_valid_preset("unknown"));
         assert!(!is_valid_preset(""));
         assert!(!is_valid_preset("foo"));
+    }
+
+    // ===== Security Features Rules Tests (SEC011-017) =====
+
+    #[test]
+    fn test_preset_opensource_has_vulnerability_alerts() {
+        let rules = Preset::OpenSource.enabled_rules();
+        assert!(rules.contains(&"security/vulnerability-alerts"));
+        assert!(rules.contains(&"security/dependabot-updates"));
+    }
+
+    #[test]
+    fn test_preset_enterprise_has_all_security_rules() {
+        let rules = Preset::Enterprise.enabled_rules();
+        assert!(rules.contains(&"security/vulnerability-alerts"));
+        assert!(rules.contains(&"security/dependabot-updates"));
+        assert!(rules.contains(&"security/secret-scanning"));
+        assert!(rules.contains(&"security/push-protection"));
+        assert!(rules.contains(&"security/actions-permissions"));
+        assert!(rules.contains(&"security/workflow-permissions"));
+        assert!(rules.contains(&"security/fork-pr-approval"));
+    }
+
+    #[test]
+    fn test_preset_strict_has_all_security_rules() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(rules.contains(&"security/vulnerability-alerts"));
+        assert!(rules.contains(&"security/dependabot-updates"));
+        assert!(rules.contains(&"security/secret-scanning"));
+        assert!(rules.contains(&"security/push-protection"));
+        assert!(rules.contains(&"security/actions-permissions"));
+        assert!(rules.contains(&"security/workflow-permissions"));
+        assert!(rules.contains(&"security/fork-pr-approval"));
+    }
+
+    // ===== Access Control and Infrastructure Rules Tests =====
+
+    #[test]
+    fn test_preset_enterprise_has_access_control() {
+        let rules = Preset::Enterprise.enabled_rules();
+        assert!(rules.contains(&"security/access-control"));
+        assert!(rules.contains(&"security/infrastructure"));
+    }
+
+    #[test]
+    fn test_preset_strict_has_access_control() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(rules.contains(&"security/access-control"));
+        assert!(rules.contains(&"security/infrastructure"));
+    }
+
+    #[test]
+    fn test_preset_opensource_no_access_control() {
+        let rules = Preset::OpenSource.enabled_rules();
+        // OpenSource preset does not include access control rules (require API access)
+        assert!(!rules.contains(&"security/access-control"));
+        assert!(!rules.contains(&"security/infrastructure"));
     }
 }
