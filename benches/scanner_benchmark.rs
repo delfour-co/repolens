@@ -13,10 +13,18 @@ fn create_test_repo(size: &str) -> TempDir {
             // 10 files in simple structure
             fs::create_dir_all(root.join("src")).unwrap();
             for i in 0..5 {
-                fs::write(root.join(format!("src/file{}.rs", i)), format!("fn test{i}() {{}}")).unwrap();
+                fs::write(
+                    root.join(format!("src/file{}.rs", i)),
+                    format!("fn test{i}() {{}}"),
+                )
+                .unwrap();
             }
             fs::write(root.join("README.md"), "# Test Project").unwrap();
-            fs::write(root.join("Cargo.toml"), "[package]\nname = \"test\"\nversion = \"0.1.0\"").unwrap();
+            fs::write(
+                root.join("Cargo.toml"),
+                "[package]\nname = \"test\"\nversion = \"0.1.0\"",
+            )
+            .unwrap();
             fs::write(root.join(".gitignore"), "target/\n*.log").unwrap();
             fs::write(root.join("LICENSE"), "MIT License").unwrap();
             fs::write(root.join(".env"), "API_KEY=test").unwrap();
@@ -34,19 +42,22 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("src/file{}.rs", i)),
                     format!("pub fn function{i}() {{\n    println!(\"test\");\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
             for i in 0..10 {
                 fs::write(
                     root.join(format!("src/modules/auth/auth{}.rs", i)),
                     format!("pub struct Auth{i};\nimpl Auth{i} {{}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
             for i in 0..10 {
                 fs::write(
                     root.join(format!("src/modules/api/handler{}.rs", i)),
                     format!("async fn handle{i}() {{\n    // handler\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // Test files
@@ -54,7 +65,8 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("tests/test{}.rs", i)),
                     format!("#[test]\nfn test_case{i}() {{\n    assert!(true);\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // Docs
@@ -62,22 +74,33 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("docs/doc{}.md", i)),
                     format!("# Documentation {i}\n\nContent here.\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // Workflows
             fs::write(
                 root.join(".github/workflows/ci.yml"),
                 "name: CI\non:\n  push:\njobs:\n  test:\n    runs-on: ubuntu-latest",
-            ).unwrap();
+            )
+            .unwrap();
             fs::write(
                 root.join(".github/workflows/release.yml"),
                 "name: Release\non:\n  release:\njobs:\n  build:\n    runs-on: ubuntu-latest",
-            ).unwrap();
+            )
+            .unwrap();
 
             // Root files
-            fs::write(root.join("README.md"), "# Medium Test Project\n\nDescription here.\n").unwrap();
-            fs::write(root.join("Cargo.toml"), "[package]\nname = \"test\"\nversion = \"0.1.0\"\n\n[dependencies]\n").unwrap();
+            fs::write(
+                root.join("README.md"),
+                "# Medium Test Project\n\nDescription here.\n",
+            )
+            .unwrap();
+            fs::write(
+                root.join("Cargo.toml"),
+                "[package]\nname = \"test\"\nversion = \"0.1.0\"\n\n[dependencies]\n",
+            )
+            .unwrap();
             fs::write(root.join(".gitignore"), "target/\n*.log\n.env\n").unwrap();
         }
         "large" => {
@@ -106,8 +129,11 @@ fn create_test_repo(size: &str) -> TempDir {
             for i in 0..50 {
                 fs::write(
                     root.join(format!("src/modules/mod{}.rs", i)),
-                    format!("pub fn process{i}(input: &str) -> String {{\n    input.to_string()\n}}\n"),
-                ).unwrap();
+                    format!(
+                        "pub fn process{i}(input: &str) -> String {{\n    input.to_string()\n}}\n"
+                    ),
+                )
+                .unwrap();
             }
 
             // Utils (30)
@@ -115,7 +141,8 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("src/utils/util{}.rs", i)),
                     format!("pub fn helper{i}() {{\n    // helper function\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // API files (30)
@@ -123,11 +150,13 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("src/api/v1/endpoint{}.rs", i)),
                     format!("pub async fn handle_v1_{i}() {{\n    // v1 handler\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
                 fs::write(
                     root.join(format!("src/api/v2/endpoint{}.rs", i)),
                     format!("pub async fn handle_v2_{i}() {{\n    // v2 handler\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // Tests (30)
@@ -135,13 +164,15 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("tests/unit/test{}.rs", i)),
                     format!("#[test]\nfn unit_test{i}() {{\n    assert_eq!(1, 1);\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
             for i in 0..10 {
                 fs::write(
                     root.join(format!("tests/integration/integration{}.rs", i)),
                     format!("#[tokio::test]\nasync fn integration_test{i}() {{\n    // test\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // Benchmarks (10)
@@ -157,7 +188,8 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("examples/example{}.rs", i)),
                     format!("fn main() {{\n    println!(\"Example {i}\");\n}}\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // Docs (20)
@@ -165,18 +197,36 @@ fn create_test_repo(size: &str) -> TempDir {
                 fs::write(
                     root.join(format!("docs/api/api{}.md", i)),
                     format!("# API Documentation {i}\n\n## Endpoints\n\nContent here.\n"),
-                ).unwrap();
+                )
+                .unwrap();
                 fs::write(
                     root.join(format!("docs/guides/guide{}.md", i)),
                     format!("# Guide {i}\n\n## Introduction\n\nGuide content here.\n"),
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             // Root files
-            fs::write(root.join("README.md"), "# Large Test Project\n\nA comprehensive test repository.\n").unwrap();
-            fs::write(root.join("Cargo.toml"), "[package]\nname = \"large_test\"\nversion = \"1.0.0\"\n\n[dependencies]\n").unwrap();
-            fs::write(root.join(".gitignore"), "target/\n*.log\n.env\nCargo.lock\n").unwrap();
-            fs::write(root.join("LICENSE"), "MIT License\n\nFull license text...\n").unwrap();
+            fs::write(
+                root.join("README.md"),
+                "# Large Test Project\n\nA comprehensive test repository.\n",
+            )
+            .unwrap();
+            fs::write(
+                root.join("Cargo.toml"),
+                "[package]\nname = \"large_test\"\nversion = \"1.0.0\"\n\n[dependencies]\n",
+            )
+            .unwrap();
+            fs::write(
+                root.join(".gitignore"),
+                "target/\n*.log\n.env\nCargo.lock\n",
+            )
+            .unwrap();
+            fs::write(
+                root.join("LICENSE"),
+                "MIT License\n\nFull license text...\n",
+            )
+            .unwrap();
         }
         _ => panic!("Unknown size: {}", size),
     }

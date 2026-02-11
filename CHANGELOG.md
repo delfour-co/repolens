@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-02-11
+
+### Added
+
+#### Performance
+- Comprehensive benchmark suite using Criterion
+  - `scanner_benchmark.rs`: File system scanning performance tests
+  - `rules_benchmark.rs`: Rules engine performance tests
+  - `parse_benchmark.rs`: Parser performance tests with small/medium/large datasets
+- Benchmarks cover file iteration, content reading, pattern matching, and rule execution
+
+#### GitHub API Integration
+- Direct GitHub API access via octocrab library
+- GITHUB_TOKEN environment variable authentication (preferred method)
+- Automatic fallback to gh CLI when octocrab unavailable
+- New `get_repo_settings()` using octocrab with gh CLI fallback
+- New `create_issue()` using octocrab with gh CLI fallback
+- New prerequisite checks for GitHub authentication:
+  - `check_github_token()`: Verifies GITHUB_TOKEN is set
+  - `check_github_auth_available()`: Checks for any available auth method
+- Utility functions: `is_github_token_available()`, `is_github_auth_available()`
+
+### Changed
+
+- GitHub CLI (gh) is now optional when GITHUB_TOKEN is set
+- Prerequisites system updated to prefer GITHUB_TOKEN over gh CLI
+- gh CLI checks changed from Required to Optional level
+
 ## [1.1.2] - 2026-02-11
 
 ### Fixed
