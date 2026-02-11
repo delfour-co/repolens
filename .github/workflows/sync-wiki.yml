@@ -168,7 +168,8 @@ jobs:
             local file="$1"
             local page_name="$2"
             local temp_file=$(mktemp)
-            local date_encoded=$(echo "${UPDATE_DATE}" | sed 's/ /%20/g')
+            # Encode special characters for shields.io: space -> %20, colon -> %3A
+            local date_encoded=$(echo "${UPDATE_DATE}" | sed 's/ /%20/g; s/:/%3A/g')
 
             # Créer le header avec printf
             printf '%s\n' "<!-- Auto-generated header - Do not edit manually -->" > "$temp_file"
