@@ -224,12 +224,12 @@ pub struct Dependency {
     pub ecosystem: Ecosystem,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct OsvQuery {
     package: OsvPackage,
     version: String,
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct OsvPackage {
     name: String,
     ecosystem: String,
@@ -1228,11 +1228,22 @@ async fn query_osv_batch(
     if deps.is_empty() {
         return Ok(Vec::new());
     }
+
+    // Filter out dependencies with empty names or versions
+    let valid_deps: Vec<&Dependency> = deps
+        .iter()
+        .filter(|d| !d.name.trim().is_empty() && !d.version.trim().is_empty())
+        .collect();
+
+    if valid_deps.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
-    let queries: Vec<OsvQuery> = deps
+    let queries: Vec<OsvQuery> = valid_deps
         .iter()
         .map(|d| OsvQuery {
             package: OsvPackage {
@@ -1244,11 +1255,24 @@ async fn query_osv_batch(
         .collect();
     let resp = client
         .post("https://api.osv.dev/v1/querybatch")
-        .json(&OsvBatchQuery { queries })
+        .json(&OsvBatchQuery {
+            queries: queries.clone(),
+        })
         .send()
         .await
         .map_err(|e| format!("HTTP failed: {}", e))?;
     if !resp.status().is_success() {
+        // Log the first few packages for debugging
+        let sample: Vec<String> = queries
+            .iter()
+            .take(3)
+            .map(|q| format!("{}@{} ({})", q.package.name, q.version, q.package.ecosystem))
+            .collect();
+        tracing::debug!(
+            "OSV API returned {}: sample packages: {:?}",
+            resp.status(),
+            sample
+        );
         return Err(format!("OSV API status: {}", resp.status()));
     }
     let batch: OsvBatchResponse = resp
@@ -1258,8 +1282,8 @@ async fn query_osv_batch(
     let mut results = Vec::new();
     for (i, r) in batch.results.into_iter().enumerate() {
         if !r.vulns.is_empty() {
-            if let Some(d) = deps.get(i) {
-                results.push((d.clone(), r.vulns));
+            if let Some(d) = valid_deps.get(i) {
+                results.push(((*d).clone(), r.vulns));
             }
         }
     }
