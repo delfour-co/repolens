@@ -5,7 +5,7 @@
 
 # Catégories de règles
 
-RepoLens organise ses règles d'audit en dix catégories.
+RepoLens organise ses règles d'audit en douze catégories.
 
 ## 🔒 Secrets
 
@@ -94,7 +94,7 @@ security = true
 
 **Objectif** : Vérifier les bonnes pratiques de sécurité et auditer le code pour les vulnérabilités.
 
-### Règles de protection de branche
+### Règles de protection de branche (SEC007-010)
 
 | Règle | Sévérité | Description |
 |-------|----------|-------------|
@@ -102,6 +102,46 @@ security = true
 | SEC008 | Warning | Pas de règles de protection de branche dans settings.yml |
 | SEC009 | Warning | `required_pull_request_reviews` non configuré |
 | SEC010 | Warning | `required_status_checks` non configuré |
+
+### Fonctionnalités de sécurité GitHub (SEC011-014) *(v1.3.0)*
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| SEC011 | Warning | Vulnerability alerts désactivés |
+| SEC012 | Warning | Dependabot security updates désactivés |
+| SEC013 | Info | Secret scanning désactivé |
+| SEC014 | Info | Push protection désactivée |
+
+### Permissions GitHub Actions (SEC015-017) *(v1.3.0)*
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| SEC015 | Warning | GitHub Actions autorise toutes les actions (risque supply chain) |
+| SEC016 | Warning | Permissions de workflow trop permissives (default != read) |
+| SEC017 | Info | Pas d'approbation requise pour les workflows de forks |
+
+### Contrôle d'accès (TEAM, KEY, APP) *(v1.3.0)*
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| TEAM001 | Info | Collaborateur direct avec accès admin |
+| TEAM002 | Warning | Collaborateur externe avec accès push |
+| TEAM003 | Info | Équipe avec accès write ou supérieur |
+| TEAM004 | Warning | Utilisateur inactif (pas de commits récents) |
+| KEY001 | Warning | Deploy key avec accès en écriture |
+| KEY002 | Info | Deploy key sans date d'expiration |
+| APP001 | Info | Application installée avec permissions larges |
+
+### Infrastructure (HOOK, ENV) *(v1.3.0)*
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| HOOK001 | Warning | Webhook avec URL non-HTTPS |
+| HOOK002 | Warning | Webhook sans secret configuré |
+| HOOK003 | Info | Webhook inactif (dernière livraison échouée) |
+| ENV001 | Info | Environment sans protection rules |
+| ENV002 | Warning | Environment production sans required reviewers |
+| ENV003 | Info | Environment sans branch policies |
 
 ### Vérifications
 
@@ -389,6 +429,65 @@ denied_licenses = ["GPL-3.0", "AGPL-3.0"]
 git = true  # Activer la catégorie git
 ```
 
+## 👥 CODEOWNERS *(v1.3.0)*
+
+**Objectif** : Valider le fichier CODEOWNERS et vérifier que les propriétaires de code sont correctement configurés.
+
+### Règles
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| CODE001 | Info | Fichier CODEOWNERS absent |
+| CODE002 | Warning | Fichier CODEOWNERS avec erreurs de syntaxe |
+| CODE003 | Warning | CODEOWNERS référence des utilisateurs/équipes inexistants |
+
+### Emplacements supportés
+
+RepoLens recherche le fichier CODEOWNERS dans :
+- `CODEOWNERS`
+- `.github/CODEOWNERS`
+- `docs/CODEOWNERS`
+
+### Validation de syntaxe
+
+RepoLens vérifie :
+- Format des patterns glob
+- Syntaxe des mentions (@user, @org/team)
+- Lignes vides et commentaires
+
+### Bonnes pratiques
+
+- ✅ Créer un fichier CODEOWNERS pour les reviews automatiques
+- ✅ Utiliser des équipes plutôt que des utilisateurs individuels
+- ✅ Couvrir les fichiers critiques (configs, sécurité, CI)
+- ✅ Vérifier régulièrement que les propriétaires existent encore
+
+## 🏷️ Releases *(v1.3.0)*
+
+**Objectif** : Vérifier les bonnes pratiques de gestion des releases et des tags.
+
+### Règles
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| REL001 | Info | Aucune release publiée |
+| REL002 | Warning | Dernière release date de plus d'un an |
+| REL003 | Info | Tags non signés détectés |
+
+### Bonnes pratiques
+
+- ✅ Publier des releases régulièrement
+- ✅ Utiliser le versioning sémantique (semver)
+- ✅ Signer les tags avec GPG pour l'authenticité
+- ✅ Inclure des notes de release détaillées
+
+### Configuration
+
+```toml
+[rules]
+codeowners = true  # Activer la catégorie CODEOWNERS (v1.3.0)
+```
+
 ## 🛠️ Custom (Règles personnalisées)
 
 **Objectif** : Permettre aux utilisateurs de définir leurs propres règles d'audit via patterns regex ou commandes shell.
@@ -428,6 +527,7 @@ quality = true
 licenses = true     # Conformité des licences
 dependencies = true # Vérification des dépendances
 git = true          # Hygiène Git
+codeowners = true   # Validation CODEOWNERS (v1.3.0)
 custom = true       # Règles personnalisées
 ```
 

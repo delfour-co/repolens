@@ -144,6 +144,20 @@ repolens init --preset strict
 | URLs internes | ❌ | ✅ | ❌ |
 | Discussions GitHub | ✅ | ❌ | ✅ |
 
+### Règles v1.3.0 par preset
+
+| Règle | opensource | enterprise | strict |
+|-------|------------|------------|--------|
+| SEC011-014 (Security features) | ✅ | ✅ | ✅ |
+| SEC015-017 (Actions permissions) | ✅ | ✅ | ✅ |
+| TEAM001-004 (Collaborators) | Info | Warning | Critical |
+| KEY001-002 (Deploy keys) | Info | Warning | Critical |
+| APP001 (Installed apps) | Info | Warning | Warning |
+| HOOK001-003 (Webhooks) | Info | Warning | Critical |
+| ENV001-003 (Environments) | Info | Warning | Critical |
+| CODE001-003 (CODEOWNERS) | Info | ✅ Requis | ✅ Requis |
+| REL001-003 (Releases) | Info | Warning | Warning |
+
 ## Personnalisation d'un preset
 
 Vous pouvez utiliser un preset comme base et le personnaliser :

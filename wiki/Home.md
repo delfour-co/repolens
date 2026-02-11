@@ -11,7 +11,7 @@ Bienvenue dans la documentation de RepoLens, un outil CLI pour auditer les dép�
 
 RepoLens est un outil en ligne de commande écrit en Rust qui permet d'auditer automatiquement vos dépôts GitHub pour :
 
-- 🔒 **Sécurité** : Détection de secrets exposés, audit de sécurité du code, protection des branches, validation des politiques de sécurité
+- 🔒 **Sécurité** : Détection de secrets exposés, audit de sécurité du code, protection des branches, validation des politiques de sécurité, fonctionnalités de sécurité GitHub (v1.3.0)
 - 📋 **Conformité** : Vérification des fichiers requis (README, LICENSE, CONTRIBUTING, etc.)
 - 📚 **Documentation** : Validation de la qualité et de la complétude de la documentation
 - ⚙️ **CI/CD** : Validation des workflows GitHub Actions
@@ -98,6 +98,12 @@ Pour l'intégration CI/CD, utilisez l'Action GitHub officielle :
 - ✅ **Audit de sécurité du code** : Détection de code unsafe, analyse Semgrep, vérification des patterns dangereux
 - ✅ **Protection des branches** : Vérification de la configuration de protection (SEC007-010)
 - ✅ **Hygiène Git** : Détection des binaires volumineux, fichiers sensibles, gitattributes (GIT001-003)
+- ✅ **Fonctionnalités de sécurité GitHub** *(v1.3.0)* : Vulnerability alerts, Dependabot, Secret scanning (SEC011-014)
+- ✅ **Permissions Actions** *(v1.3.0)* : Audit des permissions de workflow et actions autorisées (SEC015-017)
+- ✅ **Contrôle d'accès** *(v1.3.0)* : Collaborateurs, équipes, deploy keys, apps installées (TEAM, KEY, APP)
+- ✅ **Infrastructure** *(v1.3.0)* : Webhooks et environments (HOOK001-003, ENV001-003)
+- ✅ **CODEOWNERS** *(v1.3.0)* : Validation du fichier CODEOWNERS (CODE001-003)
+- ✅ **Releases** *(v1.3.0)* : Audit des releases et tags signés (REL001-003)
 
 ### Dépendances
 - ✅ **Scan multi-écosystèmes** : 9 écosystèmes supportés (Rust, Node.js, Python, Go, .NET, Ruby, Dart/Flutter, Swift, iOS)
@@ -132,7 +138,7 @@ Pour l'intégration CI/CD, utilisez l'Action GitHub officielle :
 - ✅ **Permissions sécurisées** : `.repolens.toml` protégé avec chmod 600 sur Unix
 - ✅ **Codes de sortie standardisés** : 0=succès, 1=critique, 2=warning, 3=erreur, 4=args invalides
 - ✅ **Validation des entrées** : Les catégories et presets invalides génèrent un avertissement
-- ✅ **850+ tests** : Couverture complète du code
+- ✅ **1000+ tests** : Couverture complète du code
 
 ### Distribution
 - ✅ **Docker** : Image officielle multi-architecture (amd64, arm64)
