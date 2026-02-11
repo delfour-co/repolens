@@ -141,3 +141,11 @@ strip = true
 [[bin]]
 name = "repolens"
 path = "src/main.rs"
+
+[[bench]]
+name = "scanner_benchmark"
+harness = false
+
+[[bench]]
+name = "rules_benchmark"
+harness = false
