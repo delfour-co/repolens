@@ -26,10 +26,12 @@ COPY src ./src
 COPY presets ./presets
 COPY schemas ./schemas
 
-# Create dummy benchmark file to satisfy Cargo.toml [[bench]] section
+# Create dummy benchmark files to satisfy Cargo.toml [[bench]] sections
 # (benchmarks are excluded from Docker build for size optimization)
 RUN mkdir -p benches && \
-    echo 'fn main() {}' > benches/parse_benchmark.rs
+    echo 'fn main() {}' > benches/parse_benchmark.rs && \
+    echo 'fn main() {}' > benches/scanner_benchmark.rs && \
+    echo 'fn main() {}' > benches/rules_benchmark.rs
 
 # Build the binary
 RUN cargo build --release && \
