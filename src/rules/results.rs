@@ -1,16 +1,73 @@
-//! Audit results structures
+//! # Audit Results Structures
+//!
+//! This module defines the data structures for representing audit findings
+//! and results.
+//!
+//! ## Overview
+//!
+//! - [`Severity`] - Finding severity levels (Critical, Warning, Info)
+//! - [`Finding`] - Individual audit finding with location and remediation
+//! - [`AuditResults`] - Collection of findings from an audit run
+//!
+//! ## Examples
+//!
+//! ### Creating Findings
+//!
+//! ```rust
+//! use repolens::rules::{Finding, Severity};
+//!
+//! let finding = Finding::new("SEC001", "secrets", Severity::Critical, "API key detected")
+//!     .with_location("src/config.rs:42")
+//!     .with_description("A hardcoded API key was found")
+//!     .with_remediation("Use environment variables instead");
+//! ```
+//!
+//! ### Working with Audit Results
+//!
+//! ```rust
+//! use repolens::rules::results::{AuditResults, Finding, Severity};
+//!
+//! let mut results = AuditResults::new("my-repo", "opensource");
+//!
+//! results.add_finding(Finding::new("FILE001", "files", Severity::Warning, "README missing"));
+//!
+//! // Query results
+//! println!("Has critical issues: {}", results.has_critical());
+//! println!("Warning count: {}", results.count_by_severity(Severity::Warning));
+//! ```
 
 use serde::{Deserialize, Serialize};
 
-/// Severity levels for findings
+/// Severity levels for audit findings.
+///
+/// Severity determines the urgency and importance of a finding:
+///
+/// - **Critical** - Must be resolved before release (e.g., exposed secrets)
+/// - **Warning** - Should be addressed (e.g., missing documentation)
+/// - **Info** - Suggestions for improvement (e.g., best practices)
+///
+/// # Examples
+///
+/// ```rust
+/// use repolens::rules::Severity;
+///
+/// let severity = Severity::Critical;
+///
+/// // Parse from string
+/// let parsed = Severity::from_string("warning");
+/// assert_eq!(parsed, Some(Severity::Warning));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
-    /// Critical issues that must be resolved
+    /// Critical issues that must be resolved immediately.
+    /// Examples: exposed secrets, security vulnerabilities.
     Critical,
-    /// Warnings that should be addressed
+    /// Warnings that should be addressed before release.
+    /// Examples: missing README, incomplete documentation.
     Warning,
-    /// Informational suggestions
+    /// Informational suggestions for improvement.
+    /// Examples: best practice recommendations, style suggestions.
     Info,
 }
 
@@ -26,28 +83,57 @@ impl Severity {
     }
 }
 
-/// A single audit finding
+/// A single audit finding representing an issue detected in the repository.
+///
+/// Findings are created by rule categories during the audit process and
+/// contain all information needed to understand and resolve the issue.
+///
+/// # Examples
+///
+/// ```rust
+/// use repolens::rules::{Finding, Severity};
+///
+/// // Create a basic finding
+/// let finding = Finding::new(
+///     "SEC001",
+///     "secrets",
+///     Severity::Critical,
+///     "Exposed API key detected"
+/// );
+///
+/// // Create a finding with full details
+/// let detailed = Finding::new("DOC001", "docs", Severity::Warning, "README is missing")
+///     .with_location(".")
+///     .with_description("A README.md file helps users understand your project")
+///     .with_remediation("Create a README.md with project description and usage");
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Finding {
-    /// Unique rule identifier (e.g., "SEC001")
+    /// Unique rule identifier (e.g., "SEC001", "DOC001").
+    /// Used to reference specific rules in configuration.
     pub rule_id: String,
 
-    /// Category of the rule (e.g., "secrets", "docs")
+    /// Category of the rule (e.g., "secrets", "docs", "security").
+    /// Corresponds to the rule category that generated this finding.
     pub category: String,
 
-    /// Severity of the finding
+    /// Severity of the finding.
     pub severity: Severity,
 
-    /// Short message describing the finding
+    /// Short message describing the finding.
+    /// Should be concise but informative.
     pub message: String,
 
-    /// Optional file location (e.g., "src/config.ts:42")
+    /// Optional file location where the issue was found.
+    /// Format: "path/to/file:line" or just "path/to/file".
     pub location: Option<String>,
 
-    /// Detailed description of the issue
+    /// Detailed description of the issue.
+    /// Provides context about why this is a problem.
     pub description: Option<String>,
 
-    /// Suggested remediation steps
+    /// Suggested remediation steps.
+    /// Provides actionable guidance for fixing the issue.
     pub remediation: Option<String>,
 }
 
@@ -89,16 +175,43 @@ impl Finding {
     }
 }
 
-/// Collection of audit results
+/// Collection of audit results from a complete audit run.
+///
+/// `AuditResults` aggregates all findings from all rule categories
+/// and provides methods for querying and filtering results.
+///
+/// # Examples
+///
+/// ```rust
+/// use repolens::rules::results::{AuditResults, Finding, Severity};
+///
+/// // Create new results
+/// let mut results = AuditResults::new("my-repo", "opensource");
+///
+/// // Add findings
+/// results.add_finding(Finding::new("SEC001", "secrets", Severity::Critical, "Secret found"));
+/// results.add_findings(vec![
+///     Finding::new("DOC001", "docs", Severity::Warning, "README missing"),
+///     Finding::new("DOC002", "docs", Severity::Info, "Consider adding examples"),
+/// ]);
+///
+/// // Query results
+/// assert_eq!(results.count_by_severity(Severity::Critical), 1);
+/// assert!(results.has_critical());
+///
+/// // Filter by category
+/// let doc_findings: Vec<_> = results.findings_by_category("docs").collect();
+/// assert_eq!(doc_findings.len(), 2);
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditResults {
-    /// Repository name
+    /// Name of the repository that was audited.
     pub repository_name: String,
 
-    /// Preset used for the audit
+    /// Preset used for the audit (opensource, enterprise, strict).
     pub preset: String,
 
-    /// List of findings
+    /// List of all findings from the audit.
     findings: Vec<Finding>,
 }
 

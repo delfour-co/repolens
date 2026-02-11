@@ -453,4 +453,130 @@ mod tests {
             expected_endpoint
         );
     }
+
+    #[test]
+    fn test_branch_protection_deserialization() {
+        let json = r#"{
+            "required_status_checks": {
+                "strict": true,
+                "contexts": ["ci/test", "ci/build"]
+            },
+            "enforce_admins": {
+                "enabled": true
+            },
+            "required_pull_request_reviews": {
+                "required_approving_review_count": 2
+            },
+            "required_linear_history": {
+                "enabled": false
+            },
+            "allow_force_pushes": {
+                "enabled": false
+            },
+            "allow_deletions": {
+                "enabled": false
+            }
+        }"#;
+
+        let protection: BranchProtection = serde_json::from_str(json).unwrap();
+
+        assert!(protection.required_status_checks.is_some());
+        let status_checks = protection.required_status_checks.unwrap();
+        assert!(status_checks.strict);
+        assert_eq!(status_checks.contexts.len(), 2);
+
+        assert!(protection.required_pull_request_reviews.is_some());
+        assert_eq!(
+            protection
+                .required_pull_request_reviews
+                .unwrap()
+                .required_approving_review_count,
+            2
+        );
+
+        assert!(protection.allow_force_pushes.is_some());
+        assert!(!protection.allow_force_pushes.unwrap().enabled);
+    }
+
+    #[test]
+    fn test_branch_protection_minimal_deserialization() {
+        let json = r#"{}"#;
+        let protection: BranchProtection = serde_json::from_str(json).unwrap();
+
+        assert!(protection.required_status_checks.is_none());
+        assert!(protection.required_pull_request_reviews.is_none());
+        assert!(protection.allow_force_pushes.is_none());
+    }
+
+    #[test]
+    fn test_repo_info_deserialization() {
+        let json = r#"{
+            "name": "test-repo",
+            "owner": {
+                "login": "test-owner"
+            },
+            "hasIssuesEnabled": true,
+            "hasDiscussionsEnabled": false,
+            "hasWikiEnabled": true
+        }"#;
+
+        let repo_info: RepoInfo = serde_json::from_str(json).unwrap();
+        assert!(repo_info.has_issues_enabled);
+        assert!(!repo_info.has_discussions_enabled);
+        assert!(repo_info.has_wiki_enabled);
+    }
+
+    #[test]
+    fn test_is_available_returns_bool() {
+        // Just verify is_available() doesn't panic and returns a bool
+        let _result: bool = GitHubProvider::is_available();
+        // Test passes if no panic occurs
+    }
+
+    #[test]
+    fn test_provider_full_name_format() {
+        let provider = GitHubProvider {
+            repo_owner: "my-org".to_string(),
+            repo_name: "my-repo".to_string(),
+        };
+        assert_eq!(provider.full_name(), "my-org/my-repo");
+
+        let provider2 = GitHubProvider {
+            repo_owner: "user123".to_string(),
+            repo_name: "project-name".to_string(),
+        };
+        assert_eq!(provider2.full_name(), "user123/project-name");
+    }
+
+    #[test]
+    fn test_status_checks_deserialization() {
+        let json = r#"{
+            "strict": false,
+            "contexts": []
+        }"#;
+        let checks: StatusChecks = serde_json::from_str(json).unwrap();
+        assert!(!checks.strict);
+        assert!(checks.contexts.is_empty());
+    }
+
+    #[test]
+    fn test_pull_request_reviews_deserialization() {
+        let json = r#"{
+            "required_approving_review_count": 1
+        }"#;
+        let reviews: PullRequestReviews = serde_json::from_str(json).unwrap();
+        assert_eq!(reviews.required_approving_review_count, 1);
+    }
+
+    #[test]
+    fn test_allow_force_pushes_deserialization() {
+        let json_enabled = r#"{"enabled": true}"#;
+        let json_disabled = r#"{"enabled": false}"#;
+
+        let enabled: AllowForcePushes = serde_json::from_str(json_enabled).unwrap();
+        let disabled: AllowForcePushes = serde_json::from_str(json_disabled).unwrap();
+
+        assert!(enabled.enabled);
+        assert!(!disabled.enabled);
+    }
 }

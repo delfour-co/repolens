@@ -2,8 +2,8 @@
 
 **Repository:** delfour-co/repolens
 **Preset:** opensource
-**Generated:** 2026-02-07 13:59:25 UTC
-**RepoLens Version:** 1.3.0
+**Generated:** 2026-02-11 09:48:47 UTC
+**RepoLens Version:** 1.0.0
 
 ## Summary
 
@@ -19,15 +19,7 @@ These issues must be resolved before proceeding.
 
 ### SEC001 - URL with Embedded Credentials detected
 
-**Location:** `integrations/azure-devops/azure-pipelines.yml:190`
-
-### SEC001 - URL with Embedded Credentials detected
-
-**Location:** `integrations/github-actions/repolens.yml:145`
-
-### SEC001 - URL with Embedded Credentials detected
-
-**Location:** `action.yml:60`
+**Location:** `src/actions/templates.rs:91`
 
 ### SEC001 - URL with Embedded Credentials detected
 
@@ -36,10 +28,6 @@ These issues must be resolved before proceeding.
 ### SEC001 - URL with Embedded Credentials detected
 
 **Location:** `.github/workflows/release.yml:251`
-
-### SEC001 - URL with Embedded Credentials detected
-
-**Location:** `src/actions/templates.rs:91`
 
 ### SEC001 - Private Key detected
 
@@ -83,7 +71,7 @@ These issues must be resolved before proceeding.
 
 ### SEC001 - Generic API Key Assignment detected
 
-**Location:** `src/rules/engine.rs:331`
+**Location:** `src/rules/engine.rs:498`
 
 ### SEC001 - URL with Embedded Credentials detected
 
@@ -96,6 +84,18 @@ These issues must be resolved before proceeding.
 ### SEC001 - URL with Embedded Credentials detected
 
 **Location:** `tests/e2e_test.rs:791`
+
+### SEC001 - URL with Embedded Credentials detected
+
+**Location:** `action.yml:60`
+
+### SEC001 - URL with Embedded Credentials detected
+
+**Location:** `integrations/azure-devops/azure-pipelines.yml:190`
+
+### SEC001 - URL with Embedded Credentials detected
+
+**Location:** `integrations/github-actions/repolens.yml:145`
 
 ### WF001 - Potential hardcoded secret in workflow
 

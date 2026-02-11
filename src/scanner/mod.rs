@@ -1,4 +1,68 @@
-//! Scanner module - File system and repository scanning
+//! # Scanner Module
+//!
+//! This module provides file system and git repository scanning capabilities
+//! for RepoLens audit operations.
+//!
+//! ## Overview
+//!
+//! The scanner is responsible for:
+//! - Walking the repository file tree
+//! - Caching file information for efficient access
+//! - Reading file contents for rule evaluation
+//! - Extracting git repository metadata
+//!
+//! ## Examples
+//!
+//! ### Basic Usage
+//!
+//! ```rust,no_run
+//! use repolens::scanner::Scanner;
+//! use std::path::PathBuf;
+//!
+//! let scanner = Scanner::new(PathBuf::from("."));
+//!
+//! // Get repository name
+//! println!("Repository: {}", scanner.repository_name());
+//!
+//! // Check if files exist
+//! if scanner.file_exists("README.md") {
+//!     println!("README.md found");
+//! }
+//! ```
+//!
+//! ### Finding Files
+//!
+//! ```rust,no_run
+//! use repolens::scanner::Scanner;
+//! use std::path::PathBuf;
+//!
+//! let scanner = Scanner::new(PathBuf::from("."));
+//!
+//! // Find all Rust files
+//! let rust_files = scanner.files_with_extensions(&["rs"]);
+//! println!("Found {} Rust files", rust_files.len());
+//!
+//! // Find files matching a pattern
+//! let test_files = scanner.files_matching_pattern("**/test/**");
+//! println!("Found {} test files", test_files.len());
+//!
+//! // Find large files
+//! let large_files = scanner.files_larger_than(1_000_000); // > 1MB
+//! println!("Found {} files larger than 1MB", large_files.len());
+//! ```
+//!
+//! ### Reading File Contents
+//!
+//! ```rust,no_run
+//! use repolens::scanner::Scanner;
+//! use std::path::PathBuf;
+//!
+//! let scanner = Scanner::new(PathBuf::from("."));
+//!
+//! if let Ok(content) = scanner.read_file("Cargo.toml") {
+//!     println!("Cargo.toml has {} bytes", content.len());
+//! }
+//! ```
 
 mod filesystem;
 mod git;

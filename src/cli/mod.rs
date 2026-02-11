@@ -1,4 +1,48 @@
-//! CLI module - Command line interface definition and handlers
+//! # CLI Module
+//!
+//! This module defines the command-line interface for RepoLens using `clap`.
+//!
+//! ## Commands
+//!
+//! | Command | Description |
+//! |---------|-------------|
+//! | `init` | Initialize a new configuration file |
+//! | `plan` | Analyze repository and show planned actions |
+//! | `apply` | Apply planned changes to the repository |
+//! | `report` | Generate an audit report |
+//! | `compare` | Compare two audit reports |
+//! | `schema` | Display JSON Schema for report output |
+//! | `install-hooks` | Install or remove Git hooks |
+//!
+//! ## Submodules
+//!
+//! - [`commands`] - Command implementations
+//! - [`exit_codes`] - Standardized exit codes
+//! - [`output`] - Report output formatters (JSON, Markdown, SARIF, Terminal)
+//!
+//! ## Global Options
+//!
+//! All commands support these global options:
+//!
+//! - `-v, --verbose` - Increase verbosity level (use multiple times: -v, -vv, -vvv)
+//! - `-c, --config <FILE>` - Path to configuration file
+//! - `-C, --directory <DIR>` - Working directory (defaults to current directory)
+//!
+//! ## Examples
+//!
+//! ```bash
+//! # Initialize configuration
+//! repolens init --preset opensource
+//!
+//! # Run audit and show plan
+//! repolens plan
+//!
+//! # Generate JSON report
+//! repolens report --format json -o report.json
+//!
+//! # Apply fixes
+//! repolens apply --yes
+//! ```
 
 pub mod commands;
 pub mod exit_codes;

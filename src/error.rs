@@ -1,7 +1,57 @@
-//! Error types for RepoLens
+//! # Error Types for RepoLens
 //!
 //! This module defines custom error types using `thiserror` for better error handling
 //! and more descriptive error messages throughout the application.
+//!
+//! ## Error Hierarchy
+//!
+//! The main error type is [`RepoLensError`], which wraps more specific error types:
+//!
+//! - [`ScanError`] - Errors during repository scanning
+//! - [`ConfigError`] - Configuration loading and parsing errors
+//! - [`ProviderError`] - External service errors (GitHub API)
+//! - [`ActionError`] - Remediation action execution errors
+//! - [`RuleError`] - Rule evaluation errors
+//! - [`CacheError`] - Caching operation errors
+//!
+//! ## Examples
+//!
+//! ### Handling Errors
+//!
+//! ```rust,no_run
+//! use repolens::{config::Config, RepoLensError};
+//!
+//! fn load_config() -> Result<Config, RepoLensError> {
+//!     Config::load_or_default()
+//! }
+//!
+//! match load_config() {
+//!     Ok(config) => println!("Loaded config with preset: {}", config.preset),
+//!     Err(e) => {
+//!         eprintln!("{}", e.display_formatted());
+//!         if let Some(suggestion) = e.suggestion() {
+//!             eprintln!("Hint: {}", suggestion);
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! ### Error Suggestions
+//!
+//! Many errors include helpful suggestions for resolution:
+//!
+//! ```rust
+//! use repolens::error::{RepoLensError, ConfigError};
+//!
+//! let err = RepoLensError::Config(ConfigError::ConfigNotFound {
+//!     path: ".repolens.toml".to_string(),
+//! });
+//!
+//! // Get a suggestion for how to fix the error
+//! if let Some(suggestion) = err.suggestion() {
+//!     assert!(suggestion.contains("repolens init"));
+//! }
+//! ```
 
 use colored::Colorize;
 use thiserror::Error;

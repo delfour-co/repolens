@@ -1,4 +1,83 @@
-//! Rules evaluation engine
+//! # Rules Evaluation Engine
+//!
+//! This module provides the main rules evaluation engine that orchestrates
+//! the execution of all audit rule categories.
+//!
+//! ## Overview
+//!
+//! The [`RulesEngine`] is responsible for:
+//!
+//! - Loading and configuring rule categories
+//! - Running rules against the scanned repository
+//! - Collecting and aggregating findings
+//! - Tracking timing information
+//! - Reporting progress during execution
+//!
+//! ## Examples
+//!
+//! ### Basic Usage
+//!
+//! ```rust,no_run
+//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use std::path::PathBuf;
+//!
+//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! let config = Config::default();
+//! let scanner = Scanner::new(PathBuf::from("."));
+//! let engine = RulesEngine::new(config);
+//!
+//! let results = engine.run(&scanner).await?;
+//! println!("Found {} findings", results.findings().len());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### With Progress Callback
+//!
+//! ```rust,no_run
+//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use std::path::PathBuf;
+//!
+//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! let config = Config::default();
+//! let scanner = Scanner::new(PathBuf::from("."));
+//! let mut engine = RulesEngine::new(config);
+//!
+//! engine.set_progress_callback(Box::new(|category, current, total, timing| {
+//!     if let Some((findings, duration_ms)) = timing {
+//!         println!("[{}/{}] {} - {} findings in {}ms",
+//!             current, total, category, findings, duration_ms);
+//!     } else {
+//!         println!("[{}/{}] Running {}...", current, total, category);
+//!     }
+//! }));
+//!
+//! let results = engine.run(&scanner).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Filtering Categories
+//!
+//! ```rust,no_run
+//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use std::path::PathBuf;
+//!
+//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! let config = Config::default();
+//! let scanner = Scanner::new(PathBuf::from("."));
+//! let mut engine = RulesEngine::new(config);
+//!
+//! // Only run specific categories
+//! engine.set_only_categories(vec!["secrets".to_string(), "security".to_string()]);
+//!
+//! // Or skip certain categories
+//! // engine.set_skip_categories(vec!["docs".to_string()]);
+//!
+//! let results = engine.run(&scanner).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::cache::AuditCache;
 use crate::error::RepoLensError;
@@ -14,13 +93,54 @@ use super::results::AuditResults;
 use crate::config::Config;
 use crate::scanner::Scanner;
 
-/// Trait for rule categories
+/// Trait for rule categories.
+///
+/// Each rule category (secrets, files, docs, etc.) implements this trait
+/// to provide its specific audit functionality.
+///
+/// # Implementing a Custom Category
+///
+/// ```rust,ignore
+/// use repolens::rules::engine::RuleCategory;
+/// use repolens::rules::Finding;
+/// use repolens::config::Config;
+/// use repolens::scanner::Scanner;
+/// use repolens::RepoLensError;
+///
+/// struct MyCustomRules;
+///
+/// #[async_trait::async_trait]
+/// impl RuleCategory for MyCustomRules {
+///     fn name(&self) -> &'static str {
+///         "custom"
+///     }
+///
+///     async fn run(
+///         &self,
+///         scanner: &Scanner,
+///         config: &Config,
+///     ) -> Result<Vec<Finding>, RepoLensError> {
+///         let mut findings = Vec::new();
+///         // ... implement custom rules ...
+///         Ok(findings)
+///     }
+/// }
+/// ```
 #[async_trait::async_trait]
 pub trait RuleCategory: Send + Sync {
-    /// Get the category name
+    /// Get the category name (e.g., "secrets", "files", "docs").
     fn name(&self) -> &'static str;
 
-    /// Run the rules in this category
+    /// Run the rules in this category against the scanned repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `scanner` - Scanner instance with repository file information
+    /// * `config` - Configuration for rule behavior
+    ///
+    /// # Returns
+    ///
+    /// A vector of findings, or an error if rule execution fails.
     async fn run(
         &self,
         scanner: &Scanner,
@@ -28,11 +148,58 @@ pub trait RuleCategory: Send + Sync {
     ) -> Result<Vec<super::Finding>, RepoLensError>;
 }
 
-/// Callback function type for progress reporting
-/// Parameters: (category_name, current_index, total_count, findings_count, duration_ms)
+/// Callback function type for progress reporting during rule execution.
+///
+/// The callback receives:
+/// - `category_name` - Name of the category being processed
+/// - `current_index` - Current category index (1-based)
+/// - `total_count` - Total number of categories to process
+/// - `timing` - Optional tuple of (findings_count, duration_ms) when category completes
+///
+/// # Example
+///
+/// ```rust
+/// use repolens::rules::engine::ProgressCallback;
+///
+/// let callback: ProgressCallback = Box::new(|category, current, total, timing| {
+///     if let Some((findings, duration_ms)) = timing {
+///         println!("[{}/{}] {} completed: {} findings in {}ms",
+///             current, total, category, findings, duration_ms);
+///     } else {
+///         println!("[{}/{}] Running {}...", current, total, category);
+///     }
+/// });
+/// ```
 pub type ProgressCallback = Box<dyn Fn(&str, usize, usize, Option<(usize, u64)>) + Send + Sync>;
 
-/// Main rules evaluation engine
+/// Main rules evaluation engine for running audits.
+///
+/// The `RulesEngine` coordinates the execution of all rule categories
+/// and collects their findings into a unified result.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+/// use std::path::PathBuf;
+///
+/// # async fn example() -> Result<(), repolens::RepoLensError> {
+/// let config = Config::default();
+/// let scanner = Scanner::new(PathBuf::from("."));
+///
+/// let mut engine = RulesEngine::new(config);
+///
+/// // Optionally configure the engine
+/// engine.set_only_categories(vec!["secrets".to_string()]);
+///
+/// // Run the audit
+/// let (results, timing) = engine.run_with_timing(&scanner).await?;
+///
+/// println!("Audit completed in {}", timing.total_duration_formatted());
+/// println!("Found {} critical issues", results.count_by_severity(repolens::rules::Severity::Critical));
+/// # Ok(())
+/// # }
+/// ```
 pub struct RulesEngine {
     config: Config,
     only_categories: Option<Vec<String>>,

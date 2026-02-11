@@ -57,7 +57,7 @@ ignore = "0.4"
 globset = "0.4"
 
 # Pattern matching for secrets detection
-regex = "1"
+regex = "1.12"
 lazy_static = "1"
 
 # Terminal output
