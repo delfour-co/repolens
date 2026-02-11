@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-02-11
+
+### Fixed
+
+- Improved OSV API error handling by filtering packages with empty names or versions
+- Added debug logging for failed OSV API requests to help diagnose issues
+
 ## [1.1.1] - 2026-02-11
 
 ### Fixed
