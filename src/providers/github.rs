@@ -90,6 +90,7 @@ impl GitHubProvider {
     }
 
     /// Check if GITHUB_TOKEN is set
+    #[allow(dead_code)]
     pub fn has_token() -> bool {
         env::var("GITHUB_TOKEN").is_ok()
     }
@@ -187,11 +188,13 @@ impl GitHubProvider {
     }
 
     /// Get the repository owner
+    #[allow(dead_code)]
     pub fn owner(&self) -> &str {
         &self.repo_owner
     }
 
     /// Get the repository name
+    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         &self.repo_name
     }
@@ -202,6 +205,7 @@ impl GitHubProvider {
     }
 
     /// Get a reference to the octocrab instance (if available)
+    #[allow(dead_code)]
     pub fn octocrab(&self) -> Option<&Octocrab> {
         self.octocrab.as_ref()
     }

@@ -478,6 +478,7 @@ pub fn display_warnings(report: &PrerequisitesReport) {
 // ============================================================================
 
 /// Check if GITHUB_TOKEN environment variable is set
+#[allow(dead_code)]
 pub fn is_github_token_available() -> bool {
     env::var("GITHUB_TOKEN")
         .map(|t| !t.is_empty())
@@ -495,6 +496,7 @@ pub fn is_gh_available() -> bool {
 
 /// Check if any GitHub authentication method is available
 /// Returns true if GITHUB_TOKEN is set or gh CLI is authenticated
+#[allow(dead_code)]
 pub fn is_github_auth_available() -> bool {
     is_github_token_available() || is_gh_available()
 }
