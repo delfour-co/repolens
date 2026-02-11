@@ -701,4 +701,193 @@ mod tests {
         // Just verify it doesn't panic
         let _ = get_repo_info();
     }
+
+    // --- Additional tests for improved coverage ---
+
+    #[test]
+    fn test_check_is_git_repo_not_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        let result = check_is_git_repo(temp_dir.path());
+        assert_eq!(result.status, CheckStatus::Failed);
+        assert_eq!(result.level, CheckLevel::Required);
+        assert!(result.fix.is_some());
+    }
+
+    #[test]
+    fn test_check_is_git_repo_is_a_repo() {
+        let temp_dir = TempDir::new().unwrap();
+        // Create .git directory to simulate a git repo
+        std::fs::create_dir(temp_dir.path().join(".git")).unwrap();
+        let result = check_is_git_repo(temp_dir.path());
+        assert_eq!(result.status, CheckStatus::Ok);
+        assert_eq!(result.level, CheckLevel::Required);
+    }
+
+    #[test]
+    fn test_check_remote_origin_with_git_repo() {
+        use std::process::Command;
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize git repo
+        let _ = Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output();
+
+        // No remote yet
+        let result = check_remote_origin(temp_dir.path());
+        assert_eq!(result.status, CheckStatus::Failed);
+    }
+
+    #[test]
+    fn test_check_remote_origin_with_remote() {
+        use std::process::Command;
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize git repo
+        let _ = Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output();
+        // Add remote origin
+        let _ = Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/test/repo.git",
+            ])
+            .current_dir(temp_dir.path())
+            .output();
+
+        let result = check_remote_origin(temp_dir.path());
+        assert_eq!(result.status, CheckStatus::Ok);
+    }
+
+    #[test]
+    fn test_check_remote_is_github_with_github_remote() {
+        use std::process::Command;
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize git repo
+        let _ = Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output();
+        // Add GitHub remote
+        let _ = Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                "https://github.com/test/repo.git",
+            ])
+            .current_dir(temp_dir.path())
+            .output();
+
+        let result = check_remote_is_github(temp_dir.path());
+        assert_eq!(result.status, CheckStatus::Ok);
+    }
+
+    #[test]
+    fn test_check_remote_is_github_with_non_github_remote() {
+        use std::process::Command;
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize git repo
+        let _ = Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output();
+        // Add non-GitHub remote
+        let _ = Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                "https://gitlab.com/test/repo.git",
+            ])
+            .current_dir(temp_dir.path())
+            .output();
+
+        let result = check_remote_is_github(temp_dir.path());
+        assert_eq!(result.status, CheckStatus::Failed);
+        assert_eq!(result.level, CheckLevel::Optional);
+    }
+
+    #[test]
+    fn test_run_all_checks_with_git_repo() {
+        use std::process::Command;
+        let temp_dir = TempDir::new().unwrap();
+        // Initialize git repo
+        let _ = Command::new("git")
+            .args(["init"])
+            .current_dir(temp_dir.path())
+            .output();
+
+        let options = CheckOptions::default();
+        let report = run_all_checks(temp_dir.path(), &options);
+
+        // Should have Git repository check that passes
+        let git_repo_check = report
+            .checks
+            .iter()
+            .find(|c| c.name == "Git repository")
+            .expect("Should have Git repository check");
+        assert_eq!(git_repo_check.status, CheckStatus::Ok);
+
+        // Should have Remote origin check (optional, likely failed since no remote)
+        assert!(report
+            .checks
+            .iter()
+            .any(|c| c.name == "Remote origin configured"));
+    }
+
+    #[test]
+    fn test_run_all_checks_reports_all_check_types() {
+        let temp_dir = TempDir::new().unwrap();
+        let options = CheckOptions::default();
+        let report = run_all_checks(temp_dir.path(), &options);
+
+        // Verify we have checks for all expected items
+        let expected_checks = [
+            "Git installed",
+            "Git repository",
+            "GitHub CLI installed",
+            "Remote origin configured",
+            "Remote is GitHub",
+        ];
+
+        for expected in expected_checks {
+            assert!(
+                report.checks.iter().any(|c| c.name == expected),
+                "Missing check: {}",
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_check_options_default() {
+        let options = CheckOptions::default();
+        assert!(!options.skip_optional);
+    }
+
+    #[test]
+    fn test_prerequisites_report_all_required_passed_with_failures() {
+        let mut report = PrerequisitesReport::new();
+        report.add(CheckResult::ok("req1", CheckLevel::Required));
+        report.add(CheckResult::failed(
+            "req2",
+            CheckLevel::Required,
+            "msg",
+            None,
+        ));
+        assert!(!report.all_required_passed());
+    }
+
+    #[test]
+    fn test_prerequisites_report_empty() {
+        let report = PrerequisitesReport::new();
+        assert!(report.all_required_passed()); // No required checks = all passed
+        assert!(!report.has_warnings()); // No warnings
+        assert!(report.required_failures().is_empty());
+        assert!(report.optional_failures().is_empty());
+    }
 }

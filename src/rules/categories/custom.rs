@@ -676,4 +676,164 @@ mod tests {
         // Should skip rule with no pattern or command
         assert!(findings.is_empty());
     }
+
+    // ===== Glob Matching Tests =====
+
+    #[test]
+    fn test_glob_match_exact() {
+        assert!(glob_match("test.rs", "test.rs"));
+        assert!(!glob_match("test.rs", "other.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star() {
+        assert!(glob_match("*.rs", "test.rs"));
+        assert!(glob_match("*.rs", "main.rs"));
+        assert!(!glob_match("*.rs", "test.js"));
+        assert!(glob_match("test.*", "test.rs"));
+        assert!(glob_match("test.*", "test.js"));
+        assert!(!glob_match("test.*", "other.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_single_star_middle() {
+        assert!(glob_match("test_*.rs", "test_unit.rs"));
+        assert!(glob_match("test_*.rs", "test_integration.rs"));
+        assert!(!glob_match("test_*.rs", "unit_test.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star() {
+        assert!(glob_match("**/*.rs", "src/main.rs"));
+        assert!(glob_match("**/*.rs", "src/lib/mod.rs"));
+        assert!(glob_match("**/*.rs", "test.rs"));
+        assert!(!glob_match("**/*.rs", "test.js"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_prefix() {
+        assert!(glob_match("src/**/*.rs", "src/main.rs"));
+        assert!(glob_match("src/**/*.rs", "src/lib/mod.rs"));
+        assert!(!glob_match("src/**/*.rs", "tests/test.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_suffix() {
+        assert!(glob_match("**/test/**", "src/test/unit.rs"));
+        assert!(glob_match("**/test/**", "test/integration.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_middle_directory() {
+        assert!(glob_match("**/lib.rs", "src/lib.rs"));
+        assert!(glob_match("**/lib.rs", "crate/src/lib.rs"));
+        assert!(glob_match("**/lib.rs", "lib.rs"));
+    }
+
+    #[test]
+    fn test_glob_match_complex_patterns() {
+        // Note: The glob_match function has limited support for complex patterns
+        // Patterns with both ** and * in different parts may not work as expected
+        // These tests reflect the actual behavior
+        assert!(glob_match("src/**/*.rs", "src/tests/test_unit.rs"));
+        assert!(glob_match("**/*.go", "pkg/handlers/api_test.go"));
+    }
+
+    #[test]
+    fn test_glob_match_double_star_only() {
+        assert!(glob_match("**", "any/path/file.rs"));
+        assert!(glob_match("**", "file.rs"));
+    }
+
+    // ===== CustomRules Edge Cases =====
+
+    #[tokio::test]
+    async fn test_custom_rule_info_severity() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("test.rs"), "NOTE: something").unwrap();
+
+        let rule = CustomRule {
+            pattern: Some("NOTE".to_string()),
+            command: None,
+            severity: "info".to_string(),
+            files: vec![],
+            message: None,
+            description: None,
+            remediation: None,
+            invert: false,
+        };
+
+        let config = create_test_config_with_rule("notes", rule);
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+        let custom_rules = CustomRules;
+
+        let findings = custom_rules.run(&scanner, &config).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Info);
+    }
+
+    #[tokio::test]
+    async fn test_custom_rule_unknown_severity_defaults_to_warning() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(temp_dir.path().join("test.rs"), "FIXME").unwrap();
+
+        let rule = CustomRule {
+            pattern: Some("FIXME".to_string()),
+            command: None,
+            severity: "unknown".to_string(), // Unknown severity
+            files: vec![],
+            message: None,
+            description: None,
+            remediation: None,
+            invert: false,
+        };
+
+        let config = create_test_config_with_rule("fixme", rule);
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+        let custom_rules = CustomRules;
+
+        let findings = custom_rules.run(&scanner, &config).await.unwrap();
+
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Warning); // Defaults to warning
+    }
+
+    #[tokio::test]
+    async fn test_custom_rule_multiple_matches_in_file() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join("test.rs"),
+            "TODO: first\nfn main() {}\n// TODO: second\n// TODO: third",
+        )
+        .unwrap();
+
+        let rule = CustomRule {
+            pattern: Some("TODO".to_string()),
+            command: None,
+            severity: "warning".to_string(),
+            files: vec![],
+            message: None,
+            description: None,
+            remediation: None,
+            invert: false,
+        };
+
+        let config = create_test_config_with_rule("no-todo", rule);
+        let scanner = Scanner::new(temp_dir.path().to_path_buf());
+        let custom_rules = CustomRules;
+
+        let findings = custom_rules.run(&scanner, &config).await.unwrap();
+
+        // Should find one finding per file, not per match
+        assert_eq!(findings.len(), 1);
+        // Description should mention line numbers
+        assert!(findings[0].description.as_ref().unwrap().contains("line"));
+    }
+
+    #[test]
+    fn test_custom_rules_name() {
+        let custom_rules = CustomRules;
+        assert_eq!(custom_rules.name(), "custom");
+    }
 }

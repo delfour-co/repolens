@@ -2650,4 +2650,280 @@ sdks:
         );
         assert_eq!(get_ecosystem_lock_file(Ecosystem::Pub), "pubspec.lock");
     }
+
+    // ===== parse_package_lock Tests =====
+
+    #[test]
+    fn test_parse_package_lock_v2_packages() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("package-lock.json"),
+            r#"{
+  "name": "test-project",
+  "version": "1.0.0",
+  "lockfileVersion": 2,
+  "packages": {
+    "": {
+      "name": "test-project",
+      "version": "1.0.0"
+    },
+    "node_modules/lodash": {
+      "version": "4.17.21"
+    },
+    "node_modules/express": {
+      "version": "4.18.2"
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_package_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "lodash" && d.version == "4.17.21"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "express" && d.version == "4.18.2"));
+    }
+
+    #[test]
+    fn test_parse_package_lock_v1_dependencies() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("package-lock.json"),
+            r#"{
+  "name": "test-project",
+  "version": "1.0.0",
+  "lockfileVersion": 1,
+  "dependencies": {
+    "lodash": {
+      "version": "4.17.21"
+    },
+    "express": {
+      "version": "4.18.2",
+      "dependencies": {
+        "body-parser": {
+          "version": "1.20.1"
+        }
+      }
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_package_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 3);
+        assert!(deps.iter().any(|d| d.name == "lodash"));
+        assert!(deps.iter().any(|d| d.name == "express"));
+        assert!(deps.iter().any(|d| d.name == "body-parser"));
+    }
+
+    #[test]
+    fn test_parse_package_lock_scoped_packages() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("package-lock.json"),
+            r#"{
+  "lockfileVersion": 2,
+  "packages": {
+    "": {},
+    "node_modules/@types/node": {
+      "version": "18.11.18"
+    },
+    "node_modules/@babel/core": {
+      "version": "7.20.12"
+    }
+  }
+}"#,
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_package_lock(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|d| d.name == "@types/node"));
+        assert!(deps.iter().any(|d| d.name == "@babel/core"));
+    }
+
+    #[test]
+    fn test_parse_package_lock_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_package_lock(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== parse_requirements_txt Tests =====
+
+    #[test]
+    fn test_parse_requirements_txt_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("requirements.txt"),
+            "requests==2.28.0\nflask>=2.0.0\ndjango~=4.1.0",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_requirements_txt(&scanner).unwrap();
+        assert_eq!(deps.len(), 3);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "requests" && d.version == "2.28.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "flask" && d.version == "2.0.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "django" && d.version == "4.1.0"));
+    }
+
+    #[test]
+    fn test_parse_requirements_txt_with_comments() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("requirements.txt"),
+            "# This is a comment\nrequests==2.28.0\n# Another comment\nflask>=2.0.0",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_requirements_txt(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_requirements_txt_with_extras() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("requirements.txt"),
+            "requests[security]==2.28.0\ncelery[redis,msgpack]>=5.2.0",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_requirements_txt(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|d| d.name == "requests"));
+        assert!(deps.iter().any(|d| d.name == "celery"));
+    }
+
+    #[test]
+    fn test_parse_requirements_txt_dev_file() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("requirements-dev.txt"),
+            "pytest==7.2.0\nmypy>=0.991",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_requirements_txt(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|d| d.name == "pytest"));
+        assert!(deps.iter().any(|d| d.name == "mypy"));
+    }
+
+    #[test]
+    fn test_parse_requirements_txt_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_requirements_txt(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_parse_requirements_txt_with_environment_markers() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("requirements.txt"),
+            "pywin32==305; sys_platform == 'win32'\nrequests==2.28.0",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_requirements_txt(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|d| d.name == "pywin32"));
+        assert!(deps.iter().any(|d| d.name == "requests"));
+    }
+
+    // ===== parse_go_sum Tests =====
+
+    #[test]
+    fn test_parse_go_sum_basic() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("go.sum"),
+            "github.com/gin-gonic/gin v1.8.2 h1:hashA\n\
+             github.com/gin-gonic/gin v1.8.2/go.mod h1:hashB\n\
+             golang.org/x/net v0.4.0 h1:hashC",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_go_sum(&scanner).unwrap();
+        // Should deduplicate the gin entries
+        assert_eq!(deps.len(), 2);
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "github.com/gin-gonic/gin" && d.version == "1.8.2"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "golang.org/x/net" && d.version == "0.4.0"));
+    }
+
+    #[test]
+    fn test_parse_go_sum_multiple_versions() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("go.sum"),
+            "github.com/pkg/errors v0.8.0 h1:hashA\n\
+             github.com/pkg/errors v0.9.1 h1:hashB",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_go_sum(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        assert!(deps.iter().any(|d| d.version == "0.8.0"));
+        assert!(deps.iter().any(|d| d.version == "0.9.1"));
+    }
+
+    #[test]
+    fn test_parse_go_sum_prerelease_versions() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("go.sum"),
+            "github.com/test/pkg v1.0.0-beta.1 h1:hashA\n\
+             github.com/test/pkg2 v2.0.0-rc1+meta h1:hashB",
+        )
+        .unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_go_sum(&scanner).unwrap();
+        assert_eq!(deps.len(), 2);
+        // Pre-release suffix should be stripped
+        assert!(deps.iter().any(|d| d.version == "1.0.0"));
+        assert!(deps.iter().any(|d| d.version == "2.0.0"));
+    }
+
+    #[test]
+    fn test_parse_go_sum_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let scanner = Scanner::new(tmp.path().to_path_buf());
+        let deps = parse_go_sum(&scanner).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    // ===== get_lock_file_command Tests =====
+
+    #[test]
+    fn test_get_lock_file_command() {
+        assert!(get_lock_file_command("Cargo.toml").contains("cargo"));
+        assert!(get_lock_file_command("package.json").contains("npm"));
+        assert!(get_lock_file_command("pyproject.toml").contains("poetry"));
+        assert!(get_lock_file_command("Pipfile").contains("pipenv"));
+        assert!(get_lock_file_command("go.mod").contains("go mod"));
+        assert!(get_lock_file_command("composer.json").contains("composer"));
+        assert!(get_lock_file_command("Gemfile").contains("bundle"));
+        assert!(get_lock_file_command("pubspec.yaml").contains("pub get"));
+        assert!(get_lock_file_command("Package.swift").contains("swift"));
+        assert!(get_lock_file_command("Podfile").contains("pod"));
+        assert!(get_lock_file_command("unknown.file").contains("package manager"));
+    }
 }

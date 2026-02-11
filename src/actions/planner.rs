@@ -778,4 +778,221 @@ mod tests {
             .find(|a| a.id() == "branch-protection");
         assert!(bp_action.is_some());
     }
+
+    #[tokio::test]
+    async fn test_create_plan_multiple_gitignore_entries() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "FILE003",
+            "files",
+            Severity::Info,
+            ".gitignore missing recommended entry: .env",
+        ));
+        results.add_finding(Finding::new(
+            "FILE003",
+            "files",
+            Severity::Info,
+            ".gitignore missing recommended entry: *.log",
+        ));
+        results.add_finding(Finding::new(
+            "FILE003",
+            "files",
+            Severity::Info,
+            ".gitignore missing recommended entry: node_modules/",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        let gitignore_action = plan
+            .actions()
+            .iter()
+            .find(|a| a.id() == "gitignore-update")
+            .expect("Should have gitignore action");
+
+        // Should collect all entries
+        match gitignore_action.operation() {
+            ActionOperation::UpdateGitignore { entries } => {
+                assert_eq!(entries.len(), 3);
+                assert!(entries.contains(&".env".to_string()));
+                assert!(entries.contains(&"*.log".to_string()));
+                assert!(entries.contains(&"node_modules/".to_string()));
+            }
+            _ => panic!("Expected UpdateGitignore operation"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_license_uses_default_year() {
+        let mut config = Config::default();
+        config.actions.license.year = None; // No year specified, should use current year
+
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC004",
+            "docs",
+            Severity::Critical,
+            "LICENSE file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        let license_action = plan
+            .actions()
+            .iter()
+            .find(|a| a.id() == "license-create")
+            .expect("Should have license action");
+
+        match license_action.operation() {
+            ActionOperation::CreateFile { variables, .. } => {
+                assert!(variables.contains_key("year"));
+                // Year should be the current year (4 digits)
+                assert_eq!(variables.get("year").unwrap().len(), 4);
+            }
+            _ => panic!("Expected CreateFile operation"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_all_docs_disabled() {
+        let mut config = Config::default();
+        config.actions.contributing = false;
+        config.actions.code_of_conduct = false;
+        config.actions.security_policy = false;
+        config.actions.license.enabled = false;
+        config.actions.gitignore = false;
+        config.actions.branch_protection.enabled = false;
+
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC004",
+            "docs",
+            Severity::Critical,
+            "LICENSE file is missing",
+        ));
+        results.add_finding(Finding::new(
+            "DOC005",
+            "docs",
+            Severity::Warning,
+            "CONTRIBUTING file is missing",
+        ));
+        results.add_finding(Finding::new(
+            "DOC006",
+            "docs",
+            Severity::Warning,
+            "CODE_OF_CONDUCT file is missing",
+        ));
+        results.add_finding(Finding::new(
+            "DOC007",
+            "docs",
+            Severity::Warning,
+            "SECURITY.md is missing",
+        ));
+        results.add_finding(Finding::new(
+            "FILE003",
+            "files",
+            Severity::Info,
+            ".gitignore missing recommended entry: .env",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        // Only github-settings should be present (always planned)
+        assert!(!plan.actions().iter().any(|a| a.id() == "license-create"));
+        assert!(!plan
+            .actions()
+            .iter()
+            .any(|a| a.id() == "contributing-create"));
+        assert!(!plan.actions().iter().any(|a| a.id() == "coc-create"));
+        assert!(!plan.actions().iter().any(|a| a.id() == "security-create"));
+        assert!(!plan.actions().iter().any(|a| a.id() == "gitignore-update"));
+        assert!(!plan.actions().iter().any(|a| a.id() == "branch-protection"));
+    }
+
+    #[test]
+    fn test_action_planner_new() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config.clone());
+        // Verify planner was created (indirect test via create_plan)
+        assert!(planner.config.actions.gitignore);
+    }
+
+    #[tokio::test]
+    async fn test_create_branch_protection_action_directly() {
+        let mut config = Config::default();
+        config.actions.branch_protection.branch = "develop".to_string();
+        config.actions.branch_protection.required_approvals = 2;
+        config.actions.branch_protection.require_status_checks = false;
+        config.actions.branch_protection.block_force_push = true;
+
+        let planner = ActionPlanner::new(config);
+        let action = planner.create_branch_protection_action();
+
+        assert_eq!(action.id(), "branch-protection");
+        assert!(action.description().contains("develop"));
+
+        match action.operation() {
+            ActionOperation::ConfigureBranchProtection { branch, settings } => {
+                assert_eq!(branch, "develop");
+                assert_eq!(settings.required_approvals, 2);
+                assert!(!settings.require_status_checks);
+                assert!(settings.block_force_push);
+            }
+            _ => panic!("Expected ConfigureBranchProtection operation"),
+        }
+    }
+
+    #[test]
+    fn test_create_github_settings_action_directly() {
+        let mut config = Config::default();
+        config.actions.github_settings.discussions = true;
+        config.actions.github_settings.vulnerability_alerts = true;
+        config.actions.github_settings.automated_security_fixes = true;
+
+        let planner = ActionPlanner::new(config);
+        let action = planner.create_github_settings_action();
+
+        assert_eq!(action.id(), "github-settings");
+
+        match action.operation() {
+            ActionOperation::UpdateGitHubSettings { settings } => {
+                assert_eq!(settings.enable_discussions, Some(true));
+                assert_eq!(settings.enable_vulnerability_alerts, Some(true));
+                assert_eq!(settings.enable_automated_security_fixes, Some(true));
+            }
+            _ => panic!("Expected UpdateGitHubSettings operation"),
+        }
+    }
+
+    #[test]
+    fn test_create_github_settings_action_filtered() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        // Only discussions needs update
+        let action = planner.create_github_settings_action_filtered(
+            true,  // needs_discussions
+            false, // needs_issues
+            false, // needs_wiki
+            false, // needs_vuln_alerts
+            false, // needs_auto_fixes
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateGitHubSettings { settings } => {
+                assert!(settings.enable_discussions.is_some());
+                assert!(settings.enable_issues.is_none());
+                assert!(settings.enable_wiki.is_none());
+                assert!(settings.enable_vulnerability_alerts.is_none());
+                assert!(settings.enable_automated_security_fixes.is_none());
+            }
+            _ => panic!("Expected UpdateGitHubSettings operation"),
+        }
+    }
 }

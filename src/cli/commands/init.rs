@@ -170,3 +170,244 @@ fn select_preset() -> Result<Preset, RepoLensError> {
         _ => Preset::OpenSource,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    fn init_git_repo(root: &Path) {
+        Command::new("git")
+            .args(["init"])
+            .current_dir(root)
+            .output()
+            .ok();
+        Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(root)
+            .output()
+            .ok();
+        Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(root)
+            .output()
+            .ok();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_creates_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        init_git_repo(&root);
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&root).unwrap();
+
+        let args = InitArgs {
+            preset: Some("opensource".to_string()),
+            non_interactive: true,
+            force: false,
+            skip_checks: true,
+        };
+
+        let result = execute(args).await;
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), exit_codes::SUCCESS);
+        assert!(root.join(".repolens.toml").exists());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_with_enterprise_preset() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        init_git_repo(&root);
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&root).unwrap();
+
+        let args = InitArgs {
+            preset: Some("enterprise".to_string()),
+            non_interactive: true,
+            force: false,
+            skip_checks: true,
+        };
+
+        let result = execute(args).await;
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), exit_codes::SUCCESS);
+
+        let config_content = fs::read_to_string(root.join(".repolens.toml")).unwrap();
+        assert!(config_content.contains("enterprise"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_with_strict_preset() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        init_git_repo(&root);
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&root).unwrap();
+
+        let args = InitArgs {
+            preset: Some("strict".to_string()),
+            non_interactive: true,
+            force: false,
+            skip_checks: true,
+        };
+
+        let result = execute(args).await;
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), exit_codes::SUCCESS);
+
+        let config_content = fs::read_to_string(root.join(".repolens.toml")).unwrap();
+        assert!(config_content.contains("strict"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_invalid_preset() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        init_git_repo(&root);
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&root).unwrap();
+
+        let args = InitArgs {
+            preset: Some("invalid_preset".to_string()),
+            non_interactive: true,
+            force: false,
+            skip_checks: true,
+        };
+
+        let result = execute(args).await;
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), exit_codes::INVALID_ARGS);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_config_exists_no_force() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        init_git_repo(&root);
+
+        // Create existing config
+        fs::write(
+            root.join(".repolens.toml"),
+            "[general]\npreset = \"opensource\"\n",
+        )
+        .unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&root).unwrap();
+
+        let args = InitArgs {
+            preset: Some("strict".to_string()),
+            non_interactive: true,
+            force: false,
+            skip_checks: true,
+        };
+
+        let result = execute(args).await;
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        // Should return ERROR because config exists and no --force
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), exit_codes::ERROR);
+
+        // Original config should be unchanged
+        let config_content = fs::read_to_string(root.join(".repolens.toml")).unwrap();
+        assert!(config_content.contains("opensource"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_config_exists_with_force() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        init_git_repo(&root);
+
+        // Create existing config
+        fs::write(
+            root.join(".repolens.toml"),
+            "[general]\npreset = \"opensource\"\n",
+        )
+        .unwrap();
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&root).unwrap();
+
+        let args = InitArgs {
+            preset: Some("strict".to_string()),
+            non_interactive: true,
+            force: true,
+            skip_checks: true,
+        };
+
+        let result = execute(args).await;
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), exit_codes::SUCCESS);
+
+        // Config should be overwritten
+        let config_content = fs::read_to_string(root.join(".repolens.toml")).unwrap();
+        assert!(config_content.contains("strict"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_default_preset_non_interactive() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().canonicalize().unwrap();
+        init_git_repo(&root);
+
+        let original_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&root).unwrap();
+
+        let args = InitArgs {
+            preset: None, // No preset specified
+            non_interactive: true,
+            force: false,
+            skip_checks: true,
+        };
+
+        let result = execute(args).await;
+        std::env::set_current_dir(&original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), exit_codes::SUCCESS);
+
+        // Should use opensource as default
+        let config_content = fs::read_to_string(root.join(".repolens.toml")).unwrap();
+        assert!(config_content.contains("opensource"));
+    }
+
+    #[test]
+    fn test_preset_from_name() {
+        assert!(Preset::from_name("opensource").is_some());
+        assert!(Preset::from_name("enterprise").is_some());
+        assert!(Preset::from_name("strict").is_some());
+        assert!(Preset::from_name("invalid").is_none());
+    }
+
+    #[test]
+    fn test_config_filename_constant() {
+        assert_eq!(CONFIG_FILENAME, ".repolens.toml");
+    }
+}
