@@ -337,6 +337,16 @@ RepoLens peut être configuré via des variables d'environnement. L'ordre de pri
 | `REPOLENS_CONFIG` | Chemin du fichier de configuration | Chemin absolu ou relatif | `/path/to/.repolens.toml` |
 | `REPOLENS_NO_CACHE` | Désactiver le cache | `true`, `false`, `1`, `0` | `true` |
 | `REPOLENS_GITHUB_TOKEN` | Token GitHub pour les appels API | Token `ghp_xxx` | `ghp_xxxxxxxxxxxx` |
+| `GITHUB_TOKEN` | Token GitHub standard (v1.2.0+) | Token `ghp_xxx` | `ghp_xxxxxxxxxxxx` |
+
+### Authentification GitHub
+
+RepoLens supporte deux méthodes d'authentification GitHub (par ordre de priorité) :
+
+1. **`GITHUB_TOKEN`** (recommandé) : Variable d'environnement standard GitHub, utilisée directement par l'API octocrab
+2. **`gh auth login`** : Authentification via GitHub CLI (fallback automatique)
+
+> **Note v1.2.0** : RepoLens utilise maintenant [octocrab](https://github.com/XAMPPRocky/octocrab) pour l'accès direct à l'API GitHub. Si `GITHUB_TOKEN` est défini, RepoLens n'a plus besoin de `gh` CLI installé.
 
 ### Exemples d'utilisation
 
@@ -350,7 +360,10 @@ export REPOLENS_VERBOSE=2
 # Désactiver le cache
 export REPOLENS_NO_CACHE=true
 
-# Spécifier un token GitHub
+# Authentification GitHub (méthode recommandée v1.2.0+)
+export GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+
+# Ou via REPOLENS_GITHUB_TOKEN (compatibilité)
 export REPOLENS_GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 
 # Exécuter avec la configuration d'environnement

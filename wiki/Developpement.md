@@ -10,12 +10,14 @@ Ce document explique comment développer, tester et contribuer au projet RepoLen
 
 ## Prérequis
 
-- **Rust** : Version stable (1.70+ recommandée)
+- **Rust** : Version stable (1.74+ recommandée)
   ```bash
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
   ```
 - **Git** : Pour la gestion de version
-- **GitHub CLI** (`gh`) : Optionnel, pour tester les fonctionnalités GitHub (installation via `gh auth login`)
+- **Authentification GitHub** (une des options suivantes) :
+  - `GITHUB_TOKEN` : Variable d'environnement avec un token GitHub (recommandé depuis v1.2.0)
+  - **GitHub CLI** (`gh`) : Installation via `gh auth login` (fallback automatique)
 
 ## Installation et Setup
 
@@ -114,6 +116,30 @@ cargo test --lib rules
 # Tests d'intégration
 cargo test --test integration_test
 ```
+
+### Benchmarks (v1.2.0+)
+
+RepoLens inclut une suite de benchmarks pour mesurer les performances :
+
+```bash
+# Lancer tous les benchmarks
+cargo bench
+
+# Benchmark spécifique
+cargo bench --bench scanner_benchmark
+cargo bench --bench rules_benchmark
+cargo bench --bench parse_benchmark
+```
+
+**Benchmarks disponibles :**
+
+| Fichier | Description |
+|---------|-------------|
+| `benches/scanner_benchmark.rs` | Performance du scan de fichiers |
+| `benches/rules_benchmark.rs` | Performance du moteur de règles |
+| `benches/parse_benchmark.rs` | Performance des parsers (small/medium/large) |
+
+Les résultats sont générés dans `target/criterion/` avec des rapports HTML.
 
 ### Linting et Formatage
 
