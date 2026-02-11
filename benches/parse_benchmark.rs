@@ -131,8 +131,16 @@ fn benchmark_parse_multiple_formats(c: &mut Criterion) {
     let root = temp_dir.path();
 
     fs::write(root.join("Cargo.lock"), generate_cargo_lock("small")).unwrap();
-    fs::write(root.join("package-lock.json"), generate_package_lock("small")).unwrap();
-    fs::write(root.join("requirements.txt"), generate_requirements_txt("small")).unwrap();
+    fs::write(
+        root.join("package-lock.json"),
+        generate_package_lock("small"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("requirements.txt"),
+        generate_requirements_txt("small"),
+    )
+    .unwrap();
 
     let scanner = Scanner::new(root.to_path_buf());
 

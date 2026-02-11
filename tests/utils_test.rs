@@ -154,17 +154,19 @@ fn test_check_is_git_repo() {
 #[test]
 fn test_check_gh_installed() {
     // This test assumes gh may or may not be installed
+    // gh CLI is now optional (GITHUB_TOKEN is the primary auth method)
     let result = check_gh_installed();
     assert_eq!(result.name, "GitHub CLI installed");
-    assert_eq!(result.level, CheckLevel::Required);
+    assert_eq!(result.level, CheckLevel::Optional);
 }
 
 #[test]
 fn test_check_gh_authenticated() {
     // This test may pass or fail depending on environment
+    // gh CLI auth is now optional (GITHUB_TOKEN is the primary auth method)
     let result = check_gh_authenticated();
     assert_eq!(result.name, "GitHub CLI authenticated");
-    assert_eq!(result.level, CheckLevel::Required);
+    assert_eq!(result.level, CheckLevel::Optional);
 }
 
 #[test]

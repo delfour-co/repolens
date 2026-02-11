@@ -5,6 +5,7 @@
 
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
+use std::env;
 use std::path::Path;
 use std::process::Command;
 
@@ -180,19 +181,34 @@ pub fn check_is_git_repo(root: &Path) -> CheckResult {
     }
 }
 
+/// Check if GITHUB_TOKEN environment variable is set
+pub fn check_github_token() -> CheckResult {
+    match env::var("GITHUB_TOKEN") {
+        Ok(token) if !token.is_empty() => {
+            CheckResult::ok("GitHub Token configured", CheckLevel::Optional)
+        }
+        _ => CheckResult::failed(
+            "GitHub Token configured",
+            CheckLevel::Optional,
+            "GITHUB_TOKEN environment variable is not set",
+            Some("Set GITHUB_TOKEN=<your-token> or use: gh auth login"),
+        ),
+    }
+}
+
 /// Check if GitHub CLI (gh) is installed
 pub fn check_gh_installed() -> CheckResult {
     let output = Command::new("gh").arg("--version").output();
 
     match output {
         Ok(o) if o.status.success() => {
-            CheckResult::ok("GitHub CLI installed", CheckLevel::Required)
+            CheckResult::ok("GitHub CLI installed", CheckLevel::Optional)
         }
         _ => CheckResult::failed(
             "GitHub CLI installed",
-            CheckLevel::Required,
+            CheckLevel::Optional,
             "GitHub CLI (gh) is not installed",
-            Some("Install gh: https://cli.github.com/"),
+            Some("Install gh: https://cli.github.com/ (optional if GITHUB_TOKEN is set)"),
         ),
     }
 }
@@ -203,13 +219,39 @@ pub fn check_gh_authenticated() -> CheckResult {
 
     match output {
         Ok(o) if o.status.success() => {
-            CheckResult::ok("GitHub CLI authenticated", CheckLevel::Required)
+            CheckResult::ok("GitHub CLI authenticated", CheckLevel::Optional)
         }
         _ => CheckResult::failed(
             "GitHub CLI authenticated",
-            CheckLevel::Required,
+            CheckLevel::Optional,
             "GitHub CLI is not authenticated",
-            Some("Run: gh auth login"),
+            Some("Run: gh auth login (optional if GITHUB_TOKEN is set)"),
+        ),
+    }
+}
+
+/// Check if any GitHub authentication method is available
+/// Returns Ok if either GITHUB_TOKEN is set or gh CLI is authenticated
+pub fn check_github_auth_available() -> CheckResult {
+    // Check GITHUB_TOKEN first (preferred)
+    if env::var("GITHUB_TOKEN")
+        .map(|t| !t.is_empty())
+        .unwrap_or(false)
+    {
+        return CheckResult::ok("GitHub authentication", CheckLevel::Required);
+    }
+
+    // Fall back to gh CLI
+    let output = Command::new("gh").args(["auth", "status"]).output();
+    match output {
+        Ok(o) if o.status.success() => {
+            CheckResult::ok("GitHub authentication", CheckLevel::Required)
+        }
+        _ => CheckResult::failed(
+            "GitHub authentication",
+            CheckLevel::Required,
+            "No GitHub authentication available",
+            Some("Set GITHUB_TOKEN environment variable or run: gh auth login"),
         ),
     }
 }
@@ -286,6 +328,13 @@ pub fn run_all_checks(root: &Path, _options: &CheckOptions) -> PrerequisitesRepo
         report.add(CheckResult::skipped("Git repository", CheckLevel::Required));
     }
 
+    // GitHub authentication (required) - either GITHUB_TOKEN or gh CLI
+    report.add(check_github_auth_available());
+
+    // GitHub Token check (optional - informational)
+    report.add(check_github_token());
+
+    // gh CLI checks (optional - fallback method)
     let gh_installed = check_gh_installed();
     let gh_ok = gh_installed.status == CheckStatus::Ok;
     report.add(gh_installed);
@@ -295,7 +344,7 @@ pub fn run_all_checks(root: &Path, _options: &CheckOptions) -> PrerequisitesRepo
     } else {
         report.add(CheckResult::skipped(
             "GitHub CLI authenticated",
-            CheckLevel::Required,
+            CheckLevel::Optional,
         ));
     }
 
@@ -428,6 +477,13 @@ pub fn display_warnings(report: &PrerequisitesReport) {
 // Centralized utility functions (used by other modules)
 // ============================================================================
 
+/// Check if GITHUB_TOKEN environment variable is set
+pub fn is_github_token_available() -> bool {
+    env::var("GITHUB_TOKEN")
+        .map(|t| !t.is_empty())
+        .unwrap_or(false)
+}
+
 /// Check if gh CLI is available and authenticated
 pub fn is_gh_available() -> bool {
     Command::new("gh")
@@ -435,6 +491,12 @@ pub fn is_gh_available() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// Check if any GitHub authentication method is available
+/// Returns true if GITHUB_TOKEN is set or gh CLI is authenticated
+pub fn is_github_auth_available() -> bool {
+    is_github_token_available() || is_gh_available()
 }
 
 /// Get repository info (owner/name) from GitHub CLI
@@ -642,7 +704,7 @@ mod tests {
     #[test]
     fn test_check_gh_installed() {
         let result = check_gh_installed();
-        assert_eq!(result.level, CheckLevel::Required);
+        assert_eq!(result.level, CheckLevel::Optional);
         // gh may or may not be installed
         assert!(result.status == CheckStatus::Ok || result.status == CheckStatus::Failed);
     }
@@ -650,7 +712,7 @@ mod tests {
     #[test]
     fn test_check_gh_authenticated() {
         let result = check_gh_authenticated();
-        assert_eq!(result.level, CheckLevel::Required);
+        assert_eq!(result.level, CheckLevel::Optional);
         // gh may or may not be authenticated
         assert!(result.status == CheckStatus::Ok || result.status == CheckStatus::Failed);
     }
@@ -690,9 +752,21 @@ mod tests {
 
     // --- Utility function tests ---
     #[test]
+    fn test_is_github_token_available() {
+        // Just verify it doesn't panic
+        let _ = is_github_token_available();
+    }
+
+    #[test]
     fn test_is_gh_available() {
         // Just verify it doesn't panic
         let _ = is_gh_available();
+    }
+
+    #[test]
+    fn test_is_github_auth_available() {
+        // Just verify it doesn't panic
+        let _ = is_github_auth_available();
     }
 
     #[test]
@@ -700,6 +774,23 @@ mod tests {
         // This will fail if not in a git repo with gh configured
         // Just verify it doesn't panic
         let _ = get_repo_info();
+    }
+
+    // --- GitHub authentication tests ---
+    #[test]
+    fn test_check_github_token() {
+        let result = check_github_token();
+        assert_eq!(result.level, CheckLevel::Optional);
+        // Token may or may not be set
+        assert!(result.status == CheckStatus::Ok || result.status == CheckStatus::Failed);
+    }
+
+    #[test]
+    fn test_check_github_auth_available() {
+        let result = check_github_auth_available();
+        assert_eq!(result.level, CheckLevel::Required);
+        // Auth may or may not be available
+        assert!(result.status == CheckStatus::Ok || result.status == CheckStatus::Failed);
     }
 
     // --- Additional tests for improved coverage ---
@@ -849,6 +940,8 @@ mod tests {
         let expected_checks = [
             "Git installed",
             "Git repository",
+            "GitHub authentication",
+            "GitHub Token configured",
             "GitHub CLI installed",
             "Remote origin configured",
             "Remote is GitHub",

@@ -1,6 +1,6 @@
 [package]
 name = "repolens"
-version = "1.1.2"
+version = "1.2.0"
 edition = "2021"
 rust-version = "1.74"
 authors = ["Kevin Delfour"]
@@ -81,7 +81,8 @@ sha2 = "0.10"
 # Home directory resolution
 dirs = "5"
 
-# GitHub API (via gh CLI wrapper initially, octocrab for direct API later)
+# GitHub API - octocrab for direct API access, gh CLI as fallback
+octocrab = "0.41"
 which = "6"
 
 # Logging
