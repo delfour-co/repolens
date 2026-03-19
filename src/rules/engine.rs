@@ -86,9 +86,9 @@ use tracing::{debug, info, span, Level};
 
 use super::categories::{
     codeowners::CodeownersRules, custom::CustomRules, dependencies::DependencyRules,
-    docker::DockerRules, docs::DocsRules, files::FilesRules, git::GitRules, licenses::LicenseRules,
-    quality::QualityRules, secrets::SecretsRules, security::SecurityRules,
-    workflows::WorkflowsRules,
+    docker::DockerRules, docs::DocsRules, files::FilesRules, git::GitRules, history::HistoryRules,
+    issues::IssuesRules, licenses::LicenseRules, metadata::MetadataRules, quality::QualityRules,
+    secrets::SecretsRules, security::SecurityRules, workflows::WorkflowsRules,
 };
 use super::results::AuditResults;
 use crate::config::Config;
@@ -305,6 +305,9 @@ impl RulesEngine {
             Box::new(LicenseRules),
             Box::new(DockerRules),
             Box::new(GitRules),
+            Box::new(HistoryRules),
+            Box::new(MetadataRules),
+            Box::new(IssuesRules),
             Box::new(CodeownersRules),
             Box::new(CustomRules),
         ];

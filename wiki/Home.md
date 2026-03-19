@@ -18,6 +18,9 @@ RepoLens est un outil en ligne de commande écrit en Rust qui permet d'auditer a
 - 🎯 **Qualité** : Standards de qualité de code avec vérification de la couverture de tests (≥80%)
 - 📦 **Dépendances** : Vérification de la sécurité des dépendances (9 écosystèmes supportés) via OSV API et GitHub Advisories
 - 🔧 **Git** : Hygiène Git (binaires volumineux, fichiers sensibles, gitattributes)
+- 📊 **Métadonnées** : Vérification des métadonnées du dépôt (description, topics, URL, social preview) *(v1.4.0)*
+- 🎫 **Issues/PRs** : Hygiène des issues et PRs (stale, labels, reviewers, drafts abandonnées) *(v1.4.0)*
+- 📜 **Historique** : Qualité de l'historique Git (conventional commits, commits géants, signatures, force push) *(v1.4.0)*
 - 🛠️ **Règles personnalisées** : Support des règles d'audit personnalisées via regex ou commandes shell
 
 ## Navigation

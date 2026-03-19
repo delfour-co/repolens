@@ -5,7 +5,7 @@
 
 # Catégories de règles
 
-RepoLens organise ses règles d'audit en douze catégories.
+RepoLens organise ses règles d'audit en quinze catégories.
 
 ## 🔒 Secrets
 
@@ -488,6 +488,69 @@ RepoLens vérifie :
 codeowners = true  # Activer la catégorie CODEOWNERS (v1.3.0)
 ```
 
+## 📊 Metadata *(v1.4.0)*
+
+**Objectif** : Vérifier que les métadonnées du dépôt sont correctement configurées pour la visibilité et le SEO.
+
+### Règles
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| META001 | Info | Description du dépôt manquante |
+| META002 | Info | Aucun topic/tag configuré |
+| META003 | Info | URL du site web non configurée |
+| META004 | Info | Social preview image manquante |
+
+### Bonnes pratiques
+
+- ✅ Ajouter une description claire au dépôt
+- ✅ Configurer des topics pertinents pour la discoverability
+- ✅ Ajouter une URL vers la documentation ou le site web
+- ✅ Uploader une image de social preview professionnelle
+
+## 🎫 Issues & PRs *(v1.4.0)*
+
+**Objectif** : Détecter les issues et PRs qui nécessitent de l'attention pour maintenir l'hygiène du projet.
+
+### Règles
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| ISSUE001 | Info | Issues stale (> 90 jours sans activité) |
+| ISSUE002 | Info | PRs stale (> 30 jours sans activité) |
+| ISSUE003 | Info | Issues sans labels |
+| PR001 | Warning | PRs sans reviewers assignés |
+| PR002 | Info | Draft PRs abandonnées (> 14 jours sans activité) |
+
+### Bonnes pratiques
+
+- ✅ Trier régulièrement les issues stale (fermer ou mettre à jour)
+- ✅ Assigner des reviewers à toutes les PRs
+- ✅ Utiliser des labels pour organiser les issues
+- ✅ Configurer un bot stale (actions/stale) pour l'automatisation
+- ✅ Convertir les draft PRs abandonnées en issues
+
+## 📜 History *(v1.4.0)*
+
+**Objectif** : Analyser la qualité de l'historique Git.
+
+### Règles
+
+| Règle | Sévérité | Description |
+|-------|----------|-------------|
+| HIST001 | Info | Commits sans message conventionnel |
+| HIST002 | Warning | Commits géants (> 50 fichiers modifiés) |
+| HIST003 | Info | Commits non signés (GPG/SSH) |
+| HIST004 | Warning | Force push détecté sur branche protégée |
+
+### Bonnes pratiques
+
+- ✅ Adopter la convention [Conventional Commits](https://www.conventionalcommits.org)
+- ✅ Découper les gros changements en commits atomiques
+- ✅ Signer les commits avec GPG ou SSH
+- ✅ Bloquer les force push sur les branches protégées
+- ✅ Utiliser commitlint pour enforcer le format
+
 ## 🛠️ Custom (Règles personnalisées)
 
 **Objectif** : Permettre aux utilisateurs de définir leurs propres règles d'audit via patterns regex ou commandes shell.
@@ -528,6 +591,9 @@ licenses = true     # Conformité des licences
 dependencies = true # Vérification des dépendances
 git = true          # Hygiène Git
 codeowners = true   # Validation CODEOWNERS (v1.3.0)
+metadata = true     # Métadonnées du dépôt (v1.4.0)
+issues = true       # Hygiène Issues/PRs (v1.4.0)
+history = true      # Qualité historique Git (v1.4.0)
 custom = true       # Règles personnalisées
 ```
 

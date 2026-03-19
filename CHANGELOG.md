@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-19
+
+### Added
+
+#### Repository Hygiene Rules
+- New **metadata** rule category for repository metadata checks
+  - `META001` (Info): Repository description is missing
+  - `META002` (Info): No topics or tags configured
+  - `META003` (Info): Website URL is not configured
+  - `META004` (Info): Social preview image is missing
+- New **issues** rule category for issue and PR hygiene
+  - `ISSUE001` (Info): Stale issues (> 90 days without activity)
+  - `ISSUE002` (Info): Stale pull requests (> 30 days without activity)
+  - `ISSUE003` (Info): Issues without labels
+  - `PR001` (Warning): Pull requests without reviewers assigned
+  - `PR002` (Info): Abandoned draft PRs (> 14 days without activity)
+- New **history** rule category for Git history quality
+  - `HIST001` (Info): Commits not following conventional commit format
+  - `HIST002` (Warning): Giant commits (> 50 files changed)
+  - `HIST003` (Info): Unsigned commits (no GPG/SSH signature)
+  - `HIST004` (Warning): Force push events detected
+
+### Fixed
+
+- Resolved 3 clippy warnings that broke the nightly build quality gate
+- Pinned Docker alpine base image to 3.22 instead of `latest` tag
+- Fixed false positive WF001 secret detection in sync-wiki workflow
+- Configured secret scan exclusions for test/pattern/CI files in `.repolens.toml`
+- Used git credential helper instead of embedding tokens in workflow URLs
+
+## [1.3.0] - 2026-03-11
+
+### Added
+
+#### Security & Governance Rules
+- GitHub security features audit (SEC011-014): vulnerability alerts, Dependabot, secret scanning, push protection
+- GitHub Actions permissions audit (SEC015-017): allowed actions, workflow permissions, fork PR policies
+- Access control audit (TEAM001-004, KEY001-002, APP001): collaborators, teams, deploy keys, installed apps
+- Infrastructure audit (HOOK001-003, ENV001-003): webhooks, environments, protection rules
+- CODEOWNERS validation (CODE001-003): presence, syntax, valid owners
+- Release practices audit (REL001-003): releases, stale releases, unsigned tags
+
 ## [1.2.0] - 2026-02-11
 
 ### Added
