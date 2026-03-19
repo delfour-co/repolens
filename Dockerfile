@@ -41,7 +41,7 @@ RUN cargo build --release && \
 # Stage 2: Runtime
 # Minimal Alpine image with only necessary runtime dependencies
 # ------------------------------------------------------------------------------
-FROM alpine:latest
+FROM alpine:3.22
 
 LABEL org.opencontainers.image.title="RepoLens"
 LABEL org.opencontainers.image.description="A CLI tool to audit GitHub repositories for best practices, security, and compliance"

@@ -95,21 +95,24 @@ jobs:
           fi
 
       - name: Configurer Git
+        env:
+          WIKI_PAT: ${{ secrets.WIKI_PAT }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # Configure credential helper to avoid embedding tokens in URLs
+          git config --global credential.helper store
+          echo "https://x-access-token:${WIKI_PAT}@github.com" > ~/.git-credentials
 
       - name: Vérifier que le WIKI est activé
         id: check-wiki
-        env:
-          WIKI_PAT: ${{ secrets.WIKI_PAT }}
         run: |
           REPO="${{ github.repository }}"
           WIKI_REPO="${REPO}.wiki"
 
           echo "🔍 Vérification du WIKI: ${WIKI_REPO}"
 
-          if git ls-remote "https://x-access-token:${WIKI_PAT}@github.com/${WIKI_REPO}.git" &>/dev/null; then
+          if git ls-remote "https://github.com/${WIKI_REPO}.git" &>/dev/null; then
             echo "wiki_exists=true" >> $GITHUB_OUTPUT
             echo "✅ WIKI trouvé et accessible"
           else
@@ -120,8 +123,6 @@ jobs:
 
       - name: Cloner ou initialiser le WIKI
         id: setup-wiki
-        env:
-          WIKI_PAT: ${{ secrets.WIKI_PAT }}
         run: |
           REPO="${{ github.repository }}"
           WIKI_REPO="${REPO}.wiki"
@@ -129,7 +130,7 @@ jobs:
           echo "WIKI_DIR=${WIKI_DIR}" >> $GITHUB_ENV
 
           echo "📥 Tentative de clonage du WIKI..."
-          if git clone "https://x-access-token:${WIKI_PAT}@github.com/${WIKI_REPO}.git" "$WIKI_DIR" 2>&1; then
+          if git clone "https://github.com/${WIKI_REPO}.git" "$WIKI_DIR" 2>&1; then
             echo "✅ WIKI cloné avec succès"
             echo "wiki_initialized=true" >> $GITHUB_OUTPUT
           else
@@ -139,7 +140,7 @@ jobs:
             git init
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git remote add origin "https://x-access-token:${WIKI_PAT}@github.com/${WIKI_REPO}.git"
+            git remote add origin "https://github.com/${WIKI_REPO}.git"
             echo "wiki_initialized=false" >> $GITHUB_OUTPUT
             echo "✅ Dépôt WIKI initialisé localement"
           fi
@@ -233,7 +234,6 @@ jobs:
 
       - name: Commit et push les changements
         env:
-          WIKI_PAT: ${{ secrets.WIKI_PAT }}
           VERSION_TYPE: ${{ steps.version.outputs.version_type }}
         run: |
           cd "$WIKI_DIR"
@@ -280,18 +280,15 @@ jobs:
 
             echo "📤 Push vers GitHub (branche: ${DEFAULT_BRANCH})..."
 
-            REPO="${{ github.repository }}"
-            WIKI_URL="https://x-access-token:${WIKI_PAT}@github.com/${REPO}.wiki.git"
-
             if [ "${{ steps.setup-wiki.outputs.wiki_initialized }}" = "false" ]; then
               echo "🚀 Premier push du WIKI..."
-              git push -u "$WIKI_URL" HEAD:${DEFAULT_BRANCH} 2>&1 || {
+              git push -u origin HEAD:${DEFAULT_BRANCH} 2>&1 || {
                 echo "❌ Échec du push"
                 echo "💡 Vérifiez que le WIKI est activé dans Settings > Features > Wikis"
                 exit 1
               }
             else
-              git push "$WIKI_URL" HEAD:${DEFAULT_BRANCH} 2>&1 || {
+              git push origin HEAD:${DEFAULT_BRANCH} 2>&1 || {
                 echo "❌ Échec du push"
                 exit 1
               }
