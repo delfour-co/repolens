@@ -1016,7 +1016,6 @@ async fn check_infrastructure() -> Result<Vec<Finding>, RepoLensError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
     use crate::scanner::Scanner;
     use std::fs;
     use tempfile::TempDir;

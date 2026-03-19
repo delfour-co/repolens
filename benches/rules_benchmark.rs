@@ -344,8 +344,10 @@ fn benchmark_different_presets(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(preset), preset, |b, &preset| {
             b.iter(|| {
                 let temp_dir = create_rules_test_repo("typical");
-                let mut config = Config::default();
-                config.preset = preset.to_string();
+                let config = Config {
+                    preset: preset.to_string(),
+                    ..Default::default()
+                };
                 let scanner = Scanner::new(temp_dir.path().to_path_buf());
                 let engine = RulesEngine::new(config);
 

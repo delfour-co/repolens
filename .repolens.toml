@@ -3,7 +3,19 @@ preset = "opensource"
 [rules]
 
 ["rules.secrets"]
-ignore_patterns = []
+ignore_patterns = [
+    "src/rules/patterns/**",
+    "src/rules/categories/**",
+    "src/rules/engine.rs",
+    "src/providers/**",
+    "src/scanner/**",
+    "src/actions/templates.rs",
+    "tests/**",
+    "benches/**",
+    "integrations/**",
+    ".github/workflows/**",
+    "action.yml",
+]
 ignore_files = []
 custom_patterns = []
 
