@@ -154,3 +154,7 @@ harness = false
 [[bench]]
 name = "rules_benchmark"
 harness = false
+
+[[bench]]
+name = "pdf_benchmark"
+harness = false
