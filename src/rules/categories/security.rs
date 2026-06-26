@@ -10,7 +10,7 @@
 use crate::error::RepoLensError;
 
 use crate::config::Config;
-use crate::providers::github::GitHubProvider;
+use crate::providers::RepoProvider;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
@@ -50,34 +50,40 @@ impl RuleCategory for SecurityRules {
             findings.extend(check_branch_protection(scanner).await?);
         }
 
-        // Check GitHub security features (requires API access)
-        if config.is_rule_enabled("security/vulnerability-alerts") {
-            findings.extend(check_vulnerability_alerts().await?);
-        }
+        // Provider-backed checks (require API access). Build the provider once;
+        // if none is available/authenticated, skip the network checks entirely
+        // (no findings) — preserving the previous graceful-skip contract.
+        let provider = crate::providers::for_config(config);
+        if let Some(provider) = provider.as_deref() {
+            // Check GitHub security features (requires API access)
+            if config.is_rule_enabled("security/vulnerability-alerts") {
+                findings.extend(check_vulnerability_alerts(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/dependabot-updates") {
-            findings.extend(check_dependabot_updates().await?);
-        }
+            if config.is_rule_enabled("security/dependabot-updates") {
+                findings.extend(check_dependabot_updates(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/secret-scanning") {
-            findings.extend(check_secret_scanning().await?);
-        }
+            if config.is_rule_enabled("security/secret-scanning") {
+                findings.extend(check_secret_scanning(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/push-protection") {
-            findings.extend(check_push_protection().await?);
-        }
+            if config.is_rule_enabled("security/push-protection") {
+                findings.extend(check_push_protection(provider).await?);
+            }
 
-        // Check Actions permissions
-        if config.is_rule_enabled("security/actions-permissions") {
-            findings.extend(check_actions_permissions().await?);
-        }
+            // Check Actions permissions
+            if config.is_rule_enabled("security/actions-permissions") {
+                findings.extend(check_actions_permissions(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/workflow-permissions") {
-            findings.extend(check_workflow_permissions().await?);
-        }
+            if config.is_rule_enabled("security/workflow-permissions") {
+                findings.extend(check_workflow_permissions(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/fork-pr-approval") {
-            findings.extend(check_fork_pr_approval().await?);
+            if config.is_rule_enabled("security/fork-pr-approval") {
+                findings.extend(check_fork_pr_approval(provider).await?);
+            }
         }
 
         Ok(findings)
@@ -299,18 +305,10 @@ async fn check_branch_protection(scanner: &Scanner) -> Result<Vec<Finding>, Repo
 /// # Returns
 ///
 /// A vector of findings if vulnerability alerts are disabled
-async fn check_vulnerability_alerts() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_vulnerability_alerts(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    // Check if GitHub provider is available
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.has_vulnerability_alerts() {
         Ok(enabled) => {
@@ -350,17 +348,10 @@ async fn check_vulnerability_alerts() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if Dependabot security updates are disabled
-async fn check_dependabot_updates() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_dependabot_updates(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.has_dependabot_security_updates() {
         Ok(enabled) => {
@@ -399,17 +390,8 @@ async fn check_dependabot_updates() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if secret scanning is disabled
-async fn check_secret_scanning() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_secret_scanning(provider: &dyn RepoProvider) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_secret_scanning() {
         Ok(settings) => {
@@ -449,17 +431,8 @@ async fn check_secret_scanning() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if push protection is disabled
-async fn check_push_protection() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_push_protection(provider: &dyn RepoProvider) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_secret_scanning() {
         Ok(settings) => {
@@ -501,17 +474,10 @@ async fn check_push_protection() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if actions are not restricted
-async fn check_actions_permissions() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_actions_permissions(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_actions_permissions() {
         Ok(perms) => {
@@ -556,17 +522,10 @@ async fn check_actions_permissions() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if workflow permissions are too permissive
-async fn check_workflow_permissions() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_workflow_permissions(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_actions_workflow_permissions() {
         Ok(perms) => {
@@ -610,17 +569,8 @@ async fn check_workflow_permissions() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if fork PR workflows don't require approval
-async fn check_fork_pr_approval() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_fork_pr_approval(provider: &dyn RepoProvider) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_fork_pr_workflows_policy() {
         Ok(requires_approval) => {
@@ -880,12 +830,15 @@ branches:
 
     // ===== GitHub Security Features Tests (SEC011-017) =====
     // Note: These tests verify the Finding structure and logic.
-    // The actual API calls are mocked or skipped when GitHub is unavailable.
+    // The actual API calls are skipped when no provider is available.
 
     #[tokio::test]
     async fn test_check_vulnerability_alerts_returns_empty_when_no_github() {
-        // When GitHub is not available, should return empty findings
-        let findings = check_vulnerability_alerts().await.unwrap();
+        // When no provider is available, the helper is never reached (mirrors run()).
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_vulnerability_alerts(provider.as_ref()).await.unwrap();
         // We can't assert on the result since it depends on GitHub availability
         // but we verify it doesn't panic
         assert!(findings.len() <= 1);
@@ -893,37 +846,55 @@ branches:
 
     #[tokio::test]
     async fn test_check_dependabot_updates_returns_empty_when_no_github() {
-        let findings = check_dependabot_updates().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_dependabot_updates(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_secret_scanning_returns_empty_when_no_github() {
-        let findings = check_secret_scanning().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_secret_scanning(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_push_protection_returns_empty_when_no_github() {
-        let findings = check_push_protection().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_push_protection(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_actions_permissions_returns_empty_when_no_github() {
-        let findings = check_actions_permissions().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_actions_permissions(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_workflow_permissions_returns_empty_when_no_github() {
-        let findings = check_workflow_permissions().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_workflow_permissions(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_fork_pr_approval_returns_empty_when_no_github() {
-        let findings = check_fork_pr_approval().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_fork_pr_approval(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 

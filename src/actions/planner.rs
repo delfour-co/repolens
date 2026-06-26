@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 
 use crate::config::Config;
-use crate::providers::github::GitHubProvider;
 use crate::rules::results::AuditResults;
 
 use super::plan::{
@@ -313,10 +312,10 @@ impl ActionPlanner {
         let bp = &self.config.actions.branch_protection;
 
         // Try to get current branch protection status
-        let provider = match GitHubProvider::new() {
-            Ok(p) => p,
-            Err(_) => {
-                // If GitHub CLI is not available, still plan the action
+        let provider = match crate::providers::for_config(&self.config) {
+            Some(p) => p,
+            None => {
+                // If no provider is available, still plan the action
                 // (it will fail gracefully during apply)
                 return Ok(Some(self.create_branch_protection_action()));
             }
@@ -421,10 +420,10 @@ impl ActionPlanner {
         let gs = &self.config.actions.github_settings;
 
         // Try to get current repository settings
-        let provider = match GitHubProvider::new() {
-            Ok(p) => p,
-            Err(_) => {
-                // If GitHub CLI is not available, still plan the action
+        let provider = match crate::providers::for_config(&self.config) {
+            Some(p) => p,
+            None => {
+                // If no provider is available, still plan the action
                 // (it will fail gracefully during apply)
                 return Ok(Some(self.create_github_settings_action()));
             }

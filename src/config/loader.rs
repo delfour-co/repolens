@@ -12,6 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{ConfigError, RepoLensError};
+use crate::providers::Provider;
 
 use super::presets::Preset;
 use super::{
@@ -63,6 +64,10 @@ pub struct Config {
     #[serde(default = "default_preset")]
     pub preset: String,
 
+    /// Repository hosting provider (github | gitlab). Defaults to GitHub.
+    #[serde(default)]
+    pub provider: Provider,
+
     /// Rule overrides
     #[serde(default)]
     pub rules: HashMap<String, RuleConfig>,
@@ -97,6 +102,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             preset: "opensource".to_string(),
+            provider: Provider::default(),
             rules: HashMap::new(),
             urls: UrlConfig::default(),
             actions: ActionsConfig::default(),
@@ -365,6 +371,26 @@ mod tests {
         assert!(config.hooks.pre_commit);
         assert!(config.hooks.pre_push);
         assert!(!config.hooks.fail_on_warnings);
+    }
+
+    #[test]
+    fn test_default_provider_is_github() {
+        let config = Config::default();
+        assert_eq!(config.provider, Provider::GitHub);
+    }
+
+    #[test]
+    fn test_provider_deserialization() {
+        // Absent -> defaults to GitHub
+        let config: Config = toml::from_str("preset = \"opensource\"\n").unwrap();
+        assert_eq!(config.provider, Provider::GitHub);
+
+        // Explicit lowercase values deserialize.
+        let config: Config = toml::from_str("provider = \"github\"\n").unwrap();
+        assert_eq!(config.provider, Provider::GitHub);
+
+        let config: Config = toml::from_str("provider = \"gitlab\"\n").unwrap();
+        assert_eq!(config.provider, Provider::GitLab);
     }
 
     #[test]
