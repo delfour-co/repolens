@@ -57,6 +57,11 @@ fn get_template(name: &str) -> Result<String, RepoLensError> {
         "ISSUE_TEMPLATE/bug_report.md" => Ok(BUG_REPORT_TEMPLATE.to_string()),
         "ISSUE_TEMPLATE/feature_request.md" => Ok(FEATURE_REQUEST_TEMPLATE.to_string()),
         "PULL_REQUEST_TEMPLATE/pull_request_template.md" => Ok(PULL_REQUEST_TEMPLATE.to_string()),
+        "README.md" => Ok(README_TEMPLATE.to_string()),
+        "CHANGELOG.md" => Ok(CHANGELOG_TEMPLATE.to_string()),
+        ".gitattributes" => Ok(GITATTRIBUTES_TEMPLATE.to_string()),
+        "CODEOWNERS" => Ok(CODEOWNERS_TEMPLATE.to_string()),
+        ".github/settings.yml" => Ok(SETTINGS_YML_TEMPLATE.to_string()),
         _ => Err(RepoLensError::Action(ActionError::UnknownTemplate {
             name: name.to_string(),
         })),
@@ -351,6 +356,97 @@ Brief description of changes.
 - [ ] Documentation updated if needed
 "#;
 
+const README_TEMPLATE: &str = r#"# Project Title
+
+## Description
+
+A short description of what this project does and who it is for.
+
+## Installation
+
+```bash
+# Add installation instructions here
+```
+
+## Usage
+
+```bash
+# Add usage examples here
+```
+
+## License
+
+State the license for this project (for example, MIT or Apache-2.0).
+"#;
+
+const CHANGELOG_TEMPLATE: &str = r#"# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+"#;
+
+const GITATTRIBUTES_TEMPLATE: &str = r#"# Normalize line endings: treat files as text and use LF in the repository.
+* text=auto eol=lf
+
+# Common binary file types (never normalize, never diff).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.woff binary
+*.woff2 binary
+"#;
+
+const CODEOWNERS_TEMPLATE: &str = r#"# CODEOWNERS
+#
+# This file defines who is automatically requested for review when someone
+# opens a pull request that changes matching files. Replace the placeholders
+# below with real GitHub usernames or @org/team handles.
+#
+# Syntax: <pattern> <owner> [<owner> ...]
+
+# Default owners for everything in the repository.
+* @owner
+
+# Example: a specific directory owned by a team.
+# /src/frontend/ @org/frontend-team
+
+# Example: documentation owned by a docs team.
+# /docs/ @org/docs-team
+"#;
+
+const SETTINGS_YML_TEMPLATE: &str = r#"# Repository settings managed as code via the probot/settings app.
+# See https://probot.github.io/apps/settings/ for the full reference.
+#
+# Uncomment and adjust the branch protection block below to enforce reviews
+# and status checks on your default branch.
+
+# branches:
+#   - name: main
+#     protection:
+#       required_pull_request_reviews:
+#         required_approving_review_count: 1
+#       required_status_checks:
+#         strict: true
+#         contexts: []
+#       enforce_admins: true
+#       restrictions: null
+"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -416,6 +512,45 @@ mod tests {
         let template = get_template("PULL_REQUEST_TEMPLATE/pull_request_template.md").unwrap();
         assert!(template.contains("Description"));
         assert!(template.contains("Checklist"));
+    }
+
+    #[test]
+    fn test_get_template_readme() {
+        let template = get_template("README.md").unwrap();
+        assert!(template.contains("# Project Title"));
+        assert!(template.contains("## Description"));
+        assert!(template.contains("## Installation"));
+        assert!(template.contains("## Usage"));
+        assert!(template.contains("## License"));
+    }
+
+    #[test]
+    fn test_get_template_changelog() {
+        let template = get_template("CHANGELOG.md").unwrap();
+        assert!(template.contains("# Changelog"));
+        assert!(template.contains("Keep a Changelog"));
+        assert!(template.contains("## [Unreleased]"));
+    }
+
+    #[test]
+    fn test_get_template_gitattributes() {
+        let template = get_template(".gitattributes").unwrap();
+        assert!(template.contains("text=auto eol=lf"));
+        assert!(template.contains("*.png binary"));
+    }
+
+    #[test]
+    fn test_get_template_codeowners() {
+        let template = get_template("CODEOWNERS").unwrap();
+        assert!(template.contains("CODEOWNERS"));
+        assert!(template.contains("* @owner"));
+    }
+
+    #[test]
+    fn test_get_template_settings_yml() {
+        let template = get_template(".github/settings.yml").unwrap();
+        assert!(template.contains("probot/settings"));
+        assert!(template.contains("required_pull_request_reviews"));
     }
 
     #[test]
