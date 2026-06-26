@@ -222,7 +222,7 @@ fn preview_action_diff(action: &Action) {
 
             display_diff(&old_content, &new_content, path);
         }
-        ActionOperation::ConfigureBranchProtection { branch, settings } => {
+        ActionOperation::ConfigureProtectedBranch { branch, settings } => {
             let old_content = "(Current branch protection settings)".to_string();
             let new_content = format!(
                 "Branch: {}\n\
@@ -251,7 +251,7 @@ fn preview_action_diff(action: &Action) {
                 &format!("Branch protection: {}", branch),
             );
         }
-        ActionOperation::UpdateGitHubSettings { settings } => {
+        ActionOperation::UpdateRepoSettings { settings } => {
             let old_content = "(Current repository settings)".to_string();
             let mut changes = Vec::new();
             if let Some(v) = settings.enable_discussions {
@@ -275,7 +275,31 @@ fn preview_action_diff(action: &Action) {
                 changes.join("\n")
             };
 
-            display_diff(&old_content, &new_content, "GitHub repository settings");
+            display_diff(&old_content, &new_content, "Repository settings");
+        }
+        ActionOperation::UpdateRepoMetadata {
+            description,
+            topics,
+            homepage,
+        } => {
+            let old_content = "(Current repository metadata)".to_string();
+            let mut changes = Vec::new();
+            if let Some(desc) = description {
+                changes.push(format!("Description: {}", desc));
+            }
+            if !topics.is_empty() {
+                changes.push(format!("Topics: {}", topics.join(", ")));
+            }
+            if let Some(home) = homepage {
+                changes.push(format!("Homepage: {}", home));
+            }
+            let new_content = if changes.is_empty() {
+                "(No changes)".to_string()
+            } else {
+                changes.join("\n")
+            };
+
+            display_diff(&old_content, &new_content, "Repository metadata");
         }
     }
 }
@@ -956,7 +980,7 @@ mod tests {
             "test-branch",
             "security",
             "Configure branch protection",
-            ActionOperation::ConfigureBranchProtection {
+            ActionOperation::ConfigureProtectedBranch {
                 branch: "main".to_string(),
                 settings: BranchProtectionSettings::default(),
             },
@@ -971,7 +995,7 @@ mod tests {
             "test-github",
             "github",
             "Update GitHub settings",
-            ActionOperation::UpdateGitHubSettings {
+            ActionOperation::UpdateRepoSettings {
                 settings: GitHubRepoSettings {
                     enable_discussions: Some(true),
                     enable_issues: Some(true),
@@ -979,6 +1003,22 @@ mod tests {
                     enable_vulnerability_alerts: Some(true),
                     enable_automated_security_fixes: Some(true),
                 },
+            },
+        );
+
+        preview_action_diff(&action);
+    }
+
+    #[test]
+    fn test_preview_action_diff_repo_metadata() {
+        let action = Action::new(
+            "test-metadata",
+            "metadata",
+            "Update repository metadata",
+            ActionOperation::UpdateRepoMetadata {
+                description: Some("A test repo".to_string()),
+                topics: vec!["rust".to_string(), "cli".to_string()],
+                homepage: Some("https://example.com".to_string()),
             },
         );
 

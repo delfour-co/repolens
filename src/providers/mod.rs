@@ -127,6 +127,29 @@ pub trait RepoProvider: Send + Sync {
 
     /// Whether fork pull-request workflows require approval.
     fn get_fork_pr_workflows_policy(&self) -> Result<bool, RepoLensError>;
+
+    // --- Write side (drives `apply`) ---
+
+    /// Apply protected-branch settings to `branch`.
+    fn set_protected_branch(
+        &self,
+        branch: &str,
+        settings: &crate::actions::plan::BranchProtectionSettings,
+    ) -> Result<(), RepoLensError>;
+
+    /// Apply repository settings (issues / discussions / wiki / security toggles).
+    fn set_repo_settings(
+        &self,
+        settings: &crate::actions::plan::GitHubRepoSettings,
+    ) -> Result<(), RepoLensError>;
+
+    /// Apply repository metadata (description, topics, homepage).
+    fn set_repo_metadata(
+        &self,
+        description: Option<&str>,
+        topics: &[String],
+        homepage: Option<&str>,
+    ) -> Result<(), RepoLensError>;
 }
 
 /// Construct the [`RepoProvider`] for the current configuration.

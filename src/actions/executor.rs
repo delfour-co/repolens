@@ -10,7 +10,7 @@ use tracing::{debug, info};
 use crate::config::Config;
 
 use super::plan::{Action, ActionOperation, ActionPlan};
-use super::{branch_protection, github_settings, gitignore, templates};
+use super::{branch_protection, github_settings, gitignore, metadata, templates};
 
 /// Result of executing a single action
 ///
@@ -32,8 +32,8 @@ pub struct ActionResult {
 /// sequentially. It handles different types of operations like file creation,
 /// .gitignore updates, and GitHub API calls.
 pub struct ActionExecutor {
-    /// Configuration (currently unused but kept for future extensibility)
-    _config: Config,
+    /// Configuration, used to build the provider for write actions.
+    config: Config,
 }
 
 impl ActionExecutor {
@@ -47,7 +47,7 @@ impl ActionExecutor {
     ///
     /// A new `ActionExecutor` instance
     pub fn new(config: Config) -> Self {
-        Self { _config: config }
+        Self { config }
     }
 
     /// Execute all actions in the plan
@@ -119,14 +119,29 @@ impl ActionExecutor {
                 templates::create_file_from_template(path, template, variables)?;
             }
 
-            ActionOperation::ConfigureBranchProtection { branch, settings } => {
+            ActionOperation::ConfigureProtectedBranch { branch, settings } => {
                 debug!("Configuring branch protection for {}", branch);
-                branch_protection::configure(branch, settings).await?;
+                branch_protection::configure(&self.config, branch, settings).await?;
             }
 
-            ActionOperation::UpdateGitHubSettings { settings } => {
-                debug!("Updating GitHub repository settings");
-                github_settings::update(settings).await?;
+            ActionOperation::UpdateRepoSettings { settings } => {
+                debug!("Updating repository settings");
+                github_settings::update(&self.config, settings).await?;
+            }
+
+            ActionOperation::UpdateRepoMetadata {
+                description,
+                topics,
+                homepage,
+            } => {
+                debug!("Updating repository metadata");
+                metadata::update(
+                    &self.config,
+                    description.as_deref(),
+                    topics,
+                    homepage.as_deref(),
+                )
+                .await?;
             }
         }
 
@@ -277,6 +292,32 @@ mod tests {
 
         // Restore directory (ignore errors if directory no longer exists)
         let _ = std::env::set_current_dir(&original_dir);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_dispatches_update_repo_metadata() {
+        // Dispatch the metadata operation through the executor. Without a
+        // configured/authenticated provider it surfaces as a failed result
+        // (never a panic); with one it would route to set_repo_metadata.
+        let config = Config::default();
+        let executor = ActionExecutor::new(config);
+
+        let mut plan = ActionPlan::new();
+        plan.add(Action::new(
+            "repo-metadata",
+            "metadata",
+            "Update repository metadata",
+            ActionOperation::UpdateRepoMetadata {
+                description: Some("desc".to_string()),
+                topics: vec!["rust".to_string()],
+                homepage: None,
+            },
+        ));
+
+        let results = executor.execute(&plan).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].action_name, "Update repository metadata");
     }
 
     #[tokio::test]

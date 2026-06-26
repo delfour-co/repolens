@@ -782,6 +782,318 @@ impl RepoProvider for GitHubProvider {
     fn get_fork_pr_workflows_policy(&self) -> Result<bool, RepoLensError> {
         GitHubProvider::get_fork_pr_workflows_policy(self)
     }
+
+    /// Apply protected-branch settings via the GitHub branch-protection API.
+    ///
+    /// Behaviour-identical to the former `actions::branch_protection::configure`
+    /// (same `gh api ... PUT` payload + optional required-signatures call).
+    fn set_protected_branch(
+        &self,
+        branch: &str,
+        settings: &crate::actions::plan::BranchProtectionSettings,
+    ) -> Result<(), RepoLensError> {
+        use serde_json::json;
+        use std::io::Write as _;
+        use std::process::Stdio;
+
+        let repo = self.full_name();
+
+        // Build the JSON payload according to GitHub API specification
+        let mut payload = json!({
+            "enforce_admins": settings.enforce_admins,
+            "required_linear_history": settings.require_linear_history,
+            "allow_force_pushes": !settings.block_force_push,
+            "allow_deletions": !settings.block_deletions,
+            "required_conversation_resolution": settings.require_conversation_resolution,
+            "restrictions": null,
+        });
+
+        if settings.require_status_checks {
+            payload["required_status_checks"] = json!({
+                "strict": true,
+                "contexts": []
+            });
+        } else {
+            payload["required_status_checks"] = json!(null);
+        }
+
+        if settings.required_approvals > 0 {
+            payload["required_pull_request_reviews"] = json!({
+                "required_approving_review_count": settings.required_approvals,
+                "dismiss_stale_reviews": true
+            });
+        } else {
+            payload["required_pull_request_reviews"] = json!(null);
+        }
+
+        let mut child = Command::new("gh")
+            .args([
+                "api",
+                &format!("repos/{}/branches/{}/protection", repo, branch),
+                "--method",
+                "PUT",
+                "--input",
+                "-",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api repos/{}/branches/{}/protection", repo, branch),
+                })
+            })?;
+
+        let json_str = serde_json::to_string(&payload).map_err(|e| {
+            RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                message: format!("Failed to serialize branch protection payload: {}", e),
+            })
+        })?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(json_str.as_bytes()).map_err(|e| {
+                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to write to gh CLI stdin: {}", e),
+                })
+            })?;
+        }
+
+        let output = child.wait_with_output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("gh api repos/{}/branches/{}/protection", repo, branch),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            if stderr.contains("Resource not accessible") {
+                return Err(RepoLensError::Action(
+                    crate::error::ActionError::ExecutionFailed {
+                        message: "Cannot configure branch protection. This may require admin \
+                            access or the repository may not support this feature (e.g., free \
+                            private repos)."
+                            .to_string(),
+                    },
+                ));
+            }
+
+            return Err(RepoLensError::Action(
+                crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to configure branch protection: {}", stderr),
+                },
+            ));
+        }
+
+        // Configure signed commits if required (separate API call)
+        if settings.require_signed_commits {
+            let output = Command::new("gh")
+                .args([
+                    "api",
+                    &format!(
+                        "repos/{}/branches/{}/protection/required_signatures",
+                        repo, branch
+                    ),
+                    "--method",
+                    "POST",
+                ])
+                .output()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!(
+                            "gh api repos/{}/branches/{}/protection/required_signatures",
+                            repo, branch
+                        ),
+                    })
+                })?;
+
+            if !output.status.success() {
+                tracing::warn!(
+                    "Could not enable signed commits requirement (may require GitHub Pro)"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply repository settings via `gh repo edit` and the security-toggle APIs.
+    ///
+    /// Behaviour-identical to the former `actions::github_settings::update`.
+    fn set_repo_settings(
+        &self,
+        settings: &crate::actions::plan::GitHubRepoSettings,
+    ) -> Result<(), RepoLensError> {
+        let repo = self.full_name();
+
+        let mut args = vec!["repo", "edit"];
+
+        if let Some(true) = settings.enable_discussions {
+            args.push("--enable-discussions");
+        }
+
+        if let Some(false) = settings.enable_wiki {
+            args.push("--enable-wiki=false");
+        }
+
+        if args.len() > 2 {
+            let output = Command::new("gh").args(&args).output().map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh {}", args.join(" ")),
+                })
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!("Could not update some repository settings: {}", stderr);
+            }
+        }
+
+        if let Some(true) = settings.enable_vulnerability_alerts {
+            let output = Command::new("gh")
+                .args([
+                    "api",
+                    &format!("repos/{}/vulnerability-alerts", repo),
+                    "--method",
+                    "PUT",
+                ])
+                .output()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!("gh api repos/{}/vulnerability-alerts", repo),
+                    })
+                })?;
+
+            if !output.status.success() {
+                tracing::warn!(
+                    "Could not enable vulnerability alerts (may require specific permissions)"
+                );
+            }
+        }
+
+        if let Some(true) = settings.enable_automated_security_fixes {
+            let output = Command::new("gh")
+                .args([
+                    "api",
+                    &format!("repos/{}/automated-security-fixes", repo),
+                    "--method",
+                    "PUT",
+                ])
+                .output()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!("gh api repos/{}/automated-security-fixes", repo),
+                    })
+                })?;
+
+            if !output.status.success() {
+                tracing::warn!(
+                    "Could not enable automated security fixes (may require specific permissions)"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply repository metadata: description / homepage via `gh repo edit`,
+    /// topics via the topics API (`PUT repos/:owner/:repo/topics`).
+    fn set_repo_metadata(
+        &self,
+        description: Option<&str>,
+        topics: &[String],
+        homepage: Option<&str>,
+    ) -> Result<(), RepoLensError> {
+        let repo = self.full_name();
+
+        // description / homepage via `gh repo edit`
+        let mut args: Vec<String> = vec!["repo".to_string(), "edit".to_string(), repo.clone()];
+        if let Some(desc) = description {
+            args.push("--description".to_string());
+            args.push(desc.to_string());
+        }
+        if let Some(home) = homepage {
+            args.push("--homepage".to_string());
+            args.push(home.to_string());
+        }
+
+        if args.len() > 3 {
+            let output = Command::new("gh").args(&args).output().map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh {}", args.join(" ")),
+                })
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(RepoLensError::Action(
+                    crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to update repository metadata: {}", stderr),
+                    },
+                ));
+            }
+        }
+
+        // topics via the topics API
+        if !topics.is_empty() {
+            let payload = serde_json::json!({ "names": topics });
+            let json_str = serde_json::to_string(&payload).map_err(|e| {
+                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to serialize topics payload: {}", e),
+                })
+            })?;
+
+            use std::io::Write as _;
+            use std::process::Stdio;
+
+            let mut child = Command::new("gh")
+                .args([
+                    "api",
+                    &format!("repos/{}/topics", repo),
+                    "--method",
+                    "PUT",
+                    "-H",
+                    "Accept: application/vnd.github.mercy-preview+json",
+                    "--input",
+                    "-",
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!("gh api repos/{}/topics", repo),
+                    })
+                })?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(json_str.as_bytes()).map_err(|e| {
+                    RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to write to gh CLI stdin: {}", e),
+                    })
+                })?;
+            }
+
+            let output = child.wait_with_output().map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api repos/{}/topics", repo),
+                })
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(RepoLensError::Action(
+                    crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to update repository topics: {}", stderr),
+                    },
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// Secret scanning settings from GitHub API

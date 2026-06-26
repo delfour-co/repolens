@@ -200,6 +200,10 @@ pub struct ActionsConfig {
     /// GitHub repository settings configuration.
     #[serde(default)]
     pub github_settings: GitHubSettingsConfig,
+
+    /// Repository metadata configuration (description, topics, homepage).
+    #[serde(default)]
+    pub metadata: MetadataConfig,
 }
 
 impl Default for ActionsConfig {
@@ -212,6 +216,7 @@ impl Default for ActionsConfig {
             security_policy: true,
             branch_protection: BranchProtectionConfig::default(),
             github_settings: GitHubSettingsConfig::default(),
+            metadata: MetadataConfig::default(),
         }
     }
 }
@@ -387,6 +392,53 @@ impl Default for GitHubSettingsConfig {
             wiki: false,
             vulnerability_alerts: true,
             automated_security_fixes: true,
+        }
+    }
+}
+
+/// Configuration for repository metadata (description, topics, homepage).
+///
+/// These values are applied via the provider when running `repolens apply`,
+/// but only when the audit reports a missing-metadata finding
+/// (META001/002/003) and at least one value is configured here. Metadata
+/// cannot be auto-generated from nothing, so — like branch protection and
+/// repository settings — this action only applies values the user configured.
+///
+/// # Examples
+///
+/// ```toml
+/// [actions.metadata]
+/// enabled = true
+/// description = "A short repository description"
+/// topics = ["rust", "cli"]
+/// homepage = "https://example.com"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataConfig {
+    /// Whether to apply repository metadata when missing.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Repository description to apply, if set.
+    #[serde(default)]
+    pub description: Option<String>,
+
+    /// Topics / tags to apply, if any.
+    #[serde(default)]
+    pub topics: Vec<String>,
+
+    /// Homepage / website URL to apply, if set.
+    #[serde(default)]
+    pub homepage: Option<String>,
+}
+
+impl Default for MetadataConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            description: None,
+            topics: Vec::new(),
+            homepage: None,
         }
     }
 }

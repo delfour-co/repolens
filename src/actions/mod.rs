@@ -65,6 +65,7 @@ pub mod executor;
 pub mod git;
 mod github_settings;
 mod gitignore;
+mod metadata;
 pub mod plan;
 pub mod planner;
 mod templates;
