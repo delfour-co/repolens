@@ -94,18 +94,32 @@ dead access-posture methods left annotated in Plan A.
 
 ## B2 — GitLab implementation + provider selection
 
+**Transport decision (resolved):** `GitLabProvider` uses the **`glab` CLI** via `std::process`
+(mirroring the GitHub provider's `gh`-CLI-primary mechanism), NOT a blocking HTTP client. Rationale:
+keeps the trait methods synchronous with no tokio block-in-async hazard (a blocking `reqwest` call
+inside the async rule runtime would panic), adds zero HTTP dependency (`reqwest` was removed in
+Plan A), and `glab` already honours `GITLAB_TOKEN`. **Known gap (documented):** unlike GitHub's
+token-without-CLI mode, GitLab requires `glab` installed even when a token is set; a token-only REST
+path (sync client such as `ureq`) can be added later. Graceful-skip when `glab` is absent, exactly
+like the `gh` path.
+
 **Files:** new `src/providers/gitlab.rs`; modify `providers/mod.rs` (factory branch), CLI args, config
 auto-detect, tests.
 
-- [ ] **Step 1: `GitLabProvider`** implementing `RepoProvider` via `glab` CLI + `GITLAB_TOKEN`
-  (mirror the GitHub dual-auth + graceful-skip contract). Map concepts per the spec table
-  (protected branches + approval rules, project description/topics, secret detection, CI settings).
-  GitHub-only capabilities → `Err(Unsupported)`.
-- [ ] **Step 2: `for_config` branch** on `config.provider`; auto-detect default from the `origin`
-  host (`github.com` → GitHub, `gitlab.com`/self-managed → GitLab).
+- [ ] **Step 1: `GitLabProvider`** implementing `RepoProvider` via `glab api` / `glab` subcommands
+  (mirror the GitHub graceful-skip contract). Map concepts per the spec table (protected branches +
+  approval rules, project description/topics, secret detection, CI settings). GitHub-only
+  capabilities (`has_dependabot_security_updates`, `has_automated_security_fixes`) return the same
+  "skip" signal the callers already handle — for B2, return `Ok(false)`/`Ok(None)` or an `Err` that
+  the existing match treats as skip; do NOT introduce `ProviderError::Unsupported` yet unless it is
+  needed (kept minimal, consistent with B1's no-new-error-type choice).
+- [ ] **Step 2: `for_config` branch** on `config.provider`; build `GitLabProvider` when
+  `Provider::GitLab` and `glab` is available, else `None`. Auto-detect the default from the `origin`
+  host (`github.com` → GitHub, `gitlab.*`/self-managed → GitLab) when config doesn't pin one.
 - [ ] **Step 3: `--provider {github|gitlab}`** flag on the relevant subcommands, overriding config.
-- [ ] **Step 4: tests** — `wiremock` for both providers' HTTP paths; token mode and CLI-fallback
-  mode; the `Unsupported`-skip path. No network in CI.
+- [ ] **Step 4: tests** — parse-from-fixture tests for the `glab` JSON shapes (mirroring how the
+  GitHub provider is unit-tested), plus the availability/skip path and `for_config` selection. No
+  network or `glab` process in CI.
 - [ ] **Verify** green; `plan --provider gitlab` and `--provider github` both produce an `ActionPlan`.
 
 ## B3 — Provider-agnostic action catalog (close the report-only gap)
