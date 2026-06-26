@@ -63,7 +63,7 @@ across the whole surface.
 | `git` | GIT002/003 (`.gitattributes`, sensitive→`.gitignore`) | L | Trivial |
 | `codeowners` | CODE001 (create CODEOWNERS) | L | Trivial |
 | `metadata` | META001/002/003 (description, topics, homepage) | P | **Needs abstraction** |
-| `settings` (was the auto-fixable half of `security`) | branch protection; SEC011-017 (vuln alerts, secret-scanning enable, Actions perms) | P | **Needs abstraction** |
+| `security` (trimmed to the auto-fixable settings half) | branch protection; SEC011-017 (vuln alerts, secret-scanning enable, Actions perms); SECURITY003 | P / L | **Needs abstraction** (P checks) |
 
 Detection-only tails retained inside kept categories (minority, no action): DOC002/003/009 (README/
 CHANGELOG content quality), CODE002 (CODEOWNERS syntax). These stay because their parent category is
@@ -92,8 +92,15 @@ fix-dominant.
 
 1. **Scoping principle = strict, fix-first.** (See above.)
 2. **Security posture "access" checks (TEAM/KEY/APP/HOOK/ENV): cut.** Keep only the API-settable
-   settings (SEC011-017) under the new `settings` category. Revoking a collaborator / app / deploy
+   settings (SEC011-017) within the `security` category. Revoking a collaborator / app / deploy
    key is destructive and judgment-heavy — out of "auto-configure."
+
+   **Naming decision (resolved):** the trimmed category keeps the name **`security`**, not `settings`.
+   After trimming, it contains exactly repo security settings (branch protection, vuln alerts, secret
+   scanning, Actions permissions), for which `security` is clearer than the vaguer `settings`; the
+   rename also has zero behavioural value and would break the `security/*` rule namespace in existing
+   `.repolens.toml` files. The provider-config *action/method* names stay provider-agnostic
+   (`UpdateRepoSettings`, `set_repo_settings`) — that is independent of the category name.
 3. **CI / `workflows` (WF002-007): cut now.** Rewriting a user's `.github/workflows` YAML is risky
    and overlaps actionlint / zizmor. Re-introducible later as a focused, opt-in "CI hardening"
    action set — its own mini-design.
@@ -254,14 +261,14 @@ Legend: **L** local-file action · **P** provider-config action · **✗** not a
 | META002 | metadata | topics missing | P | keep (action new) |
 | META003 | metadata | homepage missing | P | keep (action new) |
 | META004 | metadata | social image missing | ✗ | **drop** |
-| SEC007 | security→settings | .github/settings.yml missing | L | keep (action) |
-| SEC008-010 | security→settings | branch rules absent in settings.yml | P | keep (action) |
-| SEC011 | settings | vuln alerts off | P | keep (action ✅) |
-| SEC012 | settings | dependabot updates off | P | keep (GitHub-only; skip on GitLab) |
-| SEC013/014 | settings | secret scanning / push protection off | P | keep (action) |
-| SEC015 | settings | Actions allow-all | P | keep (action) |
-| SEC016 | settings | default workflow perms = write | P | keep (action) |
-| SEC017 | settings | fork PR no approval | P | keep (action) |
+| SEC007 | security | .github/settings.yml missing | L | keep (action) |
+| SEC008-010 | security | branch rules absent in settings.yml | P | keep (action) |
+| SEC011 | security | vuln alerts off | P | keep (action ✅) |
+| SEC012 | security | dependabot updates off | P | keep (GitHub-only; skip on GitLab) |
+| SEC013/014 | security | secret scanning / push protection off | P | keep (action) |
+| SEC015 | security | Actions allow-all | P | keep (action) |
+| SEC016 | security | default workflow perms = write | P | keep (action) |
+| SEC017 | security | fork PR no approval | P | keep (action) |
 | SECURITY002 | security | lock file missing | ✗ | **drop** (can't write deterministically) |
 | SECURITY003 | security | runtime version file missing | L | keep (action) |
 | TEAM001-003, KEY001-002, APP001, HOOK001-003, ENV001-003 | security (access) | access/posture audit | ✗ | **drop** (Decision 2) |
