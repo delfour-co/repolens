@@ -35,6 +35,7 @@
 //! ```
 
 pub mod github;
+pub mod gitlab;
 
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +47,7 @@ use crate::error::RepoLensError;
 pub use github::{
     ActionsPermissions, BranchProtection, GitHubProvider, RepoInfo, SecretScanningSettings,
 };
+pub use gitlab::GitLabProvider;
 
 /// Repository hosting provider.
 ///
@@ -132,7 +134,17 @@ pub trait RepoProvider: Send + Sync {
 /// Returns `None` when no provider is available/authenticated, preserving the
 /// previous graceful-skip behaviour (callers emit no findings in that case).
 pub fn for_config(config: &crate::config::Config) -> Option<Box<dyn RepoProvider>> {
-    match config.provider {
+    // Resolve the effective provider. `config.provider` (set from `.repolens.toml`
+    // or the `--provider` CLI flag) takes precedence. When it is still the default
+    // `GitHub`, fall back to auto-detecting from the `origin` remote host so a
+    // GitLab remote selects GitLab without any explicit configuration.
+    let provider = if config.provider == Provider::GitHub {
+        detect_provider_from_remote().unwrap_or(Provider::GitHub)
+    } else {
+        config.provider
+    };
+
+    match provider {
         Provider::GitHub => {
             if !GitHubProvider::is_available() {
                 return None;
@@ -142,8 +154,66 @@ pub fn for_config(config: &crate::config::Config) -> Option<Box<dyn RepoProvider
                 .map(|p| Box::new(p) as Box<dyn RepoProvider>)
         }
         Provider::GitLab => {
-            tracing::debug!("gitlab provider not yet implemented");
-            None
+            if !GitLabProvider::is_available() {
+                return None;
+            }
+            GitLabProvider::new()
+                .ok()
+                .map(|p| Box::new(p) as Box<dyn RepoProvider>)
         }
+    }
+}
+
+/// Auto-detect the hosting provider from the git `origin` remote host.
+///
+/// `github.com` → [`Provider::GitHub`]; `gitlab.com` or any host containing
+/// `gitlab` (self-managed) → [`Provider::GitLab`]. Returns `None` when there is
+/// no remote or the host is unrecognised, so the caller can fall back to the
+/// default.
+pub fn detect_provider_from_remote() -> Option<Provider> {
+    crate::utils::prerequisites::detect_remote_host()
+        .and_then(|host| provider_for_host(&host))
+}
+
+/// Map a remote host string to a [`Provider`].
+fn provider_for_host(host: &str) -> Option<Provider> {
+    let host = host.to_ascii_lowercase();
+    if host.contains("github.com") {
+        Some(Provider::GitHub)
+    } else if host.contains("gitlab") {
+        Some(Provider::GitLab)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provider_for_host_github() {
+        assert_eq!(provider_for_host("github.com"), Some(Provider::GitHub));
+        assert_eq!(provider_for_host("GitHub.com"), Some(Provider::GitHub));
+    }
+
+    #[test]
+    fn test_provider_for_host_gitlab() {
+        assert_eq!(provider_for_host("gitlab.com"), Some(Provider::GitLab));
+        assert_eq!(
+            provider_for_host("gitlab.internal.corp"),
+            Some(Provider::GitLab)
+        );
+    }
+
+    #[test]
+    fn test_provider_for_host_unknown() {
+        assert_eq!(provider_for_host("bitbucket.org"), None);
+        assert_eq!(provider_for_host("example.com"), None);
+    }
+
+    #[test]
+    fn test_detect_provider_from_remote_does_not_panic() {
+        let _ = detect_provider_from_remote();
     }
 }

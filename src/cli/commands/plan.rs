@@ -40,6 +40,11 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
     // Load configuration
     let mut config = Config::load_or_default()?;
 
+    // CLI --provider overrides config / auto-detection.
+    if let Some(provider) = args.provider {
+        config.provider = provider.into();
+    }
+
     // Handle cache directory override from CLI
     if let Some(ref cache_dir) = args.cache_dir {
         config.cache.directory = cache_dir.display().to_string();

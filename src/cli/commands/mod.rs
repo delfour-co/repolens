@@ -13,6 +13,27 @@ pub mod schema;
 use clap::Args;
 use std::path::PathBuf;
 
+use crate::providers::Provider;
+
+/// Repository hosting provider selectable via `--provider`.
+///
+/// When supplied, overrides `config.provider` (and remote auto-detection) for
+/// the run. Absence falls back to config / auto-detection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum ProviderArg {
+    Github,
+    Gitlab,
+}
+
+impl From<ProviderArg> for Provider {
+    fn from(arg: ProviderArg) -> Self {
+        match arg {
+            ProviderArg::Github => Provider::GitHub,
+            ProviderArg::Gitlab => Provider::GitLab,
+        }
+    }
+}
+
 /// Arguments for the init command
 #[derive(Args, Debug)]
 pub struct InitArgs {
@@ -77,6 +98,10 @@ pub struct PlanArgs {
     #[arg(long, value_name = "DIR")]
     pub cache_dir: Option<PathBuf>,
 
+    /// Repository hosting provider (overrides config / auto-detection)
+    #[arg(long, value_enum)]
+    pub provider: Option<ProviderArg>,
+
     /// Verbosity level (passed from global args)
     #[arg(skip)]
     pub verbose: u8,
@@ -124,6 +149,10 @@ pub struct ApplyArgs {
     /// Skip automatic issue creation for warnings
     #[arg(long, default_value_t = false)]
     pub no_issues: bool,
+
+    /// Repository hosting provider (overrides config / auto-detection)
+    #[arg(long, value_enum)]
+    pub provider: Option<ProviderArg>,
 }
 
 /// Arguments for the report command
@@ -176,6 +205,10 @@ pub struct ReportArgs {
     /// Custom cache directory path
     #[arg(long, value_name = "DIR")]
     pub cache_dir: Option<PathBuf>,
+
+    /// Repository hosting provider (overrides config / auto-detection)
+    #[arg(long, value_enum)]
+    pub provider: Option<ProviderArg>,
 
     /// Verbosity level (passed from global args)
     #[arg(skip)]
