@@ -9,7 +9,6 @@
 //! - [`engine`] - The main rules evaluation engine that orchestrates rule execution
 //! - [`categories`] - Individual rule category implementations (secrets, files, docs, etc.)
 //! - [`results`] - Finding and severity types for audit results
-//! - [`patterns`] - Secret detection patterns and matching utilities
 //! - [`constants`] - Rule category constants and filtering
 //!
 //! ## Rule Categories
@@ -86,7 +85,6 @@
 pub mod categories;
 pub mod constants;
 pub mod engine;
-pub mod patterns;
 pub mod results;
 
 pub use constants::filter_valid_categories;

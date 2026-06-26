@@ -15,8 +15,7 @@ use crate::error::{ConfigError, RepoLensError};
 
 use super::presets::Preset;
 use super::{
-    ActionsConfig, CacheConfig, CustomRulesConfig, HooksConfig, LicenseComplianceConfig,
-    RuleConfig, SecretsConfig, TemplatesConfig, UrlConfig,
+    ActionsConfig, CacheConfig, HooksConfig, RuleConfig, TemplatesConfig, UrlConfig,
 };
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
@@ -68,11 +67,6 @@ pub struct Config {
     #[serde(default)]
     pub rules: HashMap<String, RuleConfig>,
 
-    /// Secrets detection configuration
-    #[serde(default)]
-    #[serde(rename = "rules.secrets")]
-    pub secrets: SecretsConfig,
-
     /// URL detection configuration
     #[serde(default)]
     #[serde(rename = "rules.urls")]
@@ -85,16 +79,6 @@ pub struct Config {
     /// Template configuration
     #[serde(default)]
     pub templates: TemplatesConfig,
-
-    /// Custom rules configuration
-    #[serde(default)]
-    #[serde(rename = "rules.custom")]
-    pub custom_rules: CustomRulesConfig,
-
-    /// License compliance configuration
-    #[serde(default)]
-    #[serde(rename = "rules.licenses")]
-    pub license_compliance: LicenseComplianceConfig,
 
     /// Cache configuration
     #[serde(default)]
@@ -114,12 +98,9 @@ impl Default for Config {
         Self {
             preset: "opensource".to_string(),
             rules: HashMap::new(),
-            secrets: SecretsConfig::default(),
             urls: UrlConfig::default(),
             actions: ActionsConfig::default(),
             templates: TemplatesConfig::default(),
-            custom_rules: CustomRulesConfig::default(),
-            license_compliance: LicenseComplianceConfig::default(),
             cache: CacheConfig::default(),
             hooks: HooksConfig::default(),
         }
@@ -247,24 +228,6 @@ impl Config {
     #[allow(dead_code)]
     pub fn get_rule_severity(&self, rule_id: &str) -> Option<&str> {
         self.rules.get(rule_id).and_then(|r| r.severity.as_deref())
-    }
-
-    /// Check if a file should be ignored for secrets scanning
-    #[allow(dead_code)]
-    pub fn should_ignore_file(&self, file_path: &str) -> bool {
-        self.secrets
-            .ignore_files
-            .iter()
-            .any(|pattern| glob_match(pattern, file_path))
-    }
-
-    /// Check if a pattern should be ignored for secrets scanning
-    #[allow(dead_code)]
-    pub fn should_ignore_pattern(&self, path: &str) -> bool {
-        self.secrets
-            .ignore_patterns
-            .iter()
-            .any(|pattern| glob_match(pattern, path))
     }
 
     /// Check if a URL is allowed (for enterprise mode).
@@ -413,24 +376,6 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_rules_config_parsing() {
-        let toml_content = r#"
-preset = "opensource"
-
-["rules.custom"."no-todo"]
-pattern = "TODO"
-severity = "warning"
-files = ["**/*.rs"]
-message = "TODO comment found"
-"#;
-        let config: Config = toml::from_str(toml_content).unwrap();
-        assert!(config.custom_rules.rules.contains_key("no-todo"));
-        let rule = config.custom_rules.rules.get("no-todo").unwrap();
-        assert_eq!(rule.pattern, Some("TODO".to_string()));
-        assert_eq!(rule.severity, "warning");
-    }
-
-    #[test]
     fn test_default_preset_function() {
         assert_eq!(default_preset(), "opensource");
     }
@@ -510,26 +455,6 @@ message = "TODO comment found"
         );
         assert_eq!(config.get_rule_severity("test_rule"), Some("critical"));
         assert_eq!(config.get_rule_severity("nonexistent"), None);
-    }
-
-    #[test]
-    fn test_should_ignore_file() {
-        let mut config = Config::default();
-        config.secrets.ignore_files = vec!["*.min.js".to_string(), "vendor/**".to_string()];
-
-        assert!(config.should_ignore_file("bundle.min.js"));
-        assert!(config.should_ignore_file("vendor/lib.js"));
-        assert!(!config.should_ignore_file("main.js"));
-    }
-
-    #[test]
-    fn test_should_ignore_pattern() {
-        let mut config = Config::default();
-        config.secrets.ignore_patterns = vec!["test_*".to_string(), "*_mock".to_string()];
-
-        assert!(config.should_ignore_pattern("test_secret"));
-        assert!(config.should_ignore_pattern("api_mock"));
-        assert!(!config.should_ignore_pattern("real_secret"));
     }
 
     #[test]
@@ -680,11 +605,6 @@ preset = "strict"
 enabled = false
 severity = "warning"
 
-["rules.secrets"]
-ignore_patterns = ["test_*"]
-ignore_files = ["*.test.ts"]
-custom_patterns = ["MY_SECRET_\\w+"]
-
 ["rules.urls"]
 allowed_internal = ["https://internal.example.com/*"]
 
@@ -729,8 +649,6 @@ ttl_seconds = 3600
         assert_eq!(config.preset, "strict");
         assert!(!config.is_rule_enabled("SEC001"));
         assert_eq!(config.get_rule_severity("SEC001"), Some("warning"));
-        assert!(config.should_ignore_pattern("test_secret"));
-        assert!(config.should_ignore_file("file.test.ts"));
         assert!(config.is_url_allowed("https://internal.example.com/api"));
         assert_eq!(config.actions.license.license_type, "Apache-2.0");
         assert_eq!(config.actions.branch_protection.required_approvals, 2);
@@ -738,32 +656,6 @@ ttl_seconds = 3600
             config.templates.project_name,
             Some("My Project".to_string())
         );
-    }
-
-    #[test]
-    fn test_config_with_license_compliance() {
-        let toml_content = r#"
-preset = "opensource"
-
-["rules.licenses"]
-enabled = true
-allowed_licenses = ["MIT", "Apache-2.0", "BSD-3-Clause"]
-denied_licenses = ["GPL-3.0", "AGPL-3.0"]
-"#;
-        let config: Config = toml::from_str(toml_content).unwrap();
-        assert!(config.license_compliance.enabled);
-        assert_eq!(config.license_compliance.allowed_licenses.len(), 3);
-        assert_eq!(config.license_compliance.denied_licenses.len(), 2);
-        assert_eq!(config.license_compliance.allowed_licenses[0], "MIT");
-        assert_eq!(config.license_compliance.denied_licenses[0], "GPL-3.0");
-    }
-
-    #[test]
-    fn test_config_default_license_compliance() {
-        let config = Config::default();
-        assert!(config.license_compliance.enabled);
-        assert!(config.license_compliance.allowed_licenses.is_empty());
-        assert!(config.license_compliance.denied_licenses.is_empty());
     }
 
     #[test]
