@@ -4,14 +4,8 @@ use colored::Colorize;
 
 /// Valid category names for --only and --skip options.
 /// Must match the categories registered in `src/rules/engine.rs`.
-pub const VALID_CATEGORIES: &[&str] = &[
-    "files",
-    "docs",
-    "security",
-    "git",
-    "codeowners",
-    "metadata",
-];
+pub const VALID_CATEGORIES: &[&str] =
+    &["files", "docs", "security", "git", "codeowners", "metadata"];
 
 /// Check if a category name is valid
 pub fn is_valid_category(name: &str) -> bool {
@@ -43,14 +37,7 @@ mod tests {
     #[test]
     fn test_valid_categories_list() {
         assert_eq!(VALID_CATEGORIES.len(), 6);
-        for expected in [
-            "files",
-            "docs",
-            "security",
-            "git",
-            "codeowners",
-            "metadata",
-        ] {
+        for expected in ["files", "docs", "security", "git", "codeowners", "metadata"] {
             assert!(
                 VALID_CATEGORIES.contains(&expected),
                 "missing category: {expected}"
@@ -76,11 +63,7 @@ mod tests {
 
     #[test]
     fn test_filter_valid_categories_keeps_valid() {
-        let input = vec![
-            "git".to_string(),
-            "files".to_string(),
-            "docs".to_string(),
-        ];
+        let input = vec!["git".to_string(), "files".to_string(), "docs".to_string()];
         let result = filter_valid_categories(input);
         assert_eq!(result.len(), 3);
         assert!(result.contains(&"git".to_string()));
@@ -90,11 +73,7 @@ mod tests {
 
     #[test]
     fn test_filter_valid_categories_removes_invalid() {
-        let input = vec![
-            "git".to_string(),
-            "invalid".to_string(),
-            "docs".to_string(),
-        ];
+        let input = vec!["git".to_string(), "invalid".to_string(), "docs".to_string()];
         let result = filter_valid_categories(input);
         assert_eq!(result.len(), 2);
         assert!(result.contains(&"git".to_string()));

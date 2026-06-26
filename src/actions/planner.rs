@@ -714,17 +714,16 @@ impl ActionPlanner {
         let meta = &self.config.actions.metadata;
 
         // Need at least one configured value to apply.
-        let has_value = meta.description.is_some()
-            || !meta.topics.is_empty()
-            || meta.homepage.is_some();
+        let has_value =
+            meta.description.is_some() || !meta.topics.is_empty() || meta.homepage.is_some();
         if !has_value {
             return None;
         }
 
         // Need a missing-metadata finding to act on.
-        let has_finding = results.findings_by_category("metadata").any(|f| {
-            matches!(f.rule_id.as_str(), "META001" | "META002" | "META003")
-        });
+        let has_finding = results
+            .findings_by_category("metadata")
+            .any(|f| matches!(f.rule_id.as_str(), "META001" | "META002" | "META003"));
         if !has_finding {
             return None;
         }
@@ -1415,12 +1414,7 @@ mod tests {
         ));
 
         let plan = planner.create_plan(&results).await.unwrap();
-        assert!(
-            !plan
-                .actions()
-                .iter()
-                .any(|a| a.id() == "codeowners-create")
-        );
+        assert!(!plan.actions().iter().any(|a| a.id() == "codeowners-create"));
     }
 
     #[tokio::test]
@@ -1482,19 +1476,42 @@ mod tests {
         // metadata}.rs (Finding::new call sites).
         let kept_rule_ids: BTreeSet<&str> = [
             // docs.rs
-            "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC007", "DOC008",
-            "DOC009", "DOC010",
+            "DOC001",
+            "DOC002",
+            "DOC003",
+            "DOC004",
+            "DOC005",
+            "DOC006",
+            "DOC007",
+            "DOC008",
+            "DOC009",
+            "DOC010",
             // files.rs
-            "FILE002", "FILE003",
+            "FILE002",
+            "FILE003",
             // git.rs
-            "GIT002", "GIT003",
+            "GIT002",
+            "GIT003",
             // codeowners.rs (CODE003 is defined but never emitted)
-            "CODE001", "CODE002",
+            "CODE001",
+            "CODE002",
             // metadata.rs
-            "META001", "META002", "META003",
+            "META001",
+            "META002",
+            "META003",
             // security.rs
-            "SECURITY003", "SEC007", "SEC008", "SEC009", "SEC010", "SEC011", "SEC012", "SEC013",
-            "SEC014", "SEC015", "SEC016", "SEC017",
+            "SECURITY003",
+            "SEC007",
+            "SEC008",
+            "SEC009",
+            "SEC010",
+            "SEC011",
+            "SEC012",
+            "SEC013",
+            "SEC014",
+            "SEC015",
+            "SEC016",
+            "SEC017",
         ]
         .into_iter()
         .collect();
@@ -1503,15 +1520,15 @@ mod tests {
         // executor (operation type noted in the comment).
         let remediable: BTreeSet<&str> = [
             // CreateFile from template
-            "DOC001", // README.md
-            "DOC004", // LICENSE
-            "DOC005", // CONTRIBUTING.md
-            "DOC006", // CODE_OF_CONDUCT.md
-            "DOC007", // SECURITY.md
-            "DOC008", // CHANGELOG.md
-            "GIT002", // .gitattributes
+            "DOC001",  // README.md
+            "DOC004",  // LICENSE
+            "DOC005",  // CONTRIBUTING.md
+            "DOC006",  // CODE_OF_CONDUCT.md
+            "DOC007",  // SECURITY.md
+            "DOC008",  // CHANGELOG.md
+            "GIT002",  // .gitattributes
             "CODE001", // CODEOWNERS
-            "SEC007", // .github/settings.yml
+            "SEC007",  // .github/settings.yml
             // UpdateGitignore (executor creates or appends to .gitignore)
             "FILE002", // .gitignore missing -> create it
             "FILE003", // .gitignore missing recommended entry -> append

@@ -15,9 +15,7 @@ use crate::error::{ConfigError, RepoLensError};
 use crate::providers::Provider;
 
 use super::presets::Preset;
-use super::{
-    ActionsConfig, CacheConfig, HooksConfig, RuleConfig, TemplatesConfig, UrlConfig,
-};
+use super::{ActionsConfig, CacheConfig, HooksConfig, RuleConfig, TemplatesConfig, UrlConfig};
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
 

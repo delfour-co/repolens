@@ -292,9 +292,7 @@ fn parse_remote_host(url: &str) -> Option<String> {
     // HTTPS/scheme form: scheme://host/path
     if let Some(scheme) = url.find("://") {
         let after_scheme = &url[scheme + 3..];
-        let host_end = after_scheme
-            .find(['/', ':'])
-            .unwrap_or(after_scheme.len());
+        let host_end = after_scheme.find(['/', ':']).unwrap_or(after_scheme.len());
         let host = &after_scheme[..host_end];
         if !host.is_empty() {
             return Some(host.to_string());

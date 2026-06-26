@@ -196,8 +196,7 @@ pub fn for_config(config: &crate::config::Config) -> Option<Box<dyn RepoProvider
 /// no remote or the host is unrecognised, so the caller can fall back to the
 /// default.
 pub fn detect_provider_from_remote() -> Option<Provider> {
-    crate::utils::prerequisites::detect_remote_host()
-        .and_then(|host| provider_for_host(&host))
+    crate::utils::prerequisites::detect_remote_host().and_then(|host| provider_for_host(&host))
 }
 
 /// Map a remote host string to a [`Provider`].

@@ -13,8 +13,9 @@ pub async fn update(
     topics: &[String],
     homepage: Option<&str>,
 ) -> Result<(), RepoLensError> {
-    let provider = crate::providers::for_config(config)
-        .ok_or(RepoLensError::Provider(ProviderError::GitHubCliNotAvailable))?;
+    let provider = crate::providers::for_config(config).ok_or(RepoLensError::Provider(
+        ProviderError::GitHubCliNotAvailable,
+    ))?;
 
     provider
         .set_repo_metadata(description, topics, homepage)

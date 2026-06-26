@@ -563,16 +563,14 @@ mod tests {
 
     #[test]
     fn test_parse_gitlab_url_https_no_git() {
-        let (ns, proj) =
-            GitLabProvider::parse_gitlab_url("https://gitlab.com/group/repo").unwrap();
+        let (ns, proj) = GitLabProvider::parse_gitlab_url("https://gitlab.com/group/repo").unwrap();
         assert_eq!(ns, "group");
         assert_eq!(proj, "repo");
     }
 
     #[test]
     fn test_parse_gitlab_url_ssh() {
-        let (ns, proj) =
-            GitLabProvider::parse_gitlab_url("git@gitlab.com:group/repo.git").unwrap();
+        let (ns, proj) = GitLabProvider::parse_gitlab_url("git@gitlab.com:group/repo.git").unwrap();
         assert_eq!(ns, "group");
         assert_eq!(proj, "repo");
     }

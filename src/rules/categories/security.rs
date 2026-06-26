@@ -569,7 +569,9 @@ async fn check_workflow_permissions(
 /// # Returns
 ///
 /// A vector of findings if fork PR workflows don't require approval
-async fn check_fork_pr_approval(provider: &dyn RepoProvider) -> Result<Vec<Finding>, RepoLensError> {
+async fn check_fork_pr_approval(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
 
     match provider.get_fork_pr_workflows_policy() {
