@@ -265,6 +265,7 @@ impl Scanner {
     /// # Returns
     ///
     /// A reference to the root path
+    #[allow(dead_code)]
     pub fn root(&self) -> &std::path::Path {
         &self.root
     }

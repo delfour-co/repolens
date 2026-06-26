@@ -88,7 +88,6 @@ impl Preset {
                 "git/gitattributes",
                 "git/sensitive-files",
                 "codeowners/presence",
-                "codeowners/releases",
             ],
             Self::Enterprise => vec![
                 "docs/readme",
@@ -106,15 +105,11 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "security/access-control",
-                "security/infrastructure",
                 "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
                 "codeowners/presence",
                 "codeowners/syntax",
-                "codeowners/valid-owners",
-                "codeowners/releases",
             ],
             Self::Strict => vec![
                 "docs/readme",
@@ -139,16 +134,11 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "security/access-control",
-                "security/infrastructure",
                 "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
                 "codeowners/presence",
                 "codeowners/syntax",
-                "codeowners/valid-owners",
-                "codeowners/releases",
-                "codeowners/signed-tags",
             ],
         }
     }
@@ -242,8 +232,8 @@ mod tests {
         let rules = Preset::Strict.enabled_rules();
         assert!(rules.contains(&"docs/changelog-format"));
         assert!(rules.contains(&"files/editorconfig"));
-        assert!(rules.contains(&"security/access-control"));
-        assert!(rules.contains(&"codeowners/signed-tags"));
+        assert!(rules.contains(&"security/fork-pr-approval"));
+        assert!(rules.contains(&"codeowners/syntax"));
     }
 
     #[test]
@@ -251,7 +241,7 @@ mod tests {
         let rules = Preset::OpenSource.enabled_rules();
         assert!(rules.contains(&"docs/changelog"));
         assert!(rules.contains(&"security/dependabot-updates"));
-        assert!(rules.contains(&"codeowners/releases"));
+        assert!(rules.contains(&"codeowners/presence"));
     }
 
     #[test]
@@ -259,7 +249,7 @@ mod tests {
         let rules = Preset::Enterprise.enabled_rules();
         assert!(rules.contains(&"security/secret-scanning"));
         assert!(rules.contains(&"security/push-protection"));
-        assert!(rules.contains(&"codeowners/valid-owners"));
+        assert!(rules.contains(&"codeowners/syntax"));
     }
 
     #[test]
@@ -382,27 +372,33 @@ mod tests {
         assert!(rules.contains(&"security/fork-pr-approval"));
     }
 
-    // ===== Access Control and Infrastructure Rules Tests =====
+    // ===== Removed Rules Regression Tests =====
 
     #[test]
-    fn test_preset_enterprise_has_access_control() {
+    fn test_preset_enterprise_no_removed_rules() {
         let rules = Preset::Enterprise.enabled_rules();
-        assert!(rules.contains(&"security/access-control"));
-        assert!(rules.contains(&"security/infrastructure"));
-    }
-
-    #[test]
-    fn test_preset_strict_has_access_control() {
-        let rules = Preset::Strict.enabled_rules();
-        assert!(rules.contains(&"security/access-control"));
-        assert!(rules.contains(&"security/infrastructure"));
-    }
-
-    #[test]
-    fn test_preset_opensource_no_access_control() {
-        let rules = Preset::OpenSource.enabled_rules();
-        // OpenSource preset does not include access control rules (require API access)
+        // These detection-only rules were removed during the auto-configurator recentering.
         assert!(!rules.contains(&"security/access-control"));
         assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/valid-owners"));
+        assert!(!rules.contains(&"codeowners/releases"));
+    }
+
+    #[test]
+    fn test_preset_strict_no_removed_rules() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(!rules.contains(&"security/access-control"));
+        assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/valid-owners"));
+        assert!(!rules.contains(&"codeowners/releases"));
+        assert!(!rules.contains(&"codeowners/signed-tags"));
+    }
+
+    #[test]
+    fn test_preset_opensource_no_removed_rules() {
+        let rules = Preset::OpenSource.enabled_rules();
+        assert!(!rules.contains(&"security/access-control"));
+        assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/releases"));
     }
 }
