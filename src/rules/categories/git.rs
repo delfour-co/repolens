@@ -1,7 +1,6 @@
 //! Git hygiene rules
 //!
 //! This module provides rules for checking Git repository best practices, including:
-//! - Large binary files detection (GIT001)
 //! - .gitattributes presence (GIT002)
 //! - Sensitive files tracked in repository (GIT003)
 
@@ -10,12 +9,6 @@ use crate::error::RepoLensError;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
-
-/// Binary file extensions to check for large files
-const BINARY_EXTENSIONS: &[&str] = &[
-    "exe", "dll", "so", "dylib", "zip", "tar", "gz", "png", "jpg", "jpeg", "mp4", "pdf", "jar",
-    "whl", "a", "lib", "bin", "o", "obj",
-];
 
 /// Sensitive file patterns to check
 const SENSITIVE_PATTERNS: &[&str] = &[
@@ -27,9 +20,6 @@ const SENSITIVE_PATTERNS: &[&str] = &[
     "*_rsa",
     "*.p12",
 ];
-
-/// Size threshold for large binary files (1 MB)
-const LARGE_FILE_THRESHOLD: u64 = 1024 * 1024;
 
 /// Rules for checking Git repository best practices
 pub struct GitRules;
@@ -43,10 +33,6 @@ impl RuleCategory for GitRules {
     async fn run(&self, scanner: &Scanner, config: &Config) -> Result<Vec<Finding>, RepoLensError> {
         let mut findings = Vec::new();
 
-        if config.is_rule_enabled("git/large-binaries") {
-            findings.extend(check_large_binaries(scanner).await?);
-        }
-
         if config.is_rule_enabled("git/gitattributes") {
             findings.extend(check_gitattributes(scanner).await?);
         }
@@ -57,50 +43,6 @@ impl RuleCategory for GitRules {
 
         Ok(findings)
     }
-}
-
-/// GIT001: Check for large binary files (> 1MB)
-async fn check_large_binaries(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
-    let mut findings = Vec::new();
-
-    // Get files larger than threshold
-    let large_files = scanner.files_larger_than(LARGE_FILE_THRESHOLD);
-
-    for file_info in large_files {
-        // Check if file has a binary extension
-        let path_lower = file_info.path.to_lowercase();
-        let is_binary = BINARY_EXTENSIONS
-            .iter()
-            .any(|ext| path_lower.ends_with(&format!(".{}", ext)));
-
-        if is_binary {
-            let size_mb = file_info.size as f64 / (1024.0 * 1024.0);
-            findings.push(
-                Finding::new(
-                    "GIT001",
-                    "git",
-                    Severity::Warning,
-                    format!(
-                        "Large binary file '{}' ({:.2} MB) detected",
-                        file_info.path, size_mb
-                    ),
-                )
-                .with_location(&file_info.path)
-                .with_description(
-                    "Large binary files in Git repositories increase clone time, \
-                     consume disk space, and cannot be efficiently diffed. \
-                     Git is designed for text files and handles binaries poorly.",
-                )
-                .with_remediation(
-                    "Consider using Git LFS (Large File Storage) for binary files, \
-                     or store them in an external artifact repository. \
-                     Add the file to .gitignore if it shouldn't be tracked.",
-                ),
-            );
-        }
-    }
-
-    Ok(findings)
 }
 
 /// GIT002: Check for .gitattributes file presence
@@ -280,77 +222,6 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    // --- GIT001: Large binary files ---
-
-    #[tokio::test]
-    async fn test_git001_large_binary_detected() {
-        let temp_dir = TempDir::new().unwrap();
-        let root = temp_dir.path();
-
-        // Create a large binary file (> 1MB)
-        let large_content = vec![0u8; 2 * 1024 * 1024]; // 2MB
-        fs::write(root.join("large_file.zip"), large_content).unwrap();
-
-        let scanner = Scanner::new(root.to_path_buf());
-        let findings = check_large_binaries(&scanner).await.unwrap();
-
-        assert!(findings.iter().any(|f| f.rule_id == "GIT001"));
-        assert!(
-            findings
-                .iter()
-                .any(|f| f.message.contains("large_file.zip"))
-        );
-    }
-
-    #[tokio::test]
-    async fn test_git001_small_binary_no_finding() {
-        let temp_dir = TempDir::new().unwrap();
-        let root = temp_dir.path();
-
-        // Create a small binary file (< 1MB)
-        let small_content = vec![0u8; 100 * 1024]; // 100KB
-        fs::write(root.join("small_file.zip"), small_content).unwrap();
-
-        let scanner = Scanner::new(root.to_path_buf());
-        let findings = check_large_binaries(&scanner).await.unwrap();
-
-        assert!(findings.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_git001_large_text_file_no_finding() {
-        let temp_dir = TempDir::new().unwrap();
-        let root = temp_dir.path();
-
-        // Create a large text file (not binary extension)
-        let large_content = "x".repeat(2 * 1024 * 1024); // 2MB text
-        fs::write(root.join("large_file.txt"), large_content).unwrap();
-
-        let scanner = Scanner::new(root.to_path_buf());
-        let findings = check_large_binaries(&scanner).await.unwrap();
-
-        assert!(findings.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_git001_multiple_binary_extensions() {
-        let temp_dir = TempDir::new().unwrap();
-        let root = temp_dir.path();
-
-        let large_content = vec![0u8; 2 * 1024 * 1024];
-
-        // Create large files with various binary extensions
-        fs::write(root.join("file.exe"), &large_content).unwrap();
-        fs::write(root.join("file.dll"), &large_content).unwrap();
-        fs::write(root.join("file.jar"), &large_content).unwrap();
-
-        let scanner = Scanner::new(root.to_path_buf());
-        let findings = check_large_binaries(&scanner).await.unwrap();
-
-        assert_eq!(findings.len(), 3);
-        assert!(findings.iter().all(|f| f.rule_id == "GIT001"));
-    }
-
     // --- GIT002: .gitattributes missing ---
 
     #[tokio::test]
@@ -480,8 +351,6 @@ mod tests {
         let root = temp_dir.path();
 
         // Create files that trigger all rules
-        let large_content = vec![0u8; 2 * 1024 * 1024];
-        fs::write(root.join("archive.zip"), large_content).unwrap();
         fs::write(root.join(".env"), "SECRET=value").unwrap();
         // No .gitattributes
 
@@ -492,10 +361,6 @@ mod tests {
         let findings = rules.run(&scanner, &config).await.unwrap();
 
         let rule_ids: Vec<&str> = findings.iter().map(|f| f.rule_id.as_str()).collect();
-        assert!(
-            rule_ids.contains(&"GIT001"),
-            "Should find GIT001 (large binary)"
-        );
         assert!(
             rule_ids.contains(&"GIT002"),
             "Should find GIT002 (no .gitattributes)"

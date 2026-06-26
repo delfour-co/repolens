@@ -1485,13 +1485,13 @@ mod tests {
             "DOC001", "DOC002", "DOC003", "DOC004", "DOC005", "DOC006", "DOC007", "DOC008",
             "DOC009", "DOC010",
             // files.rs
-            "FILE001", "FILE002", "FILE003", "FILE004",
+            "FILE002", "FILE003",
             // git.rs
-            "GIT001", "GIT002", "GIT003",
+            "GIT002", "GIT003",
             // codeowners.rs (CODE003 is defined but never emitted)
             "CODE001", "CODE002",
             // metadata.rs
-            "META001", "META002", "META003", "META004",
+            "META001", "META002", "META003",
             // security.rs
             "SECURITY003", "SEC007", "SEC008", "SEC009", "SEC010", "SEC011", "SEC012", "SEC013",
             "SEC014", "SEC015", "SEC016", "SEC017",
@@ -1535,10 +1535,6 @@ mod tests {
             "DOC010",      // CHANGELOG empty Unreleased section — needs real change notes.
             "CODE002",     // CODEOWNERS syntax error — fix depends on intended owners.
             "SECURITY003", // No runtime version file — the version is a project decision.
-            "FILE001",     // Large file — keep/LFS/delete is a human call.
-            "FILE004",     // Temporary file in repo — removal is a human call.
-            "GIT001",      // Large binary file — LFS/external-store is a human call.
-            "META004",     // Social preview image — a binary asset must be uploaded by a human.
         ]
         .into_iter()
         .collect();

@@ -1009,57 +1009,8 @@ async fn e2e_error_compare_missing_file() {
 }
 
 // ============================================================================
-// E2E Tests for Git hygiene rules (GIT001-003)
+// E2E Tests for Git hygiene rules (GIT002-003)
 // ============================================================================
-
-#[tokio::test]
-async fn e2e_git_rule_large_binary_detected() {
-    let temp_dir = TempDir::new().unwrap();
-    create_rust_project(temp_dir.path());
-
-    // Create a large binary file (>1MB)
-    let large_file = temp_dir.path().join("large.exe");
-    let large_content = vec![0u8; 2 * 1024 * 1024]; // 2MB
-    fs::write(&large_file, large_content).unwrap();
-
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "strict",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::in_iter([0, 1, 2]));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array())
-        .unwrap();
-
-    let has_git001 = findings.iter().any(|f| {
-        f.get("rule_id")
-            .and_then(|r| r.as_str())
-            .map(|r| r == "GIT001")
-            .unwrap_or(false)
-    });
-    assert!(has_git001, "Should detect large binary file (GIT001)");
-}
 
 #[tokio::test]
 async fn e2e_git_rule_gitattributes_missing() {

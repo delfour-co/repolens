@@ -4,11 +4,10 @@
 //! - Repository description (META001)
 //! - Topics/tags (META002)
 //! - Website URL (META003)
-//! - Social preview image (META004)
 
 use crate::config::Config;
 use crate::error::RepoLensError;
-use crate::providers::{RepoMetadata, RepoProvider};
+use crate::providers::RepoMetadata;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
@@ -49,10 +48,6 @@ impl RuleCategory for MetadataRules {
 
         if config.is_rule_enabled("metadata/homepage") {
             findings.extend(check_homepage(&metadata));
-        }
-
-        if config.is_rule_enabled("metadata/social-preview") {
-            findings.extend(check_social_preview(provider.as_ref()));
         }
 
         Ok(findings)
@@ -140,53 +135,6 @@ fn check_homepage(metadata: &RepoMetadata) -> Vec<Finding> {
                 "Add a website URL in your repository settings: Settings > General > Website.",
             ),
         );
-    }
-
-    findings
-}
-
-/// META004: Check for social preview image
-///
-/// Note: the social-preview / OpenGraph image is a GitHub-specific concept with
-/// no portable provider API, so this still issues a `gh api` call directly,
-/// addressing the repository via the trait's `owner()` / `name()`.
-fn check_social_preview(provider: &dyn RepoProvider) -> Vec<Finding> {
-    let mut findings = Vec::new();
-
-    // Check social preview via API - the openGraphImageUrl field
-    let output = std::process::Command::new("gh")
-        .args([
-            "api",
-            &format!("repos/{}/{}", provider.owner(), provider.name()),
-            "--jq",
-            ".has_custom_open_graph_image // false",
-        ])
-        .output();
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let result = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if result != "true" {
-                findings.push(
-                    Finding::new(
-                        "META004",
-                        "metadata",
-                        Severity::Info,
-                        "Social preview image is missing",
-                    )
-                    .with_description(
-                        "A custom social preview image is displayed when your repository \
-                         is shared on social media platforms. It helps make your project \
-                         more recognizable and professional.",
-                    )
-                    .with_remediation(
-                        "Upload a social preview image in your repository settings: \
-                         Settings > General > Social preview.",
-                    ),
-                );
-            }
-        }
-        _ => {} // Skip if API call fails
     }
 
     findings
