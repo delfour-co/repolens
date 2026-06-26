@@ -60,15 +60,12 @@
 //!
 //! | Category | Description |
 //! |----------|-------------|
-//! | `secrets` | Detect exposed secrets and credentials |
-//! | `files` | Check for required files (README, LICENSE, etc.) |
-//! | `docs` | Documentation quality checks |
-//! | `security` | Security best practices |
-//! | `workflows` | CI/CD and GitHub Actions checks |
-//! | `quality` | Code quality standards |
-//! | `dependencies` | Dependency security and licensing |
-//! | `docker` | Docker configuration checks |
-//! | `git` | Git configuration and history checks |
+//! | `files` | `.gitignore` presence and recommended entries |
+//! | `docs` | Required docs (README, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG) |
+//! | `security` | Repo security settings: branch protection, vulnerability alerts, secret scanning, Actions permissions |
+//! | `git` | `.gitattributes` presence, sensitive files that should be gitignored |
+//! | `codeowners` | CODEOWNERS file presence and syntax |
+//! | `metadata` | Repository description, topics/tags, homepage |
 
 pub mod actions;
 pub mod cache;
