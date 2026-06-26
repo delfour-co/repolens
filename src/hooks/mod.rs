@@ -2,7 +2,7 @@
 //!
 //! This module provides functionality for installing and managing Git hooks
 //! that integrate RepoLens into the development workflow. Supported hooks:
-//! - **pre-commit**: Checks for exposed secrets before each commit
+//! - **pre-commit**: Checks for sensitive files and .gitignore hygiene before each commit
 //! - **pre-push**: Runs a full audit before pushing to a remote
 
 use std::fs;
@@ -300,7 +300,7 @@ fn write_hook_file(path: &Path, content: &str) -> Result<(), RepoLensError> {
 
 /// Generate the content of the pre-commit hook script
 ///
-/// The pre-commit hook runs a secrets scan to prevent committing exposed credentials.
+/// The pre-commit hook runs a fast local check (files, git) to catch sensitive files before commit.
 pub fn generate_pre_commit_hook(config: &HooksConfig) -> String {
     let fail_on_warnings = if config.fail_on_warnings {
         " --fail-on-warnings"
@@ -312,13 +312,13 @@ pub fn generate_pre_commit_hook(config: &HooksConfig) -> String {
         r#"#!/bin/sh
 # RepoLens Git Hook - pre-commit
 # This hook was automatically installed by RepoLens.
-# It checks for exposed secrets before allowing a commit.
+# It checks for sensitive files and .gitignore hygiene before allowing a commit.
 #
 # To skip this hook, use: git commit --no-verify
 
 set -e
 
-echo "RepoLens: Checking for exposed secrets..."
+echo "RepoLens: Checking for sensitive files..."
 
 if ! command -v repolens >/dev/null 2>&1; then
     echo "Warning: repolens is not installed or not in PATH. Skipping pre-commit check."
@@ -326,15 +326,15 @@ if ! command -v repolens >/dev/null 2>&1; then
     exit 0
 fi
 
-if ! repolens plan --only secrets --format terminal{fail_on_warnings} 2>/dev/null; then
+if ! repolens plan --only files,git --format terminal{fail_on_warnings} 2>/dev/null; then
     echo ""
-    echo "RepoLens: Secrets detected! Commit aborted."
-    echo "Please remove or ignore the detected secrets before committing."
+    echo "RepoLens: Sensitive files or hygiene issues detected! Commit aborted."
+    echo "Please remove or ignore the flagged files before committing."
     echo "To skip this check, use: git commit --no-verify"
     exit 1
 fi
 
-echo "RepoLens: No secrets detected. Proceeding with commit."
+echo "RepoLens: No issues detected. Proceeding with commit."
 "#
     )
 }
@@ -670,7 +670,7 @@ mod tests {
         assert!(content.starts_with("#!/bin/sh"));
         assert!(content.contains("# RepoLens Git Hook"));
         assert!(content.contains("pre-commit"));
-        assert!(content.contains("repolens plan --only secrets"));
+        assert!(content.contains("repolens plan --only files,git"));
         assert!(content.contains("--no-verify"));
         assert!(!content.contains("--fail-on-warnings"));
     }
@@ -879,7 +879,7 @@ mod tests {
             fs::read_to_string(temp_dir.path().join(".git/hooks/pre-commit")).unwrap();
         assert!(pre_commit_content.contains("#!/bin/sh"));
         assert!(pre_commit_content.contains("# RepoLens Git Hook"));
-        assert!(pre_commit_content.contains("repolens plan --only secrets"));
+        assert!(pre_commit_content.contains("repolens plan --only files,git"));
 
         // Verify pre-push content
         let pre_push_content =

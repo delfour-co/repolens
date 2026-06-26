@@ -220,10 +220,10 @@ mod tests {
     fn create_test_results() -> AuditResults {
         let mut results = AuditResults::new("test-repo", "opensource");
         results.add_finding(Finding::new(
-            "SEC001",
-            "secrets",
+            "SEC011",
+            "security",
             Severity::Critical,
-            "Secret exposed",
+            "Vulnerability alerts disabled",
         ));
         results.add_finding(Finding::new(
             "DOC001",
