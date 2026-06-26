@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-06-26
+
+This release recenters RepoLens as an auto-configurator for GitHub and GitLab
+repositories. Every kept check drives a reviewable, applicable action (the
+plan/apply split). RepoLens is no longer a dependency or secret scanner — those
+concerns overlap with dedicated tooling.
+
+### Added
+
+- **GitLab provider** alongside GitHub, driven by the `glab` CLI. The relevant
+  CLI (`gh` for GitHub, `glab` for GitLab) is only needed for platform checks and
+  actions; if it is absent, those checks are skipped gracefully.
+- New `--provider {github|gitlab}` flag on `plan`, `report`, and `apply`. When
+  omitted, the provider is auto-detected from the `origin` remote.
+- New top-level `provider` key in `.repolens.toml` (`provider = "github"` or
+  `provider = "gitlab"`; defaults to GitHub).
+- Provider-agnostic action catalog: `CreateFile`, `UpdateGitignore`,
+  `ConfigureProtectedBranch`, `UpdateRepoSettings`, and the new
+  `UpdateRepoMetadata` (repository description and topics/tags).
+
+### Changed
+
+- Trimmed the `security` and `codeowners` categories to the checks that map to an
+  applicable repository-configuration action.
+
+### Removed (BREAKING CHANGES)
+
+- **Reduced to 6 rule categories** (`files`, `docs`, `security`, `git`,
+  `codeowners`, `metadata`), down from 15. Removed the `secrets`, `workflows`,
+  `quality`, `dependencies`, `licenses`, `docker`, `history`, `issues`, and
+  `custom` categories.
+- Removed the residual detection-only rules that did not drive an action,
+  including access-posture checks, the large-file (Git LFS) rule, and the
+  social-preview metadata rule.
+- Dropped the `[rules.secrets]`, `[rules.custom]`, and `[rules.licenses]`
+  configuration sections. They are ignored if still present in `.repolens.toml`.
+- The audit-report `category` enum is now
+  `["files", "docs", "security", "git", "codeowners", "metadata"]`.
+
+### Migration
+
+- If you relied on secret, dependency, or license scanning, use a dedicated tool
+  for those concerns. RepoLens now focuses on repository structure, documentation,
+  and hosting-platform configuration.
+- Remove any `[rules.secrets]`, `[rules.custom]`, or `[rules.licenses]` sections
+  and any `--only`/`--skip` references to removed categories from your config and
+  CI pipelines.
+- Set `provider = "gitlab"` (or pass `--provider gitlab`) to audit GitLab
+  repositories; GitHub remains the default.
+
 ## [2.0.2] - 2026-05-13
 
 ### Security

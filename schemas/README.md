@@ -84,29 +84,29 @@ repolens schema
   "preset": "opensource",
   "findings": [
     {
-      "rule_id": "SEC001",
-      "category": "secrets",
-      "severity": "critical",
-      "message": "Hardcoded API key detected",
-      "location": "src/config.rs:42",
-      "description": "A hardcoded secret was found in the source code",
-      "remediation": "Move the secret to environment variables"
+      "rule_id": "DOC001",
+      "category": "docs",
+      "severity": "warning",
+      "message": "README.md is missing",
+      "location": "README.md",
+      "description": "No README file was found at the repository root",
+      "remediation": "Create a README.md describing the project"
     }
   ],
   "metadata": {
-    "version": "1.0.0",
-    "timestamp": "2026-01-29T12:00:00Z",
+    "version": "3.0.0",
+    "timestamp": "2026-06-26T12:00:00Z",
     "schema_version": "1.0.0"
   },
   "summary": {
     "total": 1,
     "by_severity": {
-      "critical": 1,
-      "warning": 0,
+      "critical": 0,
+      "warning": 1,
       "info": 0
     },
     "by_category": {
-      "secrets": 1
+      "docs": 1
     }
   }
 }

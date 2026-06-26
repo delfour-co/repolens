@@ -1,15 +1,22 @@
 # RepoLens
 
-A CLI tool to audit GitHub repositories for best practices, security, and compliance.
+A CLI auto-configurator for GitHub and GitLab repositories. It audits repository
+hygiene and configuration, then turns every finding into a reviewable, applicable
+action so you can bring a repository up to a consistent standard.
+
+> RepoLens is not a secret or dependency scanner. Those concerns overlap with
+> dedicated tooling; RepoLens focuses on repository structure, documentation, and
+> hosting-platform configuration.
 
 ## Features
 
-- Audit repositories for security issues and best practices
-- Detect exposed secrets and credentials
-- Check for required files (README, LICENSE, CONTRIBUTING, etc.)
-- Validate GitHub workflows and Actions
-- Verify license compliance across dependencies
-- Generate actionable fix plans
+- Audit GitHub and GitLab repositories for hygiene and configuration best practices
+- Check for required files (README, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY)
+- Validate CODEOWNERS presence and validity
+- Recommend `.gitignore` and `.gitattributes` entries
+- Audit repository settings and branch protection
+- Verify repository metadata (description, topics/tags)
+- Generate actionable fix plans (plan/apply split)
 - Apply fixes automatically or with dry-run mode
 - Multiple output formats: terminal, JSON, SARIF, Markdown, HTML
 
@@ -206,7 +213,13 @@ RepoLens requires the following tools to be installed and configured:
 | Tool | Required | Description |
 |------|----------|-------------|
 | Git | Yes | Must be installed and the directory must be a git repository |
-| GitHub CLI (gh) | Yes | Must be installed and authenticated (`gh auth login`) |
+| GitHub CLI (gh) | For GitHub | Used for GitHub provider operations; authenticate with `gh auth login` (or set `GITHUB_TOKEN`) |
+| GitLab CLI (glab) | For GitLab | Used for GitLab provider operations; authenticate with `glab auth login` |
+
+The provider is auto-detected from the `origin` remote (or set explicitly with
+`--provider` / the `provider` config key). The relevant CLI is only needed for
+checks and actions that talk to the hosting platform; if it is absent, those
+platform-specific checks are skipped gracefully rather than failing the run.
 
 When running `repolens init`, these prerequisites are automatically verified:
 
@@ -256,6 +269,10 @@ repolens plan
 
 # Audit a different directory
 repolens -C /path/to/project plan
+
+# Select the hosting provider explicitly (otherwise auto-detected from origin)
+repolens plan --provider github
+repolens plan --provider gitlab
 
 # Output in different formats
 repolens plan --format json
@@ -331,6 +348,9 @@ repolens report
 # Export report
 repolens report --format html --output report.html
 
+# Select the hosting provider explicitly (also available on report/apply)
+repolens report --provider gitlab
+
 # JSON report with JSON Schema reference
 repolens report --format json --schema
 
@@ -356,7 +376,7 @@ The schema defines the following structure:
 - **preset**: Audit preset used (opensource, enterprise, strict)
 - **findings**: Array of audit findings, each with:
   - `rule_id`: Unique rule identifier (e.g., SEC001)
-  - `category`: Finding category (secrets, files, docs, security, workflows, quality)
+  - `category`: Finding category (files, docs, security, git, codeowners, metadata)
   - `severity`: Severity level (critical, warning, info)
   - `message`: Description of the finding
   - `location`: Optional file location
@@ -404,16 +424,20 @@ The comparison report includes:
 Create a `.repolens.toml` file in your repository root:
 
 ```toml
+# Repository hosting provider: "github" (default) or "gitlab".
+# Omit to auto-detect from the origin remote.
+provider = "github"
+
 [general]
 preset = "opensource"
 
 [rules]
-secrets = true
 files = true
 docs = true
 security = true
-workflows = true
-quality = true
+git = true
+codeowners = true
+metadata = true
 
 [files.required]
 readme = true
@@ -422,30 +446,6 @@ contributing = true
 code_of_conduct = true
 security = true
 ```
-
-### Custom Rules
-
-Define your own audit rules using regex patterns or shell commands:
-
-```toml
-# Detect TODO comments
-[rules.custom."no-todo"]
-pattern = "TODO"
-severity = "warning"
-files = ["**/*.rs"]
-message = "TODO comment found"
-
-# Check git status (shell command)
-[rules.custom."check-git-status"]
-command = "git status --porcelain"
-severity = "warning"
-invert = true  # Fail if uncommitted changes
-message = "Working directory is not clean"
-```
-
-> **Security Warning**: Custom rules with shell commands execute arbitrary code on your system. Only use commands from trusted sources. Never commit or run `.repolens.toml` files from untrusted repositories without reviewing them first.
-
-See the [Custom Rules documentation](docs/custom-rules.md) for more examples and details.
 
 ### Cache
 
@@ -505,7 +505,7 @@ RepoLens uses standard exit codes for CI/CD integration:
 | Code | Meaning | Example |
 |------|---------|---------|
 | 0 | Success | Audit completed, no critical issues |
-| 1 | Critical issues | Secrets exposed, critical vulnerabilities |
+| 1 | Critical issues | Critical findings detected (e.g. missing required files) |
 | 2 | Warnings | Missing files, non-critical findings |
 | 3 | Runtime error | File not found, network error |
 | 4 | Invalid arguments | Unknown category, invalid preset |
@@ -551,7 +551,7 @@ repolens install-hooks --remove
 
 #### Hook Behavior
 
-- **pre-commit**: Scans staged files for exposed secrets before each commit. If secrets are detected, the commit is aborted.
+- **pre-commit**: Runs a quick RepoLens check before each commit. If blocking findings are detected, the commit is aborted.
 - **pre-push**: Runs a full audit before pushing. If issues are found, the push is aborted.
 
 Both hooks can be bypassed with `--no-verify` (e.g., `git commit --no-verify`).
@@ -562,7 +562,7 @@ Configure hooks in `.repolens.toml`:
 
 ```toml
 [hooks]
-# Install pre-commit hook (checks for exposed secrets)
+# Install pre-commit hook (quick check before commit)
 pre_commit = true
 # Install pre-push hook (runs full audit)
 pre_push = true
@@ -582,25 +582,27 @@ When `fail_on_warnings` is `true`, hooks will also fail on warning-level finding
 
 ## Rules Categories
 
-- **secrets**: Detect exposed API keys, tokens, passwords
-- **files**: Check for required repository files
-- **docs**: Documentation completeness and quality
-- **security**: Security best practices, branch protection (SEC007-010)
-- **workflows**: CI/CD and GitHub Actions validation
-- **quality**: Code quality standards
-- **licenses**: License compliance checking (LIC001-LIC004)
-- **dependencies**: Vulnerability scanning via OSV API (DEP001-003)
-- **git**: Git hygiene rules (GIT001-003)
+RepoLens ships six rule categories. Each finding drives a reviewable action that
+can be applied with `repolens apply` (the plan/apply split).
+
+- **files**: Check for required repository files (CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, etc.)
+- **docs**: README, LICENSE, and documentation quality checks
+- **security**: Repository settings and branch protection best practices (SEC007-010)
+- **git**: `.gitattributes` presence and sensitive files tracked in git (GIT002-003)
+- **codeowners**: CODEOWNERS file presence and validity (CODE001-002)
+- **metadata**: Repository description and topics/tags configuration (META001-003)
+
+Use `--only` / `--skip` to restrict the run to a subset of these categories, e.g.
+`repolens plan --only docs,files` or `repolens plan --skip metadata`.
 
 ### Git Hygiene Rules
 
 | Rule | Severity | Description |
 |------|----------|-------------|
-| GIT001 | Warning | Large binary files detected (should use Git LFS) |
 | GIT002 | Info | `.gitattributes` file missing |
 | GIT003 | Warning | Sensitive files tracked (.env, *.key, *.pem, credentials) |
 
-### Branch Protection Rules
+### Branch Protection & Repository Settings Rules
 
 | Rule | Severity | Description |
 |------|----------|-------------|
@@ -609,55 +611,18 @@ When `fail_on_warnings` is `true`, hooks will also fail on warning-level finding
 | SEC009 | Warning | `required_pull_request_reviews` not configured |
 | SEC010 | Warning | `required_status_checks` not configured |
 
-### Dependency Rules
+### Actions
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| DEP001 | Critical/Warning | Vulnerability detected in dependency |
-| DEP002 | Warning | Outdated dependency version |
-| DEP003 | Warning | Lock file missing for detected ecosystem |
+Every kept check produces actions from a small, provider-agnostic catalog that
+`repolens apply` can execute against GitHub or GitLab:
 
-### Supported Ecosystems
-
-RepoLens supports vulnerability scanning for multiple ecosystems:
-
-| Ecosystem | Manifest | Lock File | OSV Support |
-|-----------|----------|-----------|-------------|
-| Rust (Cargo) | `Cargo.toml` | `Cargo.lock` | Yes |
-| Node.js (npm) | `package.json` | `package-lock.json` | Yes |
-| Python (pip/poetry) | `pyproject.toml` | `poetry.lock` | Yes |
-| Go | `go.mod` | `go.sum` | Yes |
-| .NET (NuGet) | `*.csproj` | `packages.lock.json` | Yes |
-| Ruby (Bundler) | `Gemfile` | `Gemfile.lock` | Yes |
-| Dart/Flutter (Pub) | `pubspec.yaml` | `pubspec.lock` | Yes |
-| Swift (SPM) | `Package.swift` | `Package.resolved` | No |
-| iOS (CocoaPods) | `Podfile` | `Podfile.lock` | No |
-
-### License Compliance Rules
-
-RepoLens can detect and verify license compliance for your project and its dependencies:
-
-| Rule | Severity | Description |
-|------|----------|-------------|
-| LIC001 | Warning | No project license detected |
-| LIC002 | Critical/Warning | Dependency license incompatible or not allowed |
-| LIC003 | Info | Dependency uses unknown/unrecognized license |
-| LIC004 | Warning | Dependency has no license specified |
-
-Supported dependency files:
-- `Cargo.toml` (Rust)
-- `package.json` / `node_modules/*/package.json` (Node.js)
-- `requirements.txt` (Python)
-- `go.mod` (Go)
-
-Configure allowed and denied licenses in `.repolens.toml`:
-
-```toml
-["rules.licenses"]
-enabled = true
-allowed_licenses = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
-denied_licenses = ["GPL-3.0", "AGPL-3.0"]
-```
+| Action | Description |
+|--------|-------------|
+| `CreateFile` | Create a missing repository file from a template (README, LICENSE, CODEOWNERS, etc.) |
+| `UpdateGitignore` | Add recommended entries to `.gitignore` |
+| `ConfigureProtectedBranch` | Configure branch protection on the hosting platform |
+| `UpdateRepoSettings` | Update repository settings via the provider |
+| `UpdateRepoMetadata` | Update repository description and topics/tags |
 
 ## GitHub Action
 
