@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 /// A pattern for detecting secrets
+#[allow(dead_code)]
 pub struct SecretPattern {
     pub name: &'static str,
     pub description: &'static str,

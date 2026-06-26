@@ -250,6 +250,7 @@ impl Config {
     }
 
     /// Check if a file should be ignored for secrets scanning
+    #[allow(dead_code)]
     pub fn should_ignore_file(&self, file_path: &str) -> bool {
         self.secrets
             .ignore_files
@@ -258,6 +259,7 @@ impl Config {
     }
 
     /// Check if a pattern should be ignored for secrets scanning
+    #[allow(dead_code)]
     pub fn should_ignore_pattern(&self, path: &str) -> bool {
         self.secrets
             .ignore_patterns

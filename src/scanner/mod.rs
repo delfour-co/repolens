@@ -147,6 +147,7 @@ impl Scanner {
     /// # Returns
     ///
     /// `true` if the directory exists, `false` otherwise
+    #[allow(dead_code)]
     pub fn directory_exists(&self, path: &str) -> bool {
         let full_path = self.root.join(path);
         full_path.exists() && full_path.is_dir()
@@ -235,6 +236,7 @@ impl Scanner {
     /// # Returns
     ///
     /// A vector of references to `FileInfo` for files in the specified directory
+    #[allow(dead_code)]
     pub fn files_in_directory(&self, dir: &str) -> Vec<&FileInfo> {
         let dir_path = if dir.ends_with('/') {
             dir.to_string()

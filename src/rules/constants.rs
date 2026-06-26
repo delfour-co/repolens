@@ -5,20 +5,11 @@ use colored::Colorize;
 /// Valid category names for --only and --skip options.
 /// Must match the categories registered in `src/rules/engine.rs`.
 pub const VALID_CATEGORIES: &[&str] = &[
-    "secrets",
     "files",
     "docs",
     "security",
-    "workflows",
-    "quality",
-    "dependencies",
-    "licenses",
-    "docker",
     "git",
-    "custom",
     "codeowners",
-    "history",
-    "issues",
     "metadata",
 ];
 
@@ -51,22 +42,13 @@ mod tests {
 
     #[test]
     fn test_valid_categories_list() {
-        assert_eq!(VALID_CATEGORIES.len(), 15);
+        assert_eq!(VALID_CATEGORIES.len(), 6);
         for expected in [
-            "secrets",
             "files",
             "docs",
             "security",
-            "workflows",
-            "quality",
-            "dependencies",
-            "licenses",
-            "docker",
             "git",
-            "custom",
             "codeowners",
-            "history",
-            "issues",
             "metadata",
         ] {
             assert!(
@@ -95,13 +77,13 @@ mod tests {
     #[test]
     fn test_filter_valid_categories_keeps_valid() {
         let input = vec![
-            "secrets".to_string(),
+            "git".to_string(),
             "files".to_string(),
             "docs".to_string(),
         ];
         let result = filter_valid_categories(input);
         assert_eq!(result.len(), 3);
-        assert!(result.contains(&"secrets".to_string()));
+        assert!(result.contains(&"git".to_string()));
         assert!(result.contains(&"files".to_string()));
         assert!(result.contains(&"docs".to_string()));
     }
@@ -109,13 +91,13 @@ mod tests {
     #[test]
     fn test_filter_valid_categories_removes_invalid() {
         let input = vec![
-            "secrets".to_string(),
+            "git".to_string(),
             "invalid".to_string(),
             "docs".to_string(),
         ];
         let result = filter_valid_categories(input);
         assert_eq!(result.len(), 2);
-        assert!(result.contains(&"secrets".to_string()));
+        assert!(result.contains(&"git".to_string()));
         assert!(result.contains(&"docs".to_string()));
         assert!(!result.contains(&"invalid".to_string()));
     }

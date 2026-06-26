@@ -69,7 +69,7 @@
 //! let mut engine = RulesEngine::new(config);
 //!
 //! // Only run specific categories
-//! engine.set_only_categories(vec!["secrets".to_string(), "security".to_string()]);
+//! engine.set_only_categories(vec!["files".to_string(), "security".to_string()]);
 //!
 //! // Or skip certain categories
 //! // engine.set_skip_categories(vec!["docs".to_string()]);
@@ -85,10 +85,8 @@ use crate::utils::{AuditTiming, CategoryTiming, Timer};
 use tracing::{Level, debug, info, span};
 
 use super::categories::{
-    codeowners::CodeownersRules, custom::CustomRules, dependencies::DependencyRules,
-    docker::DockerRules, docs::DocsRules, files::FilesRules, git::GitRules, history::HistoryRules,
-    issues::IssuesRules, licenses::LicenseRules, metadata::MetadataRules, quality::QualityRules,
-    secrets::SecretsRules, security::SecurityRules, workflows::WorkflowsRules,
+    codeowners::CodeownersRules, docs::DocsRules, files::FilesRules, git::GitRules,
+    metadata::MetadataRules, security::SecurityRules,
 };
 use super::results::AuditResults;
 use crate::config::Config;
@@ -96,7 +94,7 @@ use crate::scanner::Scanner;
 
 /// Trait for rule categories.
 ///
-/// Each rule category (secrets, files, docs, etc.) implements this trait
+/// Each rule category (files, docs, security, etc.) implements this trait
 /// to provide its specific audit functionality.
 ///
 /// # Implementing a Custom Category
@@ -129,7 +127,7 @@ use crate::scanner::Scanner;
 /// ```
 #[async_trait::async_trait]
 pub trait RuleCategory: Send + Sync {
-    /// Get the category name (e.g., "secrets", "files", "docs").
+    /// Get the category name (e.g., "files", "docs", "security").
     fn name(&self) -> &'static str;
 
     /// Run the rules in this category against the scanned repository.
@@ -191,7 +189,7 @@ pub type ProgressCallback = Box<dyn Fn(&str, usize, usize, Option<(usize, u64)>)
 /// let mut engine = RulesEngine::new(config);
 ///
 /// // Optionally configure the engine
-/// engine.set_only_categories(vec!["secrets".to_string()]);
+/// engine.set_only_categories(vec!["files".to_string()]);
 ///
 /// // Run the audit
 /// let (results, timing) = engine.run_with_timing(&scanner).await?;
@@ -295,21 +293,12 @@ impl RulesEngine {
 
         // Get all rule categories
         let categories: Vec<Box<dyn RuleCategory>> = vec![
-            Box::new(SecretsRules),
             Box::new(FilesRules),
             Box::new(DocsRules),
             Box::new(SecurityRules),
-            Box::new(WorkflowsRules),
-            Box::new(QualityRules),
-            Box::new(DependencyRules),
-            Box::new(LicenseRules),
-            Box::new(DockerRules),
             Box::new(GitRules),
-            Box::new(HistoryRules),
             Box::new(MetadataRules),
-            Box::new(IssuesRules),
             Box::new(CodeownersRules),
-            Box::new(CustomRules),
         ];
 
         // Count categories that will be executed
@@ -444,14 +433,14 @@ mod tests {
         let config = Config::default();
         let scanner = Scanner::new(root.to_path_buf());
         let mut engine = RulesEngine::new(config);
-        engine.set_only_categories(vec!["secrets".to_string()]);
+        engine.set_only_categories(vec!["files".to_string()]);
 
         let results = engine.run(&scanner).await.unwrap();
 
-        // Verify that only secrets category was run
-        // All findings should be from secrets category
+        // Verify that only files category was run
+        // All findings should be from files category
         for finding in results.findings() {
-            assert_eq!(finding.category, "secrets");
+            assert_eq!(finding.category, "files");
         }
     }
 
@@ -465,13 +454,13 @@ mod tests {
         let config = Config::default();
         let scanner = Scanner::new(root.to_path_buf());
         let mut engine = RulesEngine::new(config);
-        engine.set_skip_categories(vec!["secrets".to_string()]);
+        engine.set_skip_categories(vec!["files".to_string()]);
 
         let results = engine.run(&scanner).await.unwrap();
 
-        // Verify that secrets category was skipped
+        // Verify that files category was skipped
         for finding in results.findings() {
-            assert_ne!(finding.category, "secrets");
+            assert_ne!(finding.category, "files");
         }
     }
 
@@ -519,9 +508,9 @@ mod tests {
     fn test_should_run_category_with_only() {
         let config = Config::default();
         let mut engine = RulesEngine::new(config);
-        engine.set_only_categories(vec!["secrets".to_string(), "files".to_string()]);
+        engine.set_only_categories(vec!["security".to_string(), "files".to_string()]);
 
-        assert!(engine.should_run_category("secrets"));
+        assert!(engine.should_run_category("security"));
         assert!(engine.should_run_category("files"));
         assert!(!engine.should_run_category("docs"));
     }
@@ -530,9 +519,9 @@ mod tests {
     fn test_should_run_category_with_skip() {
         let config = Config::default();
         let mut engine = RulesEngine::new(config);
-        engine.set_skip_categories(vec!["secrets".to_string()]);
+        engine.set_skip_categories(vec!["security".to_string()]);
 
-        assert!(!engine.should_run_category("secrets"));
+        assert!(!engine.should_run_category("security"));
         assert!(engine.should_run_category("files"));
         assert!(engine.should_run_category("docs"));
     }
@@ -543,7 +532,7 @@ mod tests {
         let engine = RulesEngine::new(config);
 
         // By default, all categories should run
-        assert!(engine.should_run_category("secrets"));
+        assert!(engine.should_run_category("security"));
         assert!(engine.should_run_category("files"));
         assert!(engine.should_run_category("docs"));
     }

@@ -213,15 +213,15 @@ fn benchmark_full_audit(c: &mut Criterion) {
     group.finish();
 }
 
-fn benchmark_single_category_secrets(c: &mut Criterion) {
+fn benchmark_single_category_git(c: &mut Criterion) {
     let temp_dir = create_rules_test_repo("complex");
     let scanner = Scanner::new(temp_dir.path().to_path_buf());
     let config = Config::default();
 
-    c.bench_function("single_category_secrets", |b| {
+    c.bench_function("single_category_git", |b| {
         b.iter(|| {
             let mut engine = RulesEngine::new(config.clone());
-            engine.set_only_categories(vec!["secrets".to_string()]);
+            engine.set_only_categories(vec!["git".to_string()]);
 
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let results = runtime.block_on(async { engine.run(black_box(&scanner)).await });
@@ -285,15 +285,15 @@ fn benchmark_single_category_security(c: &mut Criterion) {
     });
 }
 
-fn benchmark_single_category_workflows(c: &mut Criterion) {
+fn benchmark_single_category_metadata(c: &mut Criterion) {
     let temp_dir = create_rules_test_repo("typical");
     let scanner = Scanner::new(temp_dir.path().to_path_buf());
     let config = Config::default();
 
-    c.bench_function("single_category_workflows", |b| {
+    c.bench_function("single_category_metadata", |b| {
         b.iter(|| {
             let mut engine = RulesEngine::new(config.clone());
-            engine.set_only_categories(vec!["workflows".to_string()]);
+            engine.set_only_categories(vec!["metadata".to_string()]);
 
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let results = runtime.block_on(async { engine.run(black_box(&scanner)).await });
@@ -312,7 +312,7 @@ fn benchmark_multiple_categories(c: &mut Criterion) {
         b.iter(|| {
             let mut engine = RulesEngine::new(config.clone());
             engine.set_only_categories(vec![
-                "secrets".to_string(),
+                "git".to_string(),
                 "files".to_string(),
                 "docs".to_string(),
             ]);
@@ -365,11 +365,11 @@ fn benchmark_different_presets(c: &mut Criterion) {
 criterion_group!(
     benches,
     benchmark_full_audit,
-    benchmark_single_category_secrets,
+    benchmark_single_category_git,
     benchmark_single_category_files,
     benchmark_single_category_docs,
     benchmark_single_category_security,
-    benchmark_single_category_workflows,
+    benchmark_single_category_metadata,
     benchmark_multiple_categories,
     benchmark_rules_engine_creation,
     benchmark_different_presets,
