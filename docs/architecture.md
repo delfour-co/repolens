@@ -40,30 +40,37 @@ RepoLens est construit en Rust avec une architecture modulaire qui sépare les p
 
 ## Structure des modules
 
+RepoLens est un workspace Cargo à 2 crates : `repolens-core` (logique de domaine pure, sans
+`clap`) et `repolens` (binaire CLI, dépend de `repolens-core`).
+
 ```
-src/
-├── main.rs              # Point d'entrée
-├── lib.rs               # Exports de la bibliothèque
-├── cli/                 # Commandes CLI et formats de sortie
-│   ├── commands/        # init, plan, apply, report, schema, compare, install_hooks
-│   └── output/          # terminal, JSON, SARIF, Markdown, HTML
-├── cache/               # Système de cache d'audit (invalidation SHA256)
-├── compare/             # Comparaison de rapports (score diff, régressions, améliorations)
-├── config/              # Chargement de configuration et presets
-├── hooks/               # Gestion des Git hooks (pre-commit, pre-push)
-├── rules/               # Moteur d'audit et règles
-│   ├── categories/      # secrets, files, docs, security, workflows, quality, licenses, dependencies, custom
-│   ├── patterns/        # Patterns de détection (secrets)
-│   └── engine.rs        # Moteur d'exécution
-├── actions/             # Planification et exécution des correctifs
-├── providers/           # Intégration APIs externes (GitHub via gh CLI)
-├── scanner/             # Scan du système de fichiers et Git
-└── utils/               # Utilitaires (vérification des prérequis)
+crates/
+├── repolens-core/            # Logique de domaine (pure, pas de clap, pas de CLI)
+│   └── src/
+│       ├── lib.rs             # Exports de la bibliothèque
+│       ├── cache/             # Système de cache d'audit (invalidation SHA256)
+│       ├── compare/           # Comparaison de rapports (score diff, régressions, améliorations)
+│       ├── config/            # Chargement de configuration et presets
+│       ├── rules/             # Moteur d'audit et règles
+│       │   ├── categories/    # secrets, files, docs, security, workflows, quality, licenses, dependencies, custom
+│       │   ├── patterns/      # Patterns de détection (secrets)
+│       │   └── engine.rs      # Moteur d'exécution
+│       ├── actions/           # Planification et exécution des correctifs
+│       ├── providers/         # Intégration APIs externes (GitHub via gh CLI)
+│       ├── scanner/           # Scan du système de fichiers et Git
+│       └── utils/             # Utilitaires (vérification des prérequis)
+└── repolens/                 # Binaire CLI (dépend de repolens-core)
+    └── src/
+        ├── main.rs            # Point d'entrée
+        ├── cli/               # Commandes CLI et formats de sortie
+        │   ├── commands/      # init, plan, apply, report, schema, compare, install_hooks
+        │   └── output/        # terminal, JSON, SARIF, Markdown, HTML
+        └── hooks/             # Gestion des Git hooks (pre-commit, pre-push)
 ```
 
 ## Modules principaux
 
-### CLI (`src/cli/`)
+### CLI (`crates/repolens/src/cli/`)
 
 Gère l'interface en ligne de commande et le routage des commandes.
 
@@ -81,7 +88,7 @@ Gère l'interface en ligne de commande et le routage des commandes.
 - `compare` : Comparaison de deux rapports d'audit JSON
 - `install-hooks` : Installation/suppression des Git hooks (pre-commit, pre-push)
 
-### Configuration (`src/config/`)
+### Configuration (`crates/repolens-core/src/config/`)
 
 Gère le chargement et la validation de la configuration.
 
@@ -95,7 +102,7 @@ Gère le chargement et la validation de la configuration.
 - `loader.rs` : Chargement de la configuration
 - `presets/` : Définitions des presets
 
-### Scanner (`src/scanner/`)
+### Scanner (`crates/repolens-core/src/scanner/`)
 
 Analyse le dépôt pour collecter les informations nécessaires.
 
@@ -108,7 +115,7 @@ Analyse le dépôt pour collecter les informations nécessaires.
 - `filesystem.rs` : Scan des fichiers
 - `git.rs` : Informations Git (branches, commits, etc.)
 
-### Rules Engine (`src/rules/`)
+### Rules Engine (`crates/repolens-core/src/rules/`)
 
 Moteur d'exécution des règles d'audit.
 
@@ -132,7 +139,7 @@ Moteur d'exécution des règles d'audit.
 - `patterns/` : Patterns de détection
   - `secrets.rs` : Patterns de secrets
 
-### Actions (`src/actions/`)
+### Actions (`crates/repolens-core/src/actions/`)
 
 Planification et exécution des actions correctives.
 
@@ -149,7 +156,7 @@ Planification et exécution des actions correctives.
 - `branch_protection.rs` : Protection des branches
 - `gitignore.rs` : Mise à jour de .gitignore
 
-### Cache (`src/cache/`)
+### Cache (`crates/repolens-core/src/cache/`)
 
 Système de mise en cache des résultats d'audit.
 
@@ -163,7 +170,7 @@ Système de mise en cache des résultats d'audit.
 - `--clear-cache` : Vider le cache avant l'audit
 - `--cache-dir` : Répertoire de cache personnalisé
 
-### Compare (`src/compare/`)
+### Compare (`crates/repolens-core/src/compare/`)
 
 Comparaison de rapports d'audit pour détecter les régressions et améliorations.
 
@@ -175,7 +182,7 @@ Comparaison de rapports d'audit pour détecter les régressions et amélioration
 
 **Formats de sortie** : Terminal (coloré), JSON, Markdown
 
-### Hooks (`src/hooks/`)
+### Hooks (`crates/repolens/src/hooks/`)
 
 Gestion des Git hooks pour l'intégration dans le workflow de développement.
 
@@ -185,7 +192,7 @@ Gestion des Git hooks pour l'intégration dans le workflow de développement.
 - Sauvegarde automatique des hooks existants
 - Restauration des hooks originaux à la suppression
 
-### Providers (`src/providers/`)
+### Providers (`crates/repolens-core/src/providers/`)
 
 Intégration avec les APIs externes.
 
@@ -196,7 +203,7 @@ Intégration avec les APIs externes.
 **Modules** :
 - `github.rs` : Provider GitHub (via `gh` CLI)
 
-### Output (`src/cli/output/`)
+### Output (`crates/repolens/src/cli/output/`)
 
 Formats de sortie pour les résultats.
 
@@ -324,19 +331,19 @@ cargo flamegraph --bin repolens -- plan
 
 ### Ajouter une nouvelle règle
 
-1. Créer la fonction de règle dans `src/rules/categories/`
-2. Enregistrer dans `src/rules/engine.rs`
-3. Ajouter la configuration dans `src/config/loader.rs`
+1. Créer la fonction de règle dans `crates/repolens-core/src/rules/categories/`
+2. Enregistrer dans `crates/repolens-core/src/rules/engine.rs`
+3. Ajouter la configuration dans `crates/repolens-core/src/config/loader.rs`
 
 ### Ajouter un nouveau format
 
-1. Créer le module dans `src/cli/output/`
+1. Créer le module dans `crates/repolens/src/cli/output/`
 2. Implémenter le trait `OutputFormatter`
-3. Enregistrer dans `src/cli/output/mod.rs`
+3. Enregistrer dans `crates/repolens/src/cli/output/mod.rs`
 
 ### Ajouter un nouveau provider
 
-1. Créer le module dans `src/providers/`
+1. Créer le module dans `crates/repolens-core/src/providers/`
 2. Implémenter le trait `Provider`
 3. Utiliser dans les actions appropriées
 
@@ -345,7 +352,7 @@ cargo flamegraph --bin repolens -- plan
 ### Structure des tests
 
 ```
-tests/
+crates/repolens/tests/
 ├── unit/              # Tests unitaires (dans les modules)
 ├── integration_test.rs # Tests d'intégration
 └── fixtures/          # Données de test

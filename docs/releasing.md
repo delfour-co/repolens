@@ -64,9 +64,16 @@ cargo publish -p repolens
 
 Both crates always share the workspace version, so they ship in lockstep.
 
-> The `publish-crate` job in `release.yml` currently runs a single `cargo publish` at the workspace
-> root, which predates the 2-crate split. If it starts failing, replace it with the two-step,
-> ordered `-p repolens-core` / `-p repolens` form above.
+> The `publish-crate` job in `release.yml` automates this. Its primary path is
+> `cargo publish --workspace --allow-dirty` (stable since Cargo 1.90): it topologically sorts the
+> two crates, builds `repolens` against a local registry overlay of the freshly-packaged
+> `repolens-core`, then uploads in batches, automatically waiting for each batch to be indexed
+> before publishing the next. Because `cargo publish` is explicitly non-atomic — a mid-workspace
+> server error can leave `repolens-core` published and `repolens` not, with no built-in resume —
+> the job falls back to the ordered, per-crate form above: it re-checks each crate's published
+> status via the crates.io API, publishes only what's missing (`repolens-core` first, waiting up to
+> 5 minutes for it to be indexed, then `repolens`), so a re-run after a partial failure won't hit
+> "crate version already exists" on `repolens-core`.
 
 ## Version format
 
