@@ -21,21 +21,16 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Copy all source files
+# (crates/repolens-core/benches carries the real [[bench]] sources, and
+# crates/repolens/schemas the runtime schema assets, so both arrive via the
+# workspace-wide `COPY crates` — no dummy bench files or separate schemas
+# copy needed.)
 COPY Cargo.toml Cargo.lock ./
-COPY src ./src
+COPY crates ./crates
 COPY presets ./presets
-COPY schemas ./schemas
-
-# Create dummy benchmark files to satisfy Cargo.toml [[bench]] sections
-# (benchmarks are excluded from Docker build for size optimization)
-RUN mkdir -p benches && \
-    echo 'fn main() {}' > benches/parse_benchmark.rs && \
-    echo 'fn main() {}' > benches/scanner_benchmark.rs && \
-    echo 'fn main() {}' > benches/rules_benchmark.rs && \
-    echo 'fn main() {}' > benches/pdf_benchmark.rs
 
 # Build the binary
-RUN cargo build --release && \
+RUN cargo build --release --workspace && \
     strip target/release/repolens
 
 # ------------------------------------------------------------------------------

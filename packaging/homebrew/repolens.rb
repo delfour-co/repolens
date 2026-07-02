@@ -32,8 +32,11 @@ class Repolens < Formula
     # Ensure Cargo uses the correct paths
     ENV["CARGO_HOME"] = buildpath/"cargo"
 
-    # Build with release optimizations
-    system "cargo", "install", *std_cargo_args
+    # RepoLens is a 2-crate Cargo workspace (crates/repolens-core,
+    # crates/repolens); the repository root has no [package], only a
+    # [workspace], so `cargo install --path .` (std_cargo_args' default)
+    # fails with "found a virtual manifest". Point at the bin crate.
+    system "cargo", "install", *std_cargo_args(path: "crates/repolens")
 
     # Generate shell completions
     generate_completions_from_executable(bin/"repolens", "completions")

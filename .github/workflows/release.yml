@@ -461,14 +461,64 @@ jobs:
 
       - name: Verify package
         run: |
-          cargo package --list --allow-dirty
-          cargo package --allow-dirty
+          cargo package --list --workspace --allow-dirty
+          cargo package --workspace --allow-dirty
 
+      # repolens depends on repolens-core via a path + version dependency;
+      # once published, that becomes a registry dependency, so repolens-core
+      # must land on crates.io — and be indexed — before repolens can be
+      # verified and uploaded.
+      #
+      # `cargo publish --workspace` (stable since Cargo 1.90) is the primary
+      # path: it topologically sorts the two crates, builds repolens against
+      # a local registry overlay of the freshly-packaged repolens-core, then
+      # uploads in batches, automatically waiting for each batch to be
+      # indexed before publishing the next. See
+      # https://doc.rust-lang.org/cargo/CHANGELOG.html (Cargo 1.90, "Stabilize
+      # multi-package publishing").
+      #
+      # cargo publish is explicitly non-atomic: a mid-workspace server error
+      # can leave repolens-core published and repolens not, and cargo has no
+      # built-in resume. The fallback below re-checks publish status per
+      # crate via the crates.io API and only publishes what's missing, so a
+      # re-run after a partial failure won't hit "crate version already
+      # exists" on repolens-core.
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cargo publish --allow-dirty
+          is_published() {
+            curl -sf "https://crates.io/api/v1/crates/$1/${VERSION}" | grep -q "\"num\":\"${VERSION}\""
+          }
+
+          if cargo publish --workspace --allow-dirty; then
+            echo "Published repolens-core and repolens ${VERSION} via cargo publish --workspace"
+            exit 0
+          fi
+
+          echo "cargo publish --workspace failed; falling back to publishing any remaining crate(s) individually"
+
+          if is_published repolens-core; then
+            echo "repolens-core ${VERSION} is already published, skipping"
+          else
+            cargo publish -p repolens-core --allow-dirty
+          fi
+
+          for i in $(seq 1 30); do
+            if is_published repolens-core; then
+              echo "repolens-core ${VERSION} is indexed on crates.io"
+              break
+            fi
+            echo "Waiting for repolens-core ${VERSION} to be indexed (attempt ${i}/30)..."
+            sleep 10
+          done
+
+          if is_published repolens; then
+            echo "repolens ${VERSION} is already published, skipping"
+          else
+            cargo publish -p repolens --allow-dirty
+          fi
 
   docker:
     name: Build and Push Docker Image
