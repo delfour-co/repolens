@@ -1,0 +1,46 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `repolens ...`
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: RepoLens version
+      description: Output of `repolens --version`
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system & version
+      placeholder: e.g. Fedora 41, macOS 15, Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Output of `repolens plan -vvv` (or the relevant subcommand with `-vvv`), if relevant
+      render: shell
+    validations:
+      required: false
