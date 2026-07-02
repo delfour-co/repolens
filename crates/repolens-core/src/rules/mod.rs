@@ -34,10 +34,10 @@
 //! ### Running the Rules Engine
 //!
 //! ```rust,no_run
-//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use repolens_core::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
 //! use std::path::PathBuf;
 //!
-//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! # async fn example() -> Result<(), repolens_core::RepoLensError> {
 //! let config = Config::default();
 //! let scanner = Scanner::new(PathBuf::from("."));
 //! let engine = RulesEngine::new(config);
@@ -54,10 +54,10 @@
 //! ### Filtering Categories
 //!
 //! ```rust,no_run
-//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use repolens_core::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
 //! use std::path::PathBuf;
 //!
-//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! # async fn example() -> Result<(), repolens_core::RepoLensError> {
 //! let config = Config::default();
 //! let scanner = Scanner::new(PathBuf::from("."));
 //! let mut engine = RulesEngine::new(config);
@@ -73,7 +73,7 @@
 //! ### Working with Findings
 //!
 //! ```rust
-//! use repolens::rules::{Finding, Severity};
+//! use repolens_core::rules::{Finding, Severity};
 //!
 //! let finding = Finding::new("SEC001", "secrets", Severity::Critical, "API key detected")
 //!     .with_location("src/config.rs:42")

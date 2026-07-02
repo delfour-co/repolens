@@ -1,6 +1,6 @@
 //! Tests for provider modules
 
-use repolens::providers::github::{BranchProtection, GitHubProvider};
+use repolens_core::providers::github::{BranchProtection, GitHubProvider};
 
 #[test]
 fn test_github_provider_is_available() {

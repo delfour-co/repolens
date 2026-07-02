@@ -30,6 +30,9 @@ exclude = [
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
 
 [dependencies]
+# Core auditing library
+repolens-core = { path = "../repolens-core", version = "2.0.2" }
+
 # CLI framework
 clap = { version = "4", features = ["derive", "env", "color"] }
 
@@ -42,22 +45,16 @@ clap_complete_nushell = "0.1"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
-toml = "0.8"
 
-# File system operations
-walkdir = "2"
-ignore = "0.4"
-globset = "0.4"
+# JSON Schema validation (report validation in output layer)
+jsonschema = "0.29"
 
-# Pattern matching for secrets detection
-regex = "1.12"
-lazy_static = "1"
+# Text diff for interactive mode
+similar = "2"
 
 # Terminal output
 colored = "2"
@@ -71,48 +68,15 @@ dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 anyhow = "1"
 thiserror = "1"
 
-# URL parsing for validation
-url = "2"
-
-# SHA256 hashing for cache
-sha2 = "0.10"
-
 # Home directory resolution
 dirs = "5"
-
-# GitHub API - octocrab for direct API access, gh CLI as fallback
-octocrab = "0.41"
-which = "6"
 
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
-# Metrics
-metrics = "0.22"
-metrics-prometheus = "0.3"
-
-# Template rendering
-tera = "1"
-
 # Date/time for reports
 chrono = { version = "0.4", features = ["serde"] }
-
-
-# HTTP client for OSV API
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-
-# HTML report generation
-minijinja = "2"
-
-# Text diff for interactive mode
-similar = "2"
-
-# Parallel processing
-rayon = "1.8"
-
-# JSON Schema validation
-jsonschema = "0.29"
 
 [build-dependencies]
 clap_mangen = "0.2"
@@ -125,24 +89,12 @@ tempfile = "3"
 assert_cmd = "2"
 predicates = "3"
 pretty_assertions = "1"
-criterion = { version = "0.5", features = ["html_reports"] }
-futures = "0.3"
 serial_test = "3.3.1"
 insta = "1"
-
-[[bench]]
-name = "parse_benchmark"
-harness = false
+# TOML round-trip tests for HooksConfig (inline hooks tests)
+toml = "0.8"
 
 [[bin]]
 name = "repolens"
 path = "src/main.rs"
-
-[[bench]]
-name = "scanner_benchmark"
-harness = false
-
-[[bench]]
-name = "rules_benchmark"
-harness = false
 

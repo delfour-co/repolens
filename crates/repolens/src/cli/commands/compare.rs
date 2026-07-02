@@ -4,15 +4,15 @@ use colored::Colorize;
 use std::path::PathBuf;
 
 use super::CompareArgs;
-use crate::compare::{compare_results, format_json, format_markdown, format_terminal};
-use crate::error::RepoLensError;
+use repolens_core::compare::{compare_results, format_json, format_markdown, format_terminal};
+use repolens_core::error::RepoLensError;
 use crate::exit_codes;
-use crate::rules::results::AuditResults;
+use repolens_core::rules::results::AuditResults;
 
 /// Load an AuditResults from a JSON file
 fn load_report(path: &PathBuf) -> Result<AuditResults, RepoLensError> {
     let content = std::fs::read_to_string(path).map_err(|e| {
-        RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+        RepoLensError::Action(repolens_core::error::ActionError::ExecutionFailed {
             message: format!("Failed to read report file '{}': {}", path.display(), e),
         })
     })?;
@@ -42,7 +42,7 @@ pub async fn execute(args: CompareArgs) -> Result<i32, RepoLensError> {
     let output_str = match args.format {
         super::CompareFormat::Terminal => format_terminal(&report),
         super::CompareFormat::Json => format_json(&report).map_err(|e| {
-            RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+            RepoLensError::Action(repolens_core::error::ActionError::ExecutionFailed {
                 message: format!("Failed to serialize compare report: {}", e),
             })
         })?,
@@ -52,7 +52,7 @@ pub async fn execute(args: CompareArgs) -> Result<i32, RepoLensError> {
     // Write output
     if let Some(output_path) = &args.output {
         std::fs::write(output_path, &output_str).map_err(|e| {
-            RepoLensError::Action(crate::error::ActionError::FileWrite {
+            RepoLensError::Action(repolens_core::error::ActionError::FileWrite {
                 path: output_path.display().to_string(),
                 source: e,
             })
@@ -82,7 +82,7 @@ pub async fn execute(args: CompareArgs) -> Result<i32, RepoLensError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::results::{Finding, Severity};
+    use repolens_core::rules::results::{Finding, Severity};
     use tempfile::TempDir;
 
     fn create_test_report(findings: Vec<Finding>) -> AuditResults {

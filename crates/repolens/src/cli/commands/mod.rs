@@ -49,7 +49,7 @@ pub struct PlanArgs {
     #[arg(
         long,
         value_delimiter = ',',
-        value_parser = clap::builder::PossibleValuesParser::new(crate::rules::constants::VALID_CATEGORIES)
+        value_parser = clap::builder::PossibleValuesParser::new(repolens_core::rules::constants::VALID_CATEGORIES)
     )]
     pub only: Option<Vec<String>>,
 
@@ -57,7 +57,7 @@ pub struct PlanArgs {
     #[arg(
         long,
         value_delimiter = ',',
-        value_parser = clap::builder::PossibleValuesParser::new(crate::rules::constants::VALID_CATEGORIES)
+        value_parser = clap::builder::PossibleValuesParser::new(repolens_core::rules::constants::VALID_CATEGORIES)
     )]
     pub skip: Option<Vec<String>>,
 
@@ -101,7 +101,7 @@ pub struct ApplyArgs {
     #[arg(
         long,
         value_delimiter = ',',
-        value_parser = clap::builder::PossibleValuesParser::new(crate::rules::constants::VALID_CATEGORIES)
+        value_parser = clap::builder::PossibleValuesParser::new(repolens_core::rules::constants::VALID_CATEGORIES)
     )]
     pub only: Option<Vec<String>>,
 
@@ -109,7 +109,7 @@ pub struct ApplyArgs {
     #[arg(
         long,
         value_delimiter = ',',
-        value_parser = clap::builder::PossibleValuesParser::new(crate::rules::constants::VALID_CATEGORIES)
+        value_parser = clap::builder::PossibleValuesParser::new(repolens_core::rules::constants::VALID_CATEGORIES)
     )]
     pub skip: Option<Vec<String>>,
 
@@ -145,7 +145,7 @@ pub struct ReportArgs {
     #[arg(
         long,
         value_delimiter = ',',
-        value_parser = clap::builder::PossibleValuesParser::new(crate::rules::constants::VALID_CATEGORIES)
+        value_parser = clap::builder::PossibleValuesParser::new(repolens_core::rules::constants::VALID_CATEGORIES)
     )]
     pub only: Option<Vec<String>>,
 
@@ -153,7 +153,7 @@ pub struct ReportArgs {
     #[arg(
         long,
         value_delimiter = ',',
-        value_parser = clap::builder::PossibleValuesParser::new(crate::rules::constants::VALID_CATEGORIES)
+        value_parser = clap::builder::PossibleValuesParser::new(repolens_core::rules::constants::VALID_CATEGORIES)
     )]
     pub skip: Option<Vec<String>>,
 

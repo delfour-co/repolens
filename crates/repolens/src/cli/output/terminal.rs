@@ -1,11 +1,11 @@
 //! Terminal output formatting with colors
 
-use crate::error::RepoLensError;
+use repolens_core::error::RepoLensError;
 use colored::Colorize;
 
 use super::{OutputRenderer, ReportRenderer};
-use crate::actions::plan::ActionPlan;
-use crate::rules::results::{AuditResults, Finding, Severity};
+use repolens_core::actions::plan::ActionPlan;
+use repolens_core::rules::results::{AuditResults, Finding, Severity};
 
 pub struct TerminalOutput;
 
@@ -236,7 +236,7 @@ impl ReportRenderer for TerminalOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::results::Finding;
+    use repolens_core::rules::results::Finding;
 
     fn create_test_results() -> AuditResults {
         let mut results = AuditResults::new("test-repo", "opensource");
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_format_actions_with_actions() {
-        use crate::actions::plan::{Action, ActionOperation};
+        use repolens_core::actions::plan::{Action, ActionOperation};
 
         let output = TerminalOutput::new();
         let mut plan = ActionPlan::new();

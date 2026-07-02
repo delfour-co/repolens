@@ -14,7 +14,7 @@
 //! ### Creating Findings
 //!
 //! ```rust
-//! use repolens::rules::{Finding, Severity};
+//! use repolens_core::rules::{Finding, Severity};
 //!
 //! let finding = Finding::new("SEC001", "secrets", Severity::Critical, "API key detected")
 //!     .with_location("src/config.rs:42")
@@ -25,7 +25,7 @@
 //! ### Working with Audit Results
 //!
 //! ```rust
-//! use repolens::rules::results::{AuditResults, Finding, Severity};
+//! use repolens_core::rules::results::{AuditResults, Finding, Severity};
 //!
 //! let mut results = AuditResults::new("my-repo", "opensource");
 //!
@@ -49,7 +49,7 @@ use serde::{Deserialize, Serialize};
 /// # Examples
 ///
 /// ```rust
-/// use repolens::rules::Severity;
+/// use repolens_core::rules::Severity;
 ///
 /// let severity = Severity::Critical;
 ///
@@ -91,7 +91,7 @@ impl Severity {
 /// # Examples
 ///
 /// ```rust
-/// use repolens::rules::{Finding, Severity};
+/// use repolens_core::rules::{Finding, Severity};
 ///
 /// // Create a basic finding
 /// let finding = Finding::new(
@@ -183,7 +183,7 @@ impl Finding {
 /// # Examples
 ///
 /// ```rust
-/// use repolens::rules::results::{AuditResults, Finding, Severity};
+/// use repolens_core::rules::results::{AuditResults, Finding, Severity};
 ///
 /// // Create new results
 /// let mut results = AuditResults::new("my-repo", "opensource");

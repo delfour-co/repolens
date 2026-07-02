@@ -18,10 +18,10 @@
 //! ### Basic Usage
 //!
 //! ```rust,no_run
-//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use repolens_core::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
 //! use std::path::PathBuf;
 //!
-//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! # async fn example() -> Result<(), repolens_core::RepoLensError> {
 //! let config = Config::default();
 //! let scanner = Scanner::new(PathBuf::from("."));
 //! let engine = RulesEngine::new(config);
@@ -35,10 +35,10 @@
 //! ### With Progress Callback
 //!
 //! ```rust,no_run
-//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use repolens_core::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
 //! use std::path::PathBuf;
 //!
-//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! # async fn example() -> Result<(), repolens_core::RepoLensError> {
 //! let config = Config::default();
 //! let scanner = Scanner::new(PathBuf::from("."));
 //! let mut engine = RulesEngine::new(config);
@@ -60,10 +60,10 @@
 //! ### Filtering Categories
 //!
 //! ```rust,no_run
-//! use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+//! use repolens_core::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
 //! use std::path::PathBuf;
 //!
-//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! # async fn example() -> Result<(), repolens_core::RepoLensError> {
 //! let config = Config::default();
 //! let scanner = Scanner::new(PathBuf::from("."));
 //! let mut engine = RulesEngine::new(config);
@@ -102,11 +102,11 @@ use crate::scanner::Scanner;
 /// # Implementing a Custom Category
 ///
 /// ```rust,ignore
-/// use repolens::rules::engine::RuleCategory;
-/// use repolens::rules::Finding;
-/// use repolens::config::Config;
-/// use repolens::scanner::Scanner;
-/// use repolens::RepoLensError;
+/// use repolens_core::rules::engine::RuleCategory;
+/// use repolens_core::rules::Finding;
+/// use repolens_core::config::Config;
+/// use repolens_core::scanner::Scanner;
+/// use repolens_core::RepoLensError;
 ///
 /// struct MyCustomRules;
 ///
@@ -160,7 +160,7 @@ pub trait RuleCategory: Send + Sync {
 /// # Example
 ///
 /// ```rust
-/// use repolens::rules::engine::ProgressCallback;
+/// use repolens_core::rules::engine::ProgressCallback;
 ///
 /// let callback: ProgressCallback = Box::new(|category, current, total, timing| {
 ///     if let Some((findings, duration_ms)) = timing {
@@ -181,10 +181,10 @@ pub type ProgressCallback = Box<dyn Fn(&str, usize, usize, Option<(usize, u64)>)
 /// # Example
 ///
 /// ```rust,no_run
-/// use repolens::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
+/// use repolens_core::{config::Config, rules::engine::RulesEngine, scanner::Scanner};
 /// use std::path::PathBuf;
 ///
-/// # async fn example() -> Result<(), repolens::RepoLensError> {
+/// # async fn example() -> Result<(), repolens_core::RepoLensError> {
 /// let config = Config::default();
 /// let scanner = Scanner::new(PathBuf::from("."));
 ///
@@ -197,7 +197,7 @@ pub type ProgressCallback = Box<dyn Fn(&str, usize, usize, Option<(usize, u64)>)
 /// let (results, timing) = engine.run_with_timing(&scanner).await?;
 ///
 /// println!("Audit completed in {}", timing.total_duration_formatted());
-/// println!("Found {} critical issues", results.count_by_severity(repolens::rules::Severity::Critical));
+/// println!("Found {} critical issues", results.count_by_severity(repolens_core::rules::Severity::Critical));
 /// # Ok(())
 /// # }
 /// ```

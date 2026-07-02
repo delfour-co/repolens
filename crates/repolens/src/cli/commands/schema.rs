@@ -4,7 +4,7 @@ use colored::Colorize;
 
 use super::SchemaArgs;
 use crate::cli::output::json::AUDIT_REPORT_SCHEMA;
-use crate::error::RepoLensError;
+use repolens_core::error::RepoLensError;
 use crate::exit_codes;
 
 pub async fn execute(args: SchemaArgs) -> Result<i32, RepoLensError> {
@@ -13,7 +13,7 @@ pub async fn execute(args: SchemaArgs) -> Result<i32, RepoLensError> {
     match args.output {
         Some(output_path) => {
             std::fs::write(&output_path, schema).map_err(|e| {
-                RepoLensError::Action(crate::error::ActionError::FileWrite {
+                RepoLensError::Action(repolens_core::error::ActionError::FileWrite {
                     path: output_path.display().to_string(),
                     source: e,
                 })

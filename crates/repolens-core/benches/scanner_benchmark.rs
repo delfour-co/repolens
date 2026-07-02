@@ -1,5 +1,5 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use repolens::scanner::Scanner;
+use repolens_core::scanner::Scanner;
 use std::fs;
 use tempfile::TempDir;
 

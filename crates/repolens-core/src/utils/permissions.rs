@@ -21,7 +21,7 @@ use std::path::Path;
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use repolens::utils::permissions::set_secure_permissions;
+/// use repolens_core::utils::permissions::set_secure_permissions;
 ///
 /// let config_path = Path::new(".repolens.toml");
 /// set_secure_permissions(config_path).expect("Failed to set permissions");

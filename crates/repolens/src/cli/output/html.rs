@@ -1,10 +1,10 @@
 //! HTML report output
 
-use crate::error::RepoLensError;
+use repolens_core::error::RepoLensError;
 use chrono::Utc;
 
 use super::ReportRenderer;
-use crate::rules::results::{AuditResults, Severity};
+use repolens_core::rules::results::{AuditResults, Severity};
 
 pub struct HtmlReport {
     detailed: bool,
@@ -257,7 +257,7 @@ impl ReportRenderer for HtmlReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::results::Finding;
+    use repolens_core::rules::results::Finding;
 
     fn create_test_results() -> AuditResults {
         let mut results = AuditResults::new("test-repo", "opensource");

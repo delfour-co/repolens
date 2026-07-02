@@ -16,7 +16,7 @@
 //! ### Basic Usage
 //!
 //! ```rust,no_run
-//! use repolens::scanner::Scanner;
+//! use repolens_core::scanner::Scanner;
 //! use std::path::PathBuf;
 //!
 //! let scanner = Scanner::new(PathBuf::from("."));
@@ -33,7 +33,7 @@
 //! ### Finding Files
 //!
 //! ```rust,no_run
-//! use repolens::scanner::Scanner;
+//! use repolens_core::scanner::Scanner;
 //! use std::path::PathBuf;
 //!
 //! let scanner = Scanner::new(PathBuf::from("."));
@@ -54,7 +54,7 @@
 //! ### Reading File Contents
 //!
 //! ```rust,no_run
-//! use repolens::scanner::Scanner;
+//! use repolens_core::scanner::Scanner;
 //! use std::path::PathBuf;
 //!
 //! let scanner = Scanner::new(PathBuf::from("."));

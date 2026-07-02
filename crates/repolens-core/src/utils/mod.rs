@@ -15,8 +15,8 @@
 //! Detect programming languages in a repository:
 //!
 //! ```rust,no_run
-//! use repolens::utils::detect_languages;
-//! use repolens::scanner::Scanner;
+//! use repolens_core::utils::detect_languages;
+//! use repolens_core::scanner::Scanner;
 //! use std::path::PathBuf;
 //!
 //! let scanner = Scanner::new(PathBuf::from("."));
@@ -31,7 +31,7 @@
 //! Measure audit performance:
 //!
 //! ```rust
-//! use repolens::utils::{Timer, format_duration};
+//! use repolens_core::utils::{Timer, format_duration};
 //!
 //! let timer = Timer::start();
 //! // ... do work ...

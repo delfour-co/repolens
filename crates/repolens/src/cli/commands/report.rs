@@ -5,15 +5,15 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use super::{ReportArgs, ReportFormat};
-use crate::cache::{AuditCache, delete_cache_directory};
+use repolens_core::cache::{AuditCache, delete_cache_directory};
 use crate::cli::output::{HtmlReport, JsonOutput, MarkdownReport, ReportRenderer};
-use crate::config::Config;
-use crate::error::RepoLensError;
+use repolens_core::config::Config;
+use repolens_core::error::RepoLensError;
 use crate::exit_codes;
-use crate::rules::engine::RulesEngine;
-use crate::rules::filter_valid_categories;
-use crate::scanner::Scanner;
-use crate::utils::format_duration;
+use repolens_core::rules::engine::RulesEngine;
+use repolens_core::rules::filter_valid_categories;
+use repolens_core::scanner::Scanner;
+use repolens_core::utils::format_duration;
 
 pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
     // Load configuration
@@ -157,7 +157,7 @@ pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
 
     let report = renderer.render_report(&audit_results)?;
     std::fs::write(&output_path, &report).map_err(|e| {
-        RepoLensError::Action(crate::error::ActionError::FileWrite {
+        RepoLensError::Action(repolens_core::error::ActionError::FileWrite {
             path: output_path.display().to_string(),
             source: e,
         })

@@ -11,17 +11,17 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::ApplyArgs;
-use crate::actions::executor::ActionExecutor;
-use crate::actions::git;
-use crate::actions::plan::{Action, ActionOperation, ActionPlan};
-use crate::actions::planner::ActionPlanner;
-use crate::config::Config;
-use crate::error::RepoLensError;
+use repolens_core::actions::executor::ActionExecutor;
+use repolens_core::actions::git;
+use repolens_core::actions::plan::{Action, ActionOperation, ActionPlan};
+use repolens_core::actions::planner::ActionPlanner;
+use repolens_core::config::Config;
+use repolens_core::error::RepoLensError;
 use crate::exit_codes;
-use crate::providers::github::GitHubProvider;
-use crate::rules::engine::RulesEngine;
-use crate::rules::results::{AuditResults, Severity};
-use crate::scanner::Scanner;
+use repolens_core::providers::github::GitHubProvider;
+use repolens_core::rules::engine::RulesEngine;
+use repolens_core::rules::results::{AuditResults, Severity};
+use repolens_core::scanner::Scanner;
 
 /// Display a visual summary of the actions to be applied
 fn display_action_summary(actions: &[Action], audit_results: &AuditResults) {
@@ -302,7 +302,7 @@ fn run_interactive_selection(actions: &[Action]) -> Result<Vec<usize>, RepoLensE
         .defaults(&defaults)
         .interact()
         .map_err(|e| {
-            RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+            RepoLensError::Action(repolens_core::error::ActionError::ExecutionFailed {
                 message: format!("Failed to get user selection: {}", e),
             })
         })?;
@@ -428,7 +428,7 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
             .default(false)
             .interact()
             .map_err(|e| {
-                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                RepoLensError::Action(repolens_core::error::ActionError::ExecutionFailed {
                     message: format!("Failed to get user input: {}", e),
                 })
             })?;
@@ -452,7 +452,7 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
             .default(false)
             .interact()
             .map_err(|e| {
-                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                RepoLensError::Action(repolens_core::error::ActionError::ExecutionFailed {
                     message: format!("Failed to get user input: {}", e),
                 })
             })?;
@@ -625,7 +625,7 @@ fn create_warning_issues(audit_results: &AuditResults) {
     };
 
     // Group warnings by category
-    let mut warning_categories: HashMap<String, Vec<&crate::rules::results::Finding>> =
+    let mut warning_categories: HashMap<String, Vec<&repolens_core::rules::results::Finding>> =
         HashMap::new();
     for finding in audit_results.findings_by_severity(Severity::Warning) {
         warning_categories
@@ -697,7 +697,7 @@ fn create_warning_issues(audit_results: &AuditResults) {
 async fn handle_git_operations(
     repo_root: &Path,
     action_plan: &ActionPlan,
-    results: &[crate::actions::executor::ActionResult],
+    results: &[repolens_core::actions::executor::ActionResult],
 ) -> Result<(), RepoLensError> {
     // Check if there are any file-related changes by checking the action plan
     let has_file_changes = action_plan.actions().iter().any(|action| {
@@ -841,7 +841,7 @@ async fn handle_git_operations(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::actions::plan::{
+    use repolens_core::actions::plan::{
         Action, ActionOperation, BranchProtectionSettings, GitHubRepoSettings,
     };
     use std::collections::HashMap;

@@ -8,9 +8,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-
-use crate::error::{ActionError, RepoLensError};
+pub use repolens_core::config::HooksConfig;
+use repolens_core::error::{ActionError, RepoLensError};
 
 /// Name of the pre-commit hook file
 const PRE_COMMIT_HOOK: &str = "pre-commit";
@@ -20,34 +19,6 @@ const PRE_PUSH_HOOK: &str = "pre-push";
 
 /// Suffix used for backing up existing hooks
 const BACKUP_SUFFIX: &str = ".repolens-backup";
-
-/// Configuration for Git hooks
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HooksConfig {
-    /// Whether to install the pre-commit hook
-    #[serde(default = "default_true")]
-    pub pre_commit: bool,
-    /// Whether to install the pre-push hook
-    #[serde(default = "default_true")]
-    pub pre_push: bool,
-    /// Whether warnings should cause hook failure
-    #[serde(default)]
-    pub fail_on_warnings: bool,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-impl Default for HooksConfig {
-    fn default() -> Self {
-        Self {
-            pre_commit: true,
-            pre_push: true,
-            fail_on_warnings: false,
-        }
-    }
-}
 
 /// Manages the installation and removal of Git hooks
 #[derive(Debug)]

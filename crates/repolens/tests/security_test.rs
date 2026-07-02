@@ -1,9 +1,9 @@
 //! Security tests to prevent vulnerabilities
 
-use repolens::config::{Config, CustomRule, CustomRulesConfig};
-use repolens::rules::categories::custom::CustomRules;
-use repolens::rules::engine::RuleCategory;
-use repolens::scanner::Scanner;
+use repolens_core::config::{Config, CustomRule, CustomRulesConfig};
+use repolens_core::rules::categories::custom::CustomRules;
+use repolens_core::rules::engine::RuleCategory;
+use repolens_core::scanner::Scanner;
 use std::collections::HashMap;
 use std::fs;
 use tempfile::TempDir;
@@ -69,7 +69,7 @@ async fn test_no_secrets_in_logs() {
 #[test]
 fn test_input_validation() {
     // Test that invalid inputs are handled safely
-    use repolens::rules::categories::dependencies::parse_cargo_lock;
+    use repolens_core::rules::categories::dependencies::parse_cargo_lock;
 
     let temp_dir = TempDir::new().unwrap();
     let scanner = Scanner::new(temp_dir.path().to_path_buf());
@@ -90,8 +90,8 @@ fn test_no_unsafe_code_in_public_api() {
     // Verify that public APIs don't use unsafe code
     // This is a compile-time check - if unsafe is used, it should be documented
     // We can't easily test this at runtime, but we can verify the structure
-    use repolens::rules::categories::custom::CustomRules;
-    use repolens::rules::engine::RuleCategory;
+    use repolens_core::rules::categories::custom::CustomRules;
+    use repolens_core::rules::engine::RuleCategory;
 
     let rules = CustomRules;
     assert_eq!(rules.name(), "custom");

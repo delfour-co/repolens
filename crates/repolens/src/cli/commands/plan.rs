@@ -6,16 +6,16 @@
 use std::path::PathBuf;
 
 use super::{OutputFormat, PlanArgs};
-use crate::actions::planner::ActionPlanner;
-use crate::cache::{AuditCache, delete_cache_directory};
+use repolens_core::actions::planner::ActionPlanner;
+use repolens_core::cache::{AuditCache, delete_cache_directory};
 use crate::cli::output::{JsonOutput, OutputRenderer, SarifOutput, TerminalOutput};
-use crate::config::Config;
-use crate::error::RepoLensError;
+use repolens_core::config::Config;
+use repolens_core::error::RepoLensError;
 use crate::exit_codes;
-use crate::rules::engine::RulesEngine;
-use crate::rules::filter_valid_categories;
-use crate::scanner::Scanner;
-use crate::utils::format_duration;
+use repolens_core::rules::engine::RulesEngine;
+use repolens_core::rules::filter_valid_categories;
+use repolens_core::scanner::Scanner;
+use repolens_core::utils::format_duration;
 use colored::Colorize;
 use std::time::Duration;
 
@@ -192,7 +192,7 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
     // Write output
     if let Some(output_path) = args.output {
         std::fs::write(&output_path, &rendered).map_err(|e| {
-            RepoLensError::Action(crate::error::ActionError::FileWrite {
+            RepoLensError::Action(repolens_core::error::ActionError::FileWrite {
                 path: output_path.display().to_string(),
                 source: e,
             })

@@ -1,12 +1,12 @@
 //! JSON output formatting with optional JSON Schema support
 
-use crate::error::RepoLensError;
+use repolens_core::error::RepoLensError;
 use serde::Serialize;
 use std::collections::HashMap;
 
 use super::{OutputRenderer, ReportRenderer};
-use crate::actions::plan::ActionPlan;
-use crate::rules::results::{AuditResults, Severity};
+use repolens_core::actions::plan::ActionPlan;
+use repolens_core::rules::results::{AuditResults, Severity};
 
 /// Embedded JSON Schema for the audit report.
 pub const AUDIT_REPORT_SCHEMA: &str = include_str!("../../../schemas/audit-report.schema.json");
@@ -63,7 +63,7 @@ struct AuditSummary<'a> {
     critical_count: usize,
     warning_count: usize,
     info_count: usize,
-    findings: &'a [crate::rules::results::Finding],
+    findings: &'a [repolens_core::rules::results::Finding],
 }
 
 #[derive(Serialize)]
@@ -80,7 +80,7 @@ struct EnhancedReportOutput<'a> {
     schema: Option<&'static str>,
     repository_name: &'a str,
     preset: &'a str,
-    findings: &'a [crate::rules::results::Finding],
+    findings: &'a [repolens_core::rules::results::Finding],
     metadata: ReportMetadata,
     summary: ReportSummary,
 }
@@ -204,7 +204,7 @@ impl ReportRenderer for JsonOutput {
         if self.validate {
             let value: serde_json::Value = serde_json::from_str(&json_string)?;
             validate_against_schema(&value).map_err(|msg| {
-                RepoLensError::Rule(crate::error::RuleError::ExecutionFailed { message: msg })
+                RepoLensError::Rule(repolens_core::error::RuleError::ExecutionFailed { message: msg })
             })?;
         }
 
@@ -215,7 +215,7 @@ impl ReportRenderer for JsonOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::results::Finding;
+    use repolens_core::rules::results::Finding;
 
     fn create_test_results() -> AuditResults {
         let mut results = AuditResults::new("test-repo", "opensource");
@@ -246,7 +246,7 @@ mod tests {
 
     #[test]
     fn test_render_plan() {
-        use crate::actions::plan::{Action, ActionOperation};
+        use repolens_core::actions::plan::{Action, ActionOperation};
 
         let output = JsonOutput::new();
         let results = create_test_results();

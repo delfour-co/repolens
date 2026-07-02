@@ -12,9 +12,9 @@ pub use markdown::MarkdownReport;
 pub use sarif::SarifOutput;
 pub use terminal::TerminalOutput;
 
-use crate::actions::plan::ActionPlan;
-use crate::error::RepoLensError;
-use crate::rules::results::AuditResults;
+use repolens_core::actions::plan::ActionPlan;
+use repolens_core::error::RepoLensError;
+use repolens_core::rules::results::AuditResults;
 
 /// Trait for rendering plan output
 pub trait OutputRenderer {

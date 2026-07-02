@@ -36,7 +36,7 @@
 //! ### Creating an Action Plan
 //!
 //! ```rust,no_run
-//! use repolens::{
+//! use repolens_core::{
 //!     actions::planner::ActionPlanner,
 //!     config::Config,
 //!     scanner::Scanner,
@@ -44,7 +44,7 @@
 //! };
 //! use std::path::PathBuf;
 //!
-//! # async fn example() -> Result<(), repolens::RepoLensError> {
+//! # async fn example() -> Result<(), repolens_core::RepoLensError> {
 //! let config = Config::default();
 //! let scanner = Scanner::new(PathBuf::from("."));
 //!

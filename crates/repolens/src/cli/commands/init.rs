@@ -6,12 +6,12 @@ use std::fs;
 use std::path::Path;
 
 use super::InitArgs;
-use crate::config::presets::VALID_PRESETS;
-use crate::config::{Config, Preset};
-use crate::error::{ActionError, RepoLensError};
+use repolens_core::config::presets::VALID_PRESETS;
+use repolens_core::config::{Config, Preset};
+use repolens_core::error::{ActionError, RepoLensError};
 use crate::exit_codes;
-use crate::utils::permissions::set_secure_permissions;
-use crate::utils::prerequisites::{
+use repolens_core::utils::permissions::set_secure_permissions;
+use repolens_core::utils::prerequisites::{
     CheckOptions, display_error_summary, display_report, display_warnings, run_all_checks,
 };
 

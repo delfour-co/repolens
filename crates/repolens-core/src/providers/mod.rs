@@ -24,7 +24,7 @@
 //! ### Checking GitHub Authentication
 //!
 //! ```rust,no_run
-//! use repolens::providers::github::GitHubProvider;
+//! use repolens_core::providers::github::GitHubProvider;
 //!
 //! // Check if gh CLI is available
 //! if GitHubProvider::is_available() {

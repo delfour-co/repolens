@@ -1,9 +1,9 @@
 //! Regression tests to prevent bugs from reoccurring
 
-use repolens::rules::categories::dependencies::{
+use repolens_core::rules::categories::dependencies::{
     parse_cargo_lock, parse_package_lock, parse_requirements_txt,
 };
-use repolens::scanner::Scanner;
+use repolens_core::scanner::Scanner;
 use std::fs;
 use tempfile::TempDir;
 

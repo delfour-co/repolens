@@ -59,7 +59,7 @@
 //! ### Loading Configuration
 //!
 //! ```rust,no_run
-//! use repolens::config::Config;
+//! use repolens_core::config::Config;
 //!
 //! // Load from default location or environment
 //! let config = Config::load_or_default().expect("Failed to load config");
@@ -71,7 +71,7 @@
 //! ### Creating from Preset
 //!
 //! ```rust
-//! use repolens::config::{Config, Preset};
+//! use repolens_core::config::{Config, Preset};
 //!
 //! let config = Config::from_preset(Preset::Enterprise);
 //! assert_eq!(config.preset, "enterprise");
@@ -80,7 +80,7 @@
 //! ### Checking Rule Configuration
 //!
 //! ```rust
-//! use repolens::config::Config;
+//! use repolens_core::config::Config;
 //!
 //! let config = Config::default();
 //!
@@ -90,6 +90,7 @@
 //! }
 //! ```
 
+mod hooks_config;
 pub mod loader;
 pub mod presets;
 
@@ -103,8 +104,8 @@ use std::collections::HashMap;
 // Re-export CacheConfig from cache module for convenience
 pub use crate::cache::CacheConfig;
 
-// Re-export HooksConfig from hooks module for convenience
-pub use crate::hooks::HooksConfig;
+// Re-export HooksConfig for convenience
+pub use hooks_config::HooksConfig;
 
 /// Configuration for individual audit rules.
 ///
@@ -119,7 +120,7 @@ pub use crate::hooks::HooksConfig;
 /// ```
 ///
 /// ```rust
-/// use repolens::config::RuleConfig;
+/// use repolens_core::config::RuleConfig;
 ///
 /// let rule = RuleConfig {
 ///     enabled: true,

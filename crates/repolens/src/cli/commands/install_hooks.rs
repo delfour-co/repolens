@@ -3,8 +3,8 @@
 use colored::Colorize;
 
 use super::InstallHooksArgs;
-use crate::config::Config;
-use crate::error::{ActionError, RepoLensError};
+use repolens_core::config::Config;
+use repolens_core::error::{ActionError, RepoLensError};
 use crate::exit_codes;
 use crate::hooks::{HooksConfig, HooksManager};
 

@@ -13,22 +13,12 @@
 use clap::Parser;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-mod actions;
-mod cache;
 mod cli;
-mod compare;
-mod config;
-mod error;
 mod hooks;
-mod providers;
-mod rules;
-mod scanner;
-mod utils;
 
-use config::get_env_verbosity;
-use error::RepoLensError;
+use repolens_core::config::get_env_verbosity;
+use repolens_core::error::{self, RepoLensError};
 
-// Use exit_codes from cli module
 use cli::exit_codes;
 use cli::{Cli, Commands};
 

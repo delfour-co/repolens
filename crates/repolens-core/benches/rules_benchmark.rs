@@ -1,7 +1,7 @@
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use repolens::config::Config;
-use repolens::rules::engine::RulesEngine;
-use repolens::scanner::Scanner;
+use repolens_core::config::Config;
+use repolens_core::rules::engine::RulesEngine;
+use repolens_core::scanner::Scanner;
 use std::fs;
 use tempfile::TempDir;
 

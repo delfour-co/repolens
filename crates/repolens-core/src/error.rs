@@ -19,7 +19,7 @@
 //! ### Handling Errors
 //!
 //! ```rust,no_run
-//! use repolens::{config::Config, RepoLensError};
+//! use repolens_core::{config::Config, RepoLensError};
 //!
 //! fn load_config() -> Result<Config, RepoLensError> {
 //!     Config::load_or_default()
@@ -41,7 +41,7 @@
 //! Many errors include helpful suggestions for resolution:
 //!
 //! ```rust
-//! use repolens::error::{RepoLensError, ConfigError};
+//! use repolens_core::error::{RepoLensError, ConfigError};
 //!
 //! let err = RepoLensError::Config(ConfigError::ConfigNotFound {
 //!     path: ".repolens.toml".to_string(),

@@ -1,11 +1,11 @@
 //! SARIF output formatting for GitHub Code Scanning integration
 
-use crate::error::RepoLensError;
+use repolens_core::error::RepoLensError;
 use serde::Serialize;
 
 use super::OutputRenderer;
-use crate::actions::plan::ActionPlan;
-use crate::rules::results::{AuditResults, Finding, Severity};
+use repolens_core::actions::plan::ActionPlan;
+use repolens_core::rules::results::{AuditResults, Finding, Severity};
 
 pub struct SarifOutput;
 
@@ -196,7 +196,7 @@ impl OutputRenderer for SarifOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::results::Finding;
+    use repolens_core::rules::results::Finding;
 
     fn create_test_results() -> AuditResults {
         let mut results = AuditResults::new("test-repo", "opensource");

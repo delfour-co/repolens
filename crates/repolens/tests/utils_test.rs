@@ -1,6 +1,6 @@
 //! Tests for utility modules
 
-use repolens::utils::prerequisites::{
+use repolens_core::utils::prerequisites::{
     CheckLevel, CheckOptions, CheckStatus, PrerequisitesReport, check_gh_authenticated,
     check_gh_installed, check_git_installed, check_is_git_repo, check_remote_is_github,
     check_remote_origin, run_all_checks,
@@ -10,7 +10,7 @@ use tempfile::TempDir;
 
 #[test]
 fn test_check_result_ok() {
-    let result = repolens::utils::prerequisites::CheckResult::ok("Test", CheckLevel::Required);
+    let result = repolens_core::utils::prerequisites::CheckResult::ok("Test", CheckLevel::Required);
     assert_eq!(result.name, "Test");
     assert_eq!(result.level, CheckLevel::Required);
     assert_eq!(result.status, CheckStatus::Ok);
@@ -20,7 +20,7 @@ fn test_check_result_ok() {
 
 #[test]
 fn test_check_result_failed() {
-    let result = repolens::utils::prerequisites::CheckResult::failed(
+    let result = repolens_core::utils::prerequisites::CheckResult::failed(
         "Test",
         CheckLevel::Required,
         "Error message",
@@ -36,7 +36,7 @@ fn test_check_result_failed() {
 
 #[test]
 fn test_check_result_skipped() {
-    let result = repolens::utils::prerequisites::CheckResult::skipped("Test", CheckLevel::Optional);
+    let result = repolens_core::utils::prerequisites::CheckResult::skipped("Test", CheckLevel::Optional);
     assert_eq!(result.status, CheckStatus::Skipped);
     assert!(!result.is_failed());
 }
@@ -51,7 +51,7 @@ fn test_prerequisites_report_new() {
 #[test]
 fn test_prerequisites_report_add() {
     let mut report = PrerequisitesReport::new();
-    report.add(repolens::utils::prerequisites::CheckResult::ok(
+    report.add(repolens_core::utils::prerequisites::CheckResult::ok(
         "Test",
         CheckLevel::Required,
     ));
@@ -61,17 +61,17 @@ fn test_prerequisites_report_add() {
 #[test]
 fn test_prerequisites_report_all_required_passed() {
     let mut report = PrerequisitesReport::new();
-    report.add(repolens::utils::prerequisites::CheckResult::ok(
+    report.add(repolens_core::utils::prerequisites::CheckResult::ok(
         "Test1",
         CheckLevel::Required,
     ));
-    report.add(repolens::utils::prerequisites::CheckResult::ok(
+    report.add(repolens_core::utils::prerequisites::CheckResult::ok(
         "Test2",
         CheckLevel::Required,
     ));
     assert!(report.all_required_passed());
 
-    report.add(repolens::utils::prerequisites::CheckResult::failed(
+    report.add(repolens_core::utils::prerequisites::CheckResult::failed(
         "Test3",
         CheckLevel::Required,
         "Error",
@@ -83,17 +83,17 @@ fn test_prerequisites_report_all_required_passed() {
 #[test]
 fn test_prerequisites_report_required_failures() {
     let mut report = PrerequisitesReport::new();
-    report.add(repolens::utils::prerequisites::CheckResult::ok(
+    report.add(repolens_core::utils::prerequisites::CheckResult::ok(
         "Test1",
         CheckLevel::Required,
     ));
-    report.add(repolens::utils::prerequisites::CheckResult::failed(
+    report.add(repolens_core::utils::prerequisites::CheckResult::failed(
         "Test2",
         CheckLevel::Required,
         "Error",
         None,
     ));
-    report.add(repolens::utils::prerequisites::CheckResult::failed(
+    report.add(repolens_core::utils::prerequisites::CheckResult::failed(
         "Test3",
         CheckLevel::Optional,
         "Warning",
@@ -108,13 +108,13 @@ fn test_prerequisites_report_required_failures() {
 #[test]
 fn test_prerequisites_report_optional_failures() {
     let mut report = PrerequisitesReport::new();
-    report.add(repolens::utils::prerequisites::CheckResult::failed(
+    report.add(repolens_core::utils::prerequisites::CheckResult::failed(
         "Test1",
         CheckLevel::Optional,
         "Warning",
         None,
     ));
-    report.add(repolens::utils::prerequisites::CheckResult::failed(
+    report.add(repolens_core::utils::prerequisites::CheckResult::failed(
         "Test2",
         CheckLevel::Required,
         "Error",
@@ -205,14 +205,14 @@ fn test_run_all_checks() {
 #[test]
 fn test_is_gh_available() {
     // This is a utility function, test that it doesn't panic
-    let _ = repolens::utils::prerequisites::is_gh_available();
+    let _ = repolens_core::utils::prerequisites::is_gh_available();
 }
 
 #[test]
 fn test_get_repo_info() {
     // This may fail if not in a git repo or gh not authenticated
     // Just test that it doesn't panic and returns a Result
-    let result = repolens::utils::prerequisites::get_repo_info();
+    let result = repolens_core::utils::prerequisites::get_repo_info();
     // Result may be Ok or Err depending on environment
     let _ = result;
 }
