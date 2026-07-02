@@ -8,23 +8,44 @@ GitHub repositories for open-source and enterprise standards.
 - Read the [conventions](CONVENTIONS.md): edition, formatting, lints, commit style.
 - By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 - RepoLens is a 2-crate Cargo workspace (`repolens-core` + `repolens`). See
-  [DEVELOPMENT.md](DEVELOPMENT.md) for architecture details.
+  [docs/architecture.md](docs/architecture.md) for the module layout and
+  [docs/development.md](docs/development.md) for the full dev reference.
 
 ## Development setup
+
+Prerequisites: Rust stable (pinned by `rust-toolchain.toml`, includes rustfmt + clippy), Git, and
+either a `GITHUB_TOKEN` env var or the [GitHub CLI](https://cli.github.com/) (`gh auth login`) —
+needed by commands and rule categories that talk to the GitHub API.
 
 ```sh
 git clone https://github.com/systm-d/repolens
 cd repolens
 cargo build --workspace
+./scripts/install-hooks.sh   # pre-commit (fmt + clippy) and commit-msg (Conventional Commits)
 ```
-
-The toolchain is pinned by `rust-toolchain.toml` (stable + rustfmt + clippy).
 
 ## Running RepoLens locally
 
 ```sh
 cargo run -p repolens -- plan --preset opensource
 cargo run -p repolens -- report --format html
+```
+
+Use `-v` / `-vv` / `-vvv` for increasing log verbosity, or `RUST_LOG=debug cargo run -p repolens -- plan`.
+
+## Testing
+
+```sh
+cargo test --workspace              # unit + integration tests
+cargo test -p repolens-core         # a single crate
+cargo test --workspace -- --nocapture   # see println!/dbg! output
+```
+
+Integration tests live in `crates/repolens/tests/` (CLI end-to-end, security, regression,
+providers). `repolens-core` has Criterion benchmarks under `crates/repolens-core/benches/`:
+
+```sh
+cargo bench -p repolens-core
 ```
 
 ## Quality gate
@@ -36,6 +57,10 @@ cargo fmt --check
 cargo clippy --all-targets --workspace -- -D warnings
 cargo test --workspace
 ```
+
+## Releasing
+
+Maintainers: see [docs/releasing.md](docs/releasing.md) for the tag-and-publish process.
 
 ## Commits & pull requests
 

@@ -86,4 +86,4 @@ project/                    # Repo principal (main)
 ## Références
 
 - [CLAUDE.md](../CLAUDE.md) - Contexte projet
-- [DEVELOPMENT.md](../DEVELOPMENT.md) - Guide développeur
+- [CONTRIBUTING.md](../CONTRIBUTING.md) - Guide développeur
