@@ -18,6 +18,17 @@ fn get_cmd() -> Command {
     Command::cargo_bin("repolens").unwrap()
 }
 
+/// Workspace root. Integration tests run with CWD = the crate dir
+/// (crates/repolens); the repo root is two levels up from CARGO_MANIFEST_DIR.
+fn repo_root() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap() // crates/
+        .parent()
+        .unwrap() // workspace root
+        .to_path_buf()
+}
+
 // ============================================================================
 // E2E Tests on RepoLens itself (this repository)
 // ============================================================================
@@ -25,7 +36,7 @@ fn get_cmd() -> Command {
 #[tokio::test]
 async fn e2e_repolens_audit_runs_successfully() {
     // Run audit on the RepoLens repository itself
-    let repo_root = std::env::current_dir().unwrap();
+    let repo_root = repo_root();
 
     get_cmd()
         .current_dir(&repo_root)
@@ -36,7 +47,7 @@ async fn e2e_repolens_audit_runs_successfully() {
 
 #[tokio::test]
 async fn e2e_repolens_has_required_files() {
-    let repo_root = std::env::current_dir().unwrap();
+    let repo_root = repo_root();
 
     // RepoLens should have all these files
     assert!(repo_root.join("README.md").exists());
@@ -53,7 +64,7 @@ async fn e2e_repolens_has_required_files() {
 
 #[tokio::test]
 async fn e2e_repolens_report_json_valid() {
-    let repo_root = std::env::current_dir().unwrap();
+    let repo_root = repo_root();
     let temp_dir = TempDir::new().unwrap();
     let output_path = temp_dir.path().join("report.json");
 
