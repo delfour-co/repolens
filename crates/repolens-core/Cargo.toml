@@ -1,56 +1,56 @@
 [package]
 name = "repolens-core"
-version = "2.0.2"
-edition = "2024"
-rust-version = "1.85"
-authors = ["Kevin Delfour"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
 description = "Core auditing library for RepoLens"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/systm-d/repolens"
-homepage = "https://github.com/systm-d/repolens"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml = "0.9"
-toml = "0.8"
-walkdir = "2"
-ignore = "0.4"
-globset = "0.4"
-regex = "1.12"
-lazy_static = "1"
-url = "2"
-sha2 = "0.10"
-dirs = "5"
-octocrab = "0.41"
-which = "6"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-tera = "1"
-minijinja = "2"
-jsonschema = "0.29"
-rayon = "1.8"
-chrono = { version = "0.4", features = ["serde"] }
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
-anyhow = "1"
-thiserror = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-metrics = "0.22"
-metrics-prometheus = "0.3"
-similar = "2"
-colored = "2"
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
+walkdir.workspace = true
+ignore.workspace = true
+globset.workspace = true
+regex.workspace = true
+lazy_static.workspace = true
+url.workspace = true
+sha2.workspace = true
+dirs.workspace = true
+octocrab.workspace = true
+which.workspace = true
+reqwest.workspace = true
+tera.workspace = true
+minijinja.workspace = true
+jsonschema.workspace = true
+rayon.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+metrics.workspace = true
+metrics-prometheus.workspace = true
+similar.workspace = true
+colored.workspace = true
 
 [dev-dependencies]
-tempfile = "3"
-pretty_assertions = "1"
-criterion = { version = "0.5", features = ["html_reports"] }
-futures = "0.3"
-serial_test = "3.3.1"
-insta = "1"
+tempfile.workspace = true
+pretty_assertions.workspace = true
+criterion.workspace = true
+futures.workspace = true
+serial_test.workspace = true
+insta.workspace = true
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
+[lints]
+workspace = true
 
 [[bench]]
 name = "parse_benchmark"

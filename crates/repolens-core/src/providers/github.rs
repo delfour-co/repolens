@@ -1194,14 +1194,22 @@ mod tests {
         // Clear the env var if set (in test isolation)
         let original = env::var("GITHUB_TOKEN").ok();
         // TODO: Audit that the environment access only happens in single-threaded code.
-        unsafe { env::remove_var("GITHUB_TOKEN") };
+        // SAFETY: test-only, controlled env mutation.
+        #[allow(unsafe_code)]
+        unsafe {
+            env::remove_var("GITHUB_TOKEN")
+        };
 
         assert!(!GitHubProvider::has_token());
 
         // Restore original value
         if let Some(val) = original {
             // TODO: Audit that the environment access only happens in single-threaded code.
-            unsafe { env::set_var("GITHUB_TOKEN", val) };
+            // SAFETY: test-only, controlled env mutation.
+            #[allow(unsafe_code)]
+            unsafe {
+                env::set_var("GITHUB_TOKEN", val)
+            };
         }
     }
 

@@ -15,7 +15,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use repolens::cli::exit_codes;
+//! use crate::cli::exit_codes;
 //!
 //! // Return success
 //! std::process::exit(exit_codes::SUCCESS);
