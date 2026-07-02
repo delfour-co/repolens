@@ -268,7 +268,21 @@ fn main() {
     let want_completions = is_release || env::var("GENERATE_COMPLETIONS").is_ok();
 
     if want_completions {
-        let out_dir = PathBuf::from("target").join("completions");
+        // A build script runs with the crate directory as its cwd. In a
+        // workspace the shared target dir lives at the workspace root, not
+        // under crates/repolens/, so resolve it explicitly (honouring
+        // CARGO_TARGET_DIR) instead of writing to a stray crates/repolens/target/.
+        let target_dir = env::var_os("CARGO_TARGET_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(
+                    env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo"),
+                )
+                .join("..")
+                .join("..")
+                .join("target")
+            });
+        let out_dir = target_dir.join("completions");
         if let Err(e) = write_completions(&out_dir) {
             println!(
                 "cargo:warning=Failed to generate shell completions: {} ({})",
