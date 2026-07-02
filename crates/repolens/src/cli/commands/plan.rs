@@ -6,17 +6,17 @@
 use std::path::PathBuf;
 
 use super::{OutputFormat, PlanArgs};
+use crate::cli::output::{JsonOutput, OutputRenderer, SarifOutput, TerminalOutput};
+use crate::exit_codes;
+use colored::Colorize;
 use repolens_core::actions::planner::ActionPlanner;
 use repolens_core::cache::{AuditCache, delete_cache_directory};
-use crate::cli::output::{JsonOutput, OutputRenderer, SarifOutput, TerminalOutput};
 use repolens_core::config::Config;
 use repolens_core::error::RepoLensError;
-use crate::exit_codes;
 use repolens_core::rules::engine::RulesEngine;
 use repolens_core::rules::filter_valid_categories;
 use repolens_core::scanner::Scanner;
 use repolens_core::utils::format_duration;
-use colored::Colorize;
 use std::time::Duration;
 
 /// Execute the plan command

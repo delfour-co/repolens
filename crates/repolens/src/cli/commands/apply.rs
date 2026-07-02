@@ -11,13 +11,13 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::ApplyArgs;
+use crate::exit_codes;
 use repolens_core::actions::executor::ActionExecutor;
 use repolens_core::actions::git;
 use repolens_core::actions::plan::{Action, ActionOperation, ActionPlan};
 use repolens_core::actions::planner::ActionPlanner;
 use repolens_core::config::Config;
 use repolens_core::error::RepoLensError;
-use crate::exit_codes;
 use repolens_core::providers::github::GitHubProvider;
 use repolens_core::rules::engine::RulesEngine;
 use repolens_core::rules::results::{AuditResults, Severity};

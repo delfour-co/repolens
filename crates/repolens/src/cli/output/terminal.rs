@@ -1,7 +1,7 @@
 //! Terminal output formatting with colors
 
-use repolens_core::error::RepoLensError;
 use colored::Colorize;
+use repolens_core::error::RepoLensError;
 
 use super::{OutputRenderer, ReportRenderer};
 use repolens_core::actions::plan::ActionPlan;

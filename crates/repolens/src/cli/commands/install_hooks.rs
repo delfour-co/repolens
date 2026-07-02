@@ -3,10 +3,10 @@
 use colored::Colorize;
 
 use super::InstallHooksArgs;
-use repolens_core::config::Config;
-use repolens_core::error::{ActionError, RepoLensError};
 use crate::exit_codes;
 use crate::hooks::{HooksConfig, HooksManager};
+use repolens_core::config::Config;
+use repolens_core::error::{ActionError, RepoLensError};
 
 pub async fn execute(args: InstallHooksArgs) -> Result<i32, RepoLensError> {
     let root = std::env::current_dir().map_err(|e| {

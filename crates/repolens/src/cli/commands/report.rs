@@ -5,11 +5,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use super::{ReportArgs, ReportFormat};
-use repolens_core::cache::{AuditCache, delete_cache_directory};
 use crate::cli::output::{HtmlReport, JsonOutput, MarkdownReport, ReportRenderer};
+use crate::exit_codes;
+use repolens_core::cache::{AuditCache, delete_cache_directory};
 use repolens_core::config::Config;
 use repolens_core::error::RepoLensError;
-use crate::exit_codes;
 use repolens_core::rules::engine::RulesEngine;
 use repolens_core::rules::filter_valid_categories;
 use repolens_core::scanner::Scanner;

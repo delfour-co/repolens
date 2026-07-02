@@ -36,7 +36,8 @@ fn test_check_result_failed() {
 
 #[test]
 fn test_check_result_skipped() {
-    let result = repolens_core::utils::prerequisites::CheckResult::skipped("Test", CheckLevel::Optional);
+    let result =
+        repolens_core::utils::prerequisites::CheckResult::skipped("Test", CheckLevel::Optional);
     assert_eq!(result.status, CheckStatus::Skipped);
     assert!(!result.is_failed());
 }

@@ -4,9 +4,9 @@ use colored::Colorize;
 use std::path::PathBuf;
 
 use super::CompareArgs;
+use crate::exit_codes;
 use repolens_core::compare::{compare_results, format_json, format_markdown, format_terminal};
 use repolens_core::error::RepoLensError;
-use crate::exit_codes;
 use repolens_core::rules::results::AuditResults;
 
 /// Load an AuditResults from a JSON file

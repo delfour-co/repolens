@@ -1,7 +1,7 @@
 //! HTML report output
 
-use repolens_core::error::RepoLensError;
 use chrono::Utc;
+use repolens_core::error::RepoLensError;
 
 use super::ReportRenderer;
 use repolens_core::rules::results::{AuditResults, Severity};

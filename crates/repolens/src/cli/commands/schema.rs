@@ -4,8 +4,8 @@ use colored::Colorize;
 
 use super::SchemaArgs;
 use crate::cli::output::json::AUDIT_REPORT_SCHEMA;
-use repolens_core::error::RepoLensError;
 use crate::exit_codes;
+use repolens_core::error::RepoLensError;
 
 pub async fn execute(args: SchemaArgs) -> Result<i32, RepoLensError> {
     let schema = AUDIT_REPORT_SCHEMA;

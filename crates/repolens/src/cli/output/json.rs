@@ -204,7 +204,9 @@ impl ReportRenderer for JsonOutput {
         if self.validate {
             let value: serde_json::Value = serde_json::from_str(&json_string)?;
             validate_against_schema(&value).map_err(|msg| {
-                RepoLensError::Rule(repolens_core::error::RuleError::ExecutionFailed { message: msg })
+                RepoLensError::Rule(repolens_core::error::RuleError::ExecutionFailed {
+                    message: msg,
+                })
             })?;
         }
 

@@ -1,9 +1,9 @@
 //! Generate man page command
 
 use crate::cli::Cli;
-use repolens_core::error::{ActionError, ConfigError, RepoLensError};
 use crate::exit_codes;
 use clap::CommandFactory;
+use repolens_core::error::{ActionError, ConfigError, RepoLensError};
 use std::fs;
 
 use super::GenerateManArgs;
