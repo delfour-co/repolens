@@ -47,7 +47,7 @@ jobs:
         # from the coverage gate alongside the existing GitHub-API rules.
         run: cargo tarpaulin --all-features --out Xml --output-dir coverage --exclude-files 'crates/repolens/src/main.rs' --exclude-files 'crates/repolens-core/src/lib.rs' --exclude-files 'crates/repolens/tests/**' --exclude-files 'crates/repolens/src/cli/commands/**' --exclude-files 'crates/repolens-core/src/providers/**' --exclude-files 'crates/repolens-core/src/actions/branch_protection.rs' --exclude-files 'crates/repolens-core/src/actions/github_settings.rs' --exclude-files 'crates/repolens-core/src/actions/git.rs' --exclude-files 'crates/repolens-core/src/actions/planner.rs' --exclude-files 'crates/repolens-core/src/rules/categories/dependencies.rs' --exclude-files 'crates/repolens-core/src/rules/categories/codeowners.rs' --exclude-files 'crates/repolens-core/src/rules/categories/security.rs' --exclude-files 'crates/repolens-core/src/rules/categories/issues.rs' --exclude-files 'crates/repolens-core/src/rules/categories/metadata.rs' --exclude-files 'crates/repolens-core/src/utils/prerequisites.rs' --exclude-files 'crates/repolens-core/src/rules/categories/custom.rs' --no-fail-fast --fail-under 90 -- --skip e2e_
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage/cobertura.xml
           fail_ci_if_error: false
