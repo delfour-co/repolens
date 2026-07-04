@@ -540,6 +540,7 @@ impl GitHubProvider {
     // ===== Access Control Methods =====
 
     /// List repository collaborators
+    #[allow(dead_code)]
     pub fn list_collaborators(&self) -> Result<Vec<Collaborator>, RepoLensError> {
         let output = Command::new("gh")
             .args([
@@ -564,6 +565,7 @@ impl GitHubProvider {
     }
 
     /// List repository teams
+    #[allow(dead_code)]
     pub fn list_teams(&self) -> Result<Vec<Team>, RepoLensError> {
         let output = Command::new("gh")
             .args([
@@ -588,6 +590,7 @@ impl GitHubProvider {
     }
 
     /// List deploy keys
+    #[allow(dead_code)]
     pub fn list_deploy_keys(&self) -> Result<Vec<DeployKey>, RepoLensError> {
         let output = Command::new("gh")
             .args([
@@ -612,6 +615,7 @@ impl GitHubProvider {
     }
 
     /// List GitHub App installations on this repository
+    #[allow(dead_code)]
     pub fn list_installations(&self) -> Result<Vec<Installation>, RepoLensError> {
         let output = Command::new("gh")
             .args(["api", &format!("repos/{}/installation", self.full_name())])
@@ -638,6 +642,7 @@ impl GitHubProvider {
     // ===== Infrastructure Methods =====
 
     /// List repository webhooks
+    #[allow(dead_code)]
     pub fn list_webhooks(&self) -> Result<Vec<Webhook>, RepoLensError> {
         let output = Command::new("gh")
             .args([
@@ -662,6 +667,7 @@ impl GitHubProvider {
     }
 
     /// List repository environments
+    #[allow(dead_code)]
     pub fn list_environments(&self) -> Result<Vec<Environment>, RepoLensError> {
         let output = Command::new("gh")
             .args(["api", &format!("repos/{}/environments", self.full_name())])
@@ -690,6 +696,7 @@ impl GitHubProvider {
     }
 
     /// Get environment protection rules
+    #[allow(dead_code)]
     pub fn get_environment_protection(
         &self,
         environment_name: &str,
@@ -968,6 +975,7 @@ pub struct AllowDeletions {
 
 /// Repository collaborator from GitHub API
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Collaborator {
     pub login: String,
     #[serde(default)]
@@ -1039,6 +1047,7 @@ pub struct InstallationPermissions {
 
 /// Webhook from GitHub API
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Webhook {
     pub id: u64,
     pub name: String,
@@ -1072,6 +1081,7 @@ pub struct Environment {
 
 /// Environment protection rules from GitHub API
 #[derive(Debug, Clone, Default, Deserialize)]
+#[allow(dead_code)]
 pub struct EnvironmentProtection {
     #[serde(default)]
     pub protection_rules: Vec<ProtectionRule>,

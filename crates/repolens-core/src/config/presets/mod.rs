@@ -100,7 +100,6 @@ impl Preset {
                 "git/sensitive-files",
                 "dependencies/lock-files",
                 "codeowners/presence",
-                "codeowners/releases",
             ],
             Self::Enterprise => vec![
                 "secrets/hardcoded",
@@ -122,8 +121,6 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "security/access-control",
-                "security/infrastructure",
                 "workflows/secrets",
                 "workflows/permissions",
                 "workflows/timeout",
@@ -141,8 +138,6 @@ impl Preset {
                 "dependencies/lock-files",
                 "codeowners/presence",
                 "codeowners/syntax",
-                "codeowners/valid-owners",
-                "codeowners/releases",
             ],
             Self::Strict => vec![
                 "secrets/hardcoded",
@@ -172,8 +167,6 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "security/access-control",
-                "security/infrastructure",
                 "workflows/secrets",
                 "workflows/permissions",
                 "workflows/pinned-actions",
@@ -204,9 +197,6 @@ impl Preset {
                 "dependencies/lock-files",
                 "codeowners/presence",
                 "codeowners/syntax",
-                "codeowners/valid-owners",
-                "codeowners/releases",
-                "codeowners/signed-tags",
             ],
         }
     }
@@ -457,27 +447,33 @@ mod tests {
         assert!(rules.contains(&"security/fork-pr-approval"));
     }
 
-    // ===== Access Control and Infrastructure Rules Tests =====
+    // ===== Removed Rules Regression Tests =====
 
     #[test]
-    fn test_preset_enterprise_has_access_control() {
+    fn test_preset_enterprise_no_removed_rules() {
         let rules = Preset::Enterprise.enabled_rules();
-        assert!(rules.contains(&"security/access-control"));
-        assert!(rules.contains(&"security/infrastructure"));
-    }
-
-    #[test]
-    fn test_preset_strict_has_access_control() {
-        let rules = Preset::Strict.enabled_rules();
-        assert!(rules.contains(&"security/access-control"));
-        assert!(rules.contains(&"security/infrastructure"));
-    }
-
-    #[test]
-    fn test_preset_opensource_no_access_control() {
-        let rules = Preset::OpenSource.enabled_rules();
-        // OpenSource preset does not include access control rules (require API access)
+        // These detection-only rules were removed during the auto-configurator recentering.
         assert!(!rules.contains(&"security/access-control"));
         assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/valid-owners"));
+        assert!(!rules.contains(&"codeowners/releases"));
+    }
+
+    #[test]
+    fn test_preset_strict_no_removed_rules() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(!rules.contains(&"security/access-control"));
+        assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/valid-owners"));
+        assert!(!rules.contains(&"codeowners/releases"));
+        assert!(!rules.contains(&"codeowners/signed-tags"));
+    }
+
+    #[test]
+    fn test_preset_opensource_no_removed_rules() {
+        let rules = Preset::OpenSource.enabled_rules();
+        assert!(!rules.contains(&"security/access-control"));
+        assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/releases"));
     }
 }
