@@ -4,23 +4,8 @@ use colored::Colorize;
 
 /// Valid category names for --only and --skip options.
 /// Must match the categories registered in `src/rules/engine.rs`.
-pub const VALID_CATEGORIES: &[&str] = &[
-    "secrets",
-    "files",
-    "docs",
-    "security",
-    "workflows",
-    "quality",
-    "dependencies",
-    "licenses",
-    "docker",
-    "git",
-    "custom",
-    "codeowners",
-    "history",
-    "issues",
-    "metadata",
-];
+pub const VALID_CATEGORIES: &[&str] =
+    &["files", "docs", "security", "git", "codeowners", "metadata"];
 
 /// Check if a category name is valid
 pub fn is_valid_category(name: &str) -> bool {
@@ -51,24 +36,8 @@ mod tests {
 
     #[test]
     fn test_valid_categories_list() {
-        assert_eq!(VALID_CATEGORIES.len(), 15);
-        for expected in [
-            "secrets",
-            "files",
-            "docs",
-            "security",
-            "workflows",
-            "quality",
-            "dependencies",
-            "licenses",
-            "docker",
-            "git",
-            "custom",
-            "codeowners",
-            "history",
-            "issues",
-            "metadata",
-        ] {
+        assert_eq!(VALID_CATEGORIES.len(), 6);
+        for expected in ["files", "docs", "security", "git", "codeowners", "metadata"] {
             assert!(
                 VALID_CATEGORIES.contains(&expected),
                 "missing category: {expected}"
@@ -94,28 +63,20 @@ mod tests {
 
     #[test]
     fn test_filter_valid_categories_keeps_valid() {
-        let input = vec![
-            "secrets".to_string(),
-            "files".to_string(),
-            "docs".to_string(),
-        ];
+        let input = vec!["git".to_string(), "files".to_string(), "docs".to_string()];
         let result = filter_valid_categories(input);
         assert_eq!(result.len(), 3);
-        assert!(result.contains(&"secrets".to_string()));
+        assert!(result.contains(&"git".to_string()));
         assert!(result.contains(&"files".to_string()));
         assert!(result.contains(&"docs".to_string()));
     }
 
     #[test]
     fn test_filter_valid_categories_removes_invalid() {
-        let input = vec![
-            "secrets".to_string(),
-            "invalid".to_string(),
-            "docs".to_string(),
-        ];
+        let input = vec!["git".to_string(), "invalid".to_string(), "docs".to_string()];
         let result = filter_valid_categories(input);
         assert_eq!(result.len(), 2);
-        assert!(result.contains(&"secrets".to_string()));
+        assert!(result.contains(&"git".to_string()));
         assert!(result.contains(&"docs".to_string()));
         assert!(!result.contains(&"invalid".to_string()));
     }
