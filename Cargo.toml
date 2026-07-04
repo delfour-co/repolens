@@ -1,158 +1,101 @@
-[package]
-name = "repolens"
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
 version = "2.0.2"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Kevin Delfour"]
-description = "A CLI tool to audit and prepare repositories for open source or enterprise standards"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/systm-d/repolens"
 homepage = "https://github.com/systm-d/repolens"
-documentation = "https://docs.rs/repolens"
-keywords = ["cli", "audit", "github", "opensource", "security"]
-categories = ["command-line-utilities", "development-tools"]
-readme = "README.md"
-exclude = [
-    ".github/",
-    ".gitignore",
-    ".repolens.toml",
-    ".claude/",
-    "coverage/",
-    "scripts/",
-    "wiki/",
-    "docs/",
-    "CLAUDE.md",
-    "DEVELOPMENT.md",
-    "RELEASE.md",
-    "TEST.md",
-    "TODO.md",
-    "deny.toml",
-    "tests/",
-    "benches/",
-]
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
-
-[dependencies]
-# CLI framework
-clap = { version = "4", features = ["derive", "env", "color"] }
-
-# Man page generation
-clap_mangen = "0.2"
-
-# Shell completion generation
-clap_complete = "4"
-clap_complete_nushell = "0.1"
-
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
-
+[workspace.dependencies]
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 toml = "0.8"
 
-# File system operations
+# Filesystem + globbing
 walkdir = "2"
 ignore = "0.4"
 globset = "0.4"
 
-# Pattern matching for secrets detection
+# Text / patterns
 regex = "1.12"
 lazy_static = "1"
+url = "2"
+sha2 = "0.10"
+similar = "2"
 
-# Terminal output
-colored = "2"
-indicatif = { version = "0.17", features = ["tokio"] }
-console = "0.15"
+# Paths
+dirs = "5"
 
-# Interactive prompts
-dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+# GitHub / HTTP
+octocrab = "0.41"
+which = "6"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Templating
+tera = "1"
+minijinja = "2"
+
+# Validation
+jsonschema = "0.29"
+
+# Parallelism / async
+rayon = "1.8"
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
 
 # Error handling
 anyhow = "1"
 thiserror = "1"
 
-# URL parsing for validation
-url = "2"
-
-# SHA256 hashing for cache
-sha2 = "0.10"
-
-# Home directory resolution
-dirs = "5"
-
-# GitHub API - octocrab for direct API access, gh CLI as fallback
-octocrab = "0.41"
-which = "6"
-
-# Logging
+# Logging / metrics
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-
-# Metrics
 metrics = "0.22"
 metrics-prometheus = "0.3"
 
-# Template rendering
-tera = "1"
+# Terminal output
+colored = "2"
+indicatif = { version = "0.17", features = ["tokio"] }
+console = "0.15"
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 
-# Date/time for reports
-chrono = { version = "0.4", features = ["serde"] }
-
-
-# HTTP client for OSV API
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-
-# HTML report generation
-minijinja = "2"
-
-# Text diff for interactive mode
-similar = "2"
-
-# Parallel processing
-rayon = "1.8"
-
-# JSON Schema validation
-jsonschema = "0.29"
-
-[build-dependencies]
-clap_mangen = "0.2"
+# CLI framework
 clap = { version = "4", features = ["derive"] }
+clap_mangen = "0.2"
 clap_complete = "4"
 clap_complete_nushell = "0.1"
 
-[dev-dependencies]
+# Dev dependencies
 tempfile = "3"
-assert_cmd = "2"
-predicates = "3"
 pretty_assertions = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 futures = "0.3"
 serial_test = "3.3.1"
 insta = "1"
+assert_cmd = "2"
+predicates = "3"
 
-[[bench]]
-name = "parse_benchmark"
-harness = false
+[workspace.lints.rust]
+# Deliberate deviation from the template's `forbid`: `deny` allows the two
+# documented `#[allow(unsafe_code)]` env-var sites in repolens-core to compile.
+# See .superpowers/sdd/task-3-report.md.
+unsafe_code = "deny"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
 
 [profile.release]
 lto = true
 codegen-units = 1
 strip = true
-
-[[bin]]
-name = "repolens"
-path = "src/main.rs"
-
-[[bench]]
-name = "scanner_benchmark"
-harness = false
-
-[[bench]]
-name = "rules_benchmark"
-harness = false
-

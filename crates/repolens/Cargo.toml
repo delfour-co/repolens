@@ -1,0 +1,87 @@
+[package]
+name = "repolens"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+description = "A CLI tool to audit and prepare repositories for open source or enterprise standards"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation = "https://docs.rs/repolens"
+keywords = ["cli", "audit", "github", "opensource", "security"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "../../README.md"
+exclude = [
+    "tests/",
+]
+
+[lints]
+workspace = true
+
+[dependencies]
+# Core auditing library
+repolens-core = { path = "../repolens-core", version = "2.0.2" }
+
+# CLI framework
+clap = { workspace = true, features = ["env", "color"] }
+
+# Man page generation
+clap_mangen.workspace = true
+
+# Shell completion generation
+clap_complete.workspace = true
+clap_complete_nushell.workspace = true
+
+# Async runtime
+tokio.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# JSON Schema validation (report validation in output layer)
+jsonschema.workspace = true
+
+# Text diff for interactive mode
+similar.workspace = true
+
+# Terminal output
+colored.workspace = true
+indicatif.workspace = true
+console.workspace = true
+
+# Interactive prompts
+dialoguer.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# Home directory resolution
+dirs.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Date/time for reports
+chrono.workspace = true
+
+[build-dependencies]
+clap_mangen.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+clap_complete_nushell.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+assert_cmd.workspace = true
+predicates.workspace = true
+pretty_assertions.workspace = true
+serial_test.workspace = true
+insta.workspace = true
+
+[[bin]]
+name = "repolens"
+path = "src/main.rs"

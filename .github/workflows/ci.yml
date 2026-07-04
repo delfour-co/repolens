@@ -28,9 +28,9 @@ jobs:
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
       - name: cargo clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: cargo test
-        run: cargo test --all
+        run: cargo test --workspace
 
   coverage:
     name: coverage
@@ -45,7 +45,7 @@ jobs:
         # issues.rs and metadata.rs invoke the `gh` CLI at runtime, so their
         # branches are unreachable in CI without GitHub auth — exclude them
         # from the coverage gate alongside the existing GitHub-API rules.
-        run: cargo tarpaulin --all-features --out Xml --output-dir coverage --exclude-files 'src/main.rs' --exclude-files 'src/lib.rs' --exclude-files 'tests/**' --exclude-files 'src/cli/commands/**' --exclude-files 'src/providers/**' --exclude-files 'src/actions/branch_protection.rs' --exclude-files 'src/actions/github_settings.rs' --exclude-files 'src/actions/git.rs' --exclude-files 'src/actions/planner.rs' --exclude-files 'src/rules/categories/dependencies.rs' --exclude-files 'src/rules/categories/codeowners.rs' --exclude-files 'src/rules/categories/security.rs' --exclude-files 'src/rules/categories/issues.rs' --exclude-files 'src/rules/categories/metadata.rs' --exclude-files 'src/utils/prerequisites.rs' --exclude-files 'src/rules/categories/custom.rs' --no-fail-fast --fail-under 90 -- --skip e2e_
+        run: cargo tarpaulin --all-features --out Xml --output-dir coverage --exclude-files 'crates/repolens/src/main.rs' --exclude-files 'crates/repolens-core/src/lib.rs' --exclude-files 'crates/repolens/tests/**' --exclude-files 'crates/repolens/src/cli/commands/**' --exclude-files 'crates/repolens-core/src/providers/**' --exclude-files 'crates/repolens-core/src/actions/branch_protection.rs' --exclude-files 'crates/repolens-core/src/actions/github_settings.rs' --exclude-files 'crates/repolens-core/src/actions/git.rs' --exclude-files 'crates/repolens-core/src/actions/planner.rs' --exclude-files 'crates/repolens-core/src/rules/categories/dependencies.rs' --exclude-files 'crates/repolens-core/src/rules/categories/codeowners.rs' --exclude-files 'crates/repolens-core/src/rules/categories/security.rs' --exclude-files 'crates/repolens-core/src/rules/categories/issues.rs' --exclude-files 'crates/repolens-core/src/rules/categories/metadata.rs' --exclude-files 'crates/repolens-core/src/utils/prerequisites.rs' --exclude-files 'crates/repolens-core/src/rules/categories/custom.rs' --no-fail-fast --fail-under 90 -- --skip e2e_
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
@@ -79,14 +79,34 @@ jobs:
         run: |
           cargo metadata --no-deps --format-version 1 | python3 -c "
           import sys, json;
-          meta = json.load(sys.stdin)['packages'][0];
-          required = ['description', 'license', 'repository', 'readme'];
-          missing = [f for f in required if not meta.get(f)];
-          assert not missing, 'Missing Cargo.toml fields: ' + str(missing);
+          packages = {p['name']: p for p in json.load(sys.stdin)['packages']};
+          # readme is only required on the published binary crate; repolens-core
+          # is a library with no README of its own.
+          checks = {
+              'repolens': ['description', 'license', 'repository', 'readme'],
+              'repolens-core': ['description', 'license', 'repository'],
+          };
+          errors = [];
+          for name, required in checks.items():
+              meta = packages.get(name);
+              if meta is None:
+                  errors.append(f'Missing package: {name}');
+                  continue;
+              missing = [f for f in required if not meta.get(f)];
+              if missing:
+                  errors.append(f'{name}: missing Cargo.toml fields: {missing}');
+          assert not errors, '; '.join(errors);
           print('All required crates.io metadata fields are present')
           "
       # cargo publish --dry-run validates the package end-to-end (list + build
       # in a temp dir). --allow-dirty bypasses the clean-working-dir check that
       # cargo applies after re-resolving the registry index against Cargo.lock.
-      - name: Dry-run publish
-        run: cargo publish --dry-run --allow-dirty
+      # --workspace publishes repolens-core and repolens together (stabilized
+      # in Cargo 1.90): Cargo topologically orders the two crates and
+      # verifies repolens' build against a local registry overlay containing
+      # the freshly-packaged repolens-core. A plain `cargo publish -p repolens
+      # --dry-run` would fail here because repolens-core isn't on crates.io
+      # under its current name/version yet — the registry has no way to
+      # resolve the path+version dependency on its own.
+      - name: Dry-run publish (workspace)
+        run: cargo publish --workspace --dry-run --allow-dirty

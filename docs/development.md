@@ -38,33 +38,43 @@ Ce document explique comment développer, tester et contribuer au projet RepoLen
 
 ## Structure du Projet
 
+RepoLens est un workspace Cargo à 2 crates : `repolens-core` (logique de domaine pure, sans
+`clap`) et `repolens` (binaire CLI, qui dépend de `repolens-core`).
+
 ```
-src/
-├── main.rs              # Point d'entrée du CLI
-├── lib.rs               # Exports de la bibliothèque
-├── cli/                 # Commandes CLI
-│   ├── commands/        # Implémentation des commandes (init, plan, apply, report, schema, compare, install_hooks)
-│   └── output/          # Formats de sortie (terminal, JSON, SARIF, Markdown, HTML)
-├── cache/               # Système de cache d'audit (invalidation par SHA256)
-├── compare/             # Comparaison de rapports d'audit (score diff, régressions, améliorations)
-├── config/              # Chargement et gestion de la configuration
-│   └── presets/         # Presets de configuration (opensource, enterprise, strict)
-├── hooks/               # Gestion des Git hooks (pre-commit, pre-push)
-├── rules/               # Moteur d'audit et règles
-│   ├── categories/      # Catégories de règles (secrets, files, docs, security, workflows, quality, licenses, dependencies, custom)
-│   ├── patterns/        # Patterns de détection (secrets, etc.)
-│   └── engine.rs        # Moteur d'exécution des règles
-├── actions/             # Planification et exécution des actions
-│   ├── planner.rs       # Planification des actions à partir des résultats
-│   ├── executor.rs      # Exécution des actions (mode interactif supporté)
-│   └── templates.rs     # Génération de fichiers à partir de templates
-├── providers/           # Intégration avec les APIs externes
-│   └── github.rs        # Provider GitHub (via gh CLI)
-├── scanner/             # Scan du système de fichiers et Git
-│   ├── filesystem.rs    # Scan du système de fichiers
-│   └── git.rs           # Informations Git
-└── utils/               # Utilitaires partagés
-    └── prerequisites.rs # Vérification des prérequis (git, gh, etc.)
+crates/
+├── repolens-core/                # Logique de domaine (pure, pas de clap, pas de CLI)
+│   ├── benches/                   # Benchmarks (scanner, rules, parse)
+│   └── src/
+│       ├── lib.rs                 # Exports de la bibliothèque
+│       ├── cache/                 # Système de cache d'audit (invalidation par SHA256)
+│       ├── compare/               # Comparaison de rapports d'audit (score diff, régressions, améliorations)
+│       ├── config/                # Chargement et gestion de la configuration
+│       │   └── presets/           # Presets de configuration (opensource, enterprise, strict)
+│       ├── rules/                 # Moteur d'audit et règles
+│       │   ├── categories/        # Catégories de règles (secrets, files, docs, security, workflows, quality, licenses, dependencies, custom)
+│       │   ├── patterns/          # Patterns de détection (secrets, etc.)
+│       │   └── engine.rs          # Moteur d'exécution des règles
+│       ├── actions/               # Planification et exécution des actions
+│       │   ├── planner.rs         # Planification des actions à partir des résultats
+│       │   ├── executor.rs        # Exécution des actions (mode interactif supporté)
+│       │   └── templates.rs       # Génération de fichiers à partir de templates
+│       ├── providers/             # Intégration avec les APIs externes
+│       │   └── github.rs          # Provider GitHub (via gh CLI)
+│       ├── scanner/               # Scan du système de fichiers et Git
+│       │   ├── filesystem.rs      # Scan du système de fichiers
+│       │   └── git.rs             # Informations Git
+│       └── utils/                 # Utilitaires partagés
+│           └── prerequisites.rs   # Vérification des prérequis (git, gh, etc.)
+└── repolens/                     # Binaire CLI (dépend de repolens-core)
+    ├── build.rs                   # Génération du man page + des complétions shell
+    ├── tests/                     # Tests d'intégration
+    └── src/
+        ├── main.rs                # Point d'entrée du CLI
+        ├── cli/                    # Commandes CLI
+        │   ├── commands/           # Implémentation des commandes (init, plan, apply, report, schema, compare, install_hooks)
+        │   └── output/             # Formats de sortie (terminal, JSON, SARIF, Markdown, HTML)
+        └── hooks/                  # Gestion des Git hooks (pre-commit, pre-push)
 ```
 
 ## Commandes de Développement
@@ -134,9 +144,9 @@ cargo bench --bench parse_benchmark
 
 | Fichier | Description |
 |---------|-------------|
-| `benches/scanner_benchmark.rs` | Performance du scan de fichiers |
-| `benches/rules_benchmark.rs` | Performance du moteur de règles |
-| `benches/parse_benchmark.rs` | Performance des parsers (small/medium/large) |
+| `crates/repolens-core/benches/scanner_benchmark.rs` | Performance du scan de fichiers |
+| `crates/repolens-core/benches/rules_benchmark.rs` | Performance du moteur de règles |
+| `crates/repolens-core/benches/parse_benchmark.rs` | Performance des parsers (small/medium/large) |
 
 Les résultats sont générés dans `target/criterion/` avec des rapports HTML.
 
@@ -176,9 +186,9 @@ cargo check && cargo fmt --all -- --check && cargo clippy -- -D warnings && carg
 
 ### Ajouter une Nouvelle Règle
 
-1. **Créer la règle dans la catégorie appropriée** (`src/rules/categories/`)
+1. **Créer la règle dans la catégorie appropriée** (`crates/repolens-core/src/rules/categories/`)
    ```rust
-   // src/rules/categories/ma_categorie.rs
+   // crates/repolens-core/src/rules/categories/ma_categorie.rs
    pub fn check_ma_regle(scanner: &Scanner, config: &Config) -> Vec<Finding> {
        let mut findings = Vec::new();
        // Logique de la règle
@@ -186,7 +196,7 @@ cargo check && cargo fmt --all -- --check && cargo clippy -- -D warnings && carg
    }
    ```
 
-2. **Enregistrer la règle dans le moteur** (`src/rules/engine.rs`)
+2. **Enregistrer la règle dans le moteur** (`crates/repolens-core/src/rules/engine.rs`)
    ```rust
    match category {
        "ma_categorie" => {
@@ -196,11 +206,11 @@ cargo check && cargo fmt --all -- --check && cargo clippy -- -D warnings && carg
    }
    ```
 
-3. **Ajouter la catégorie dans la configuration** (`src/config/loader.rs`)
+3. **Ajouter la catégorie dans la configuration** (`crates/repolens-core/src/config/loader.rs`)
 
 ### Ajouter une Nouvelle Action
 
-1. **Créer l'action** (`src/actions/`)
+1. **Créer l'action** (`crates/repolens-core/src/actions/`)
    ```rust
    pub struct MonAction {
        // Champs nécessaires
@@ -213,7 +223,7 @@ cargo check && cargo fmt --all -- --check && cargo clippy -- -D warnings && carg
    }
    ```
 
-2. **Ajouter la planification** (`src/actions/planner.rs`)
+2. **Ajouter la planification** (`crates/repolens-core/src/actions/planner.rs`)
    ```rust
    if condition {
        plan.add_action(Box::new(MonAction::new(...)));
@@ -222,15 +232,15 @@ cargo check && cargo fmt --all -- --check && cargo clippy -- -D warnings && carg
 
 ### Ajouter un Nouveau Format de Sortie
 
-1. **Créer le module de sortie** (`src/cli/output/`)
+1. **Créer le module de sortie** (`crates/repolens/src/cli/output/`)
    ```rust
-   // src/cli/output/mon_format.rs
+   // crates/repolens/src/cli/output/mon_format.rs
    pub fn format(results: &AuditResults) -> String {
        // Formatage
    }
    ```
 
-2. **Enregistrer dans le module** (`src/cli/output/mod.rs`)
+2. **Enregistrer dans le module** (`crates/repolens/src/cli/output/mod.rs`)
 
 ## Debugging
 
@@ -265,7 +275,7 @@ lldb target/debug/repolens
 
 ### Tests de Détection de Secrets
 
-Les patterns de secrets sont dans `src/rules/patterns/secrets.rs`. Pour tester :
+Les patterns de secrets sont dans `crates/repolens-core/src/rules/patterns/secrets.rs`. Pour tester :
 
 ```bash
 # Créer un fichier de test avec un faux secret
@@ -306,7 +316,7 @@ Les presets sont dans `presets/` :
 
 ## Tests d'Intégration
 
-Les tests d'intégration sont dans `tests/integration_test.rs`. Ils testent le CLI complet :
+Les tests d'intégration sont dans `crates/repolens/tests/integration_test.rs`. Ils testent le CLI complet :
 
 ```bash
 # Lancer les tests d'intégration
@@ -411,4 +421,4 @@ cargo test -- --test-threads=1
 Pour toute question ou problème :
 - Ouvrir une issue sur GitHub
 - Consulter la documentation dans le code
-- Vérifier les exemples dans `tests/`
+- Vérifier les exemples dans `crates/repolens/tests/`

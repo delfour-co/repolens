@@ -17,19 +17,19 @@ skip-clean = true
 # - Display/output functions
 exclude-files = [
     # Entry point - just CLI parsing
-    "src/main.rs",
+    "crates/repolens/src/main.rs",
 
     # CLI commands that run the full rules engine
-    "src/cli/commands/plan.rs",
-    "src/cli/commands/report.rs",
-    "src/cli/commands/apply.rs",
-    "src/cli/commands/install_hooks.rs",
+    "crates/repolens/src/cli/commands/plan.rs",
+    "crates/repolens/src/cli/commands/report.rs",
+    "crates/repolens/src/cli/commands/apply.rs",
+    "crates/repolens/src/cli/commands/install_hooks.rs",
 
     # GitHub API dependent actions
-    "src/actions/branch_protection.rs",
-    "src/actions/github_settings.rs",
-    "src/actions/git.rs",
+    "crates/repolens-core/src/actions/branch_protection.rs",
+    "crates/repolens-core/src/actions/github_settings.rs",
+    "crates/repolens-core/src/actions/git.rs",
 
     # Provider code that requires real API calls
-    "src/providers/github.rs",
+    "crates/repolens-core/src/providers/github.rs",
 ]

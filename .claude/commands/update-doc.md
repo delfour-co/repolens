@@ -11,7 +11,7 @@ Met à jour la documentation et synchronise le Wiki.
 
 2. **Mettre à jour les fichiers locaux**
    - `README.md`: Usage, installation, exemples
-   - `DEVELOPMENT.md`: Guide développeur
+   - `CONTRIBUTING.md`: Guide développeur
    - `CHANGELOG.md`: Historique des changements
    - `wiki/`: Pages Wiki locales
 
@@ -24,7 +24,7 @@ Met à jour la documentation et synchronise le Wiki.
 | Fichier | Contenu |
 |---------|---------|
 | README.md | Installation, usage, exemples |
-| DEVELOPMENT.md | Setup dev, architecture, contribution |
+| CONTRIBUTING.md | Setup dev, architecture, contribution |
 | CHANGELOG.md | Versions, changes |
 | wiki/Home.md | Page d'accueil Wiki |
 | wiki/Installation.md | Guide installation |

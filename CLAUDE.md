@@ -12,10 +12,15 @@ workflows: `ci.yml` (test matrix + clippy + fmt + coverage + security audit + pa
 Canonical recentering decision:
 `docs/superpowers/specs/2026-05-13-repolens-recentering-design.md`.
 
+The repository is a **2-crate Cargo workspace** (`crates/repolens-core` + `crates/repolens`); see
+`docs/superpowers/specs/2026-07-02-workspace-skeleton-migration-design.md` and
+`docs/superpowers/plans/2026-07-02-workspace-skeleton-migration.md` for the migration decision and
+plan. The split is structural only — behavior, versioning, and the facts below are unchanged.
+
 What's in the codebase right now:
 
 - **CLI surface:** `repolens { init | plan | apply | report | compare | install-hooks | schema | completions | generate-man }`
-- **15 rule categories** (all registered in `src/rules/engine.rs`):
+- **15 rule categories** (all registered in `crates/repolens-core/src/rules/engine.rs`):
   - `secrets` — detect hardcoded secrets, API keys, and credentials in source files
   - `files` — large files, `.gitignore` configuration and recommended entries
   - `docs` — README, LICENSE, and documentation quality checks
@@ -43,43 +48,60 @@ selectively apply, rather than executing fixes immediately.
 
 ## Architecture
 
+Two-crate workspace: `repolens-core` holds pure domain logic (no `clap`, no CLI concerns);
+`repolens` is the binary crate — CLI parsing, output rendering, and process wiring. Domain code
+must not depend on the bin crate; the bin crate depends on `repolens-core`.
+
 ```
-src/
-├── main.rs            — entry point; dispatches Commands enum
-├── lib.rs             — public re-exports
-├── cli/               — subcommand dispatch + output formatters
-│   ├── commands/       — one file per top-level subcommand
-│   └── output/         — terminal, json, markdown, sarif, html
-├── config/            — config loading + preset selection
-│   └── presets/        — baked-in preset definitions
-├── rules/             — rules engine
-│   ├── engine.rs       — parallel rule execution, category dispatch
-│   ├── categories/     — 15 category modules
-│   ├── patterns/       — shared regex and pattern helpers
-│   └── results.rs      — Finding + AuditResults types
-├── actions/           — ActionPlan + per-action executors
-├── cache/             — incremental audit result caching
-├── compare/           — diff two audit reports
-├── hooks/             — git hook installation and management
-├── providers/         — GitHub API (octocrab + gh CLI fallback)
-├── scanner/           — filesystem + git tree iteration
-└── utils/             — prerequisites checks, exit codes
+crates/repolens-core/src/    — domain library (no clap, no IO framework deps beyond what rules need)
+├── lib.rs              — public re-exports
+├── error.rs            — RepoLensError, ConfigError
+├── config/             — config loading + preset selection
+│   └── presets/         — baked-in preset definitions
+├── rules/              — rules engine
+│   ├── engine.rs        — parallel rule execution, category dispatch
+│   ├── constants.rs     — VALID_CATEGORIES
+│   ├── categories/      — 15 category modules
+│   ├── patterns/        — shared regex and pattern helpers
+│   └── results.rs       — Finding + AuditResults types
+├── actions/            — ActionPlan + per-action executors
+├── cache/              — incremental audit result caching
+├── compare/            — diff two audit reports
+├── providers/          — GitHub API (octocrab + gh CLI fallback)
+├── scanner/            — filesystem + git tree iteration
+└── utils/              — prerequisites checks
+crates/repolens-core/benches/ — Criterion benchmarks (parse, rules, scanner)
+
+crates/repolens/src/         — the `repolens` binary
+├── main.rs              — entry point; dispatches Commands enum
+├── cli/                 — subcommand dispatch + output formatters
+│   ├── commands/         — one file per top-level subcommand
+│   ├── output/           — terminal, json, markdown, sarif, html
+│   └── exit_codes.rs     — process exit code mapping
+└── hooks/               — git hook installation and management
+crates/repolens/build.rs     — generates shell completions / man pages at build time
+crates/repolens/schemas/     — JSON Schema files for report validation
+crates/repolens/tests/       — integration tests
 ```
 
 ## Module discipline
 
-`rules/` is pure logic — no IO, no network. Each category module receives scanner output and emits
-`Vec<Finding>`. New rules must not import from `providers/` or `actions/`.
+`repolens-core/src/rules/` is pure logic — no IO, no network. Each category module receives scanner
+output and emits `Vec<Finding>`. New rules must not import from `providers/` or `actions/`.
 
-`actions/` is pure planning: it turns `AuditResults` into a `Vec<Action>`. No network calls, no file
-writes happen inside this module. Execution is the job of each action's executor, invoked by the
-`apply` command.
+`repolens-core/src/actions/` is pure planning: it turns `AuditResults` into a `Vec<Action>`. No
+network calls, no file writes happen inside this module. Execution is the job of each action's
+executor, invoked by the `apply` command.
 
-`providers/` is the sole boundary with GitHub. All GitHub API calls originate here. No other module
-reaches for `octocrab` or shells out to `gh`.
+`repolens-core/src/providers/` is the sole boundary with GitHub. All GitHub API calls originate
+here. No other module reaches for `octocrab` or shells out to `gh`.
 
-`cli/output/` is presentation only: it renders an `AuditResults` or `ActionPlan` to a string. No
-side effects. Each format (terminal, json, markdown, sarif, html) is an independent file.
+`repolens/src/cli/output/` is presentation only: it renders an `AuditResults` or `ActionPlan` to a
+string. No side effects. Each format (terminal, json, markdown, sarif, html) is an independent file.
+
+`repolens-core` must not depend on `clap` or any CLI-parsing crate — that boundary is what makes
+the workspace split meaningful. All CLI concerns (argument parsing, output formatting, exit codes,
+hook installation) live in the `repolens` bin crate.
 
 ## Non-obvious constraints
 
@@ -89,26 +111,34 @@ These are load-bearing rules — violating them changes what the product is:
   optionally applied. `repolens plan` produces the `ActionPlan`; `repolens apply` executes it.
   They are not the same command with a dry-run flag.
 - **Presets are static at build time.** `.repolens.toml` overrides preset values; the preset
-  definitions themselves are baked in under `src/config/presets/`. Do not accept arbitrary preset
-  names from config — an unknown name is an error, not an implicit rule list.
-- **Provider is GitHub-only.** `src/providers/` has exactly one trait implementation. Multi-provider
-  work is explicitly out of scope until a new design doc lands (see the recentering spec).
+  definitions themselves are baked in under `crates/repolens-core/src/config/presets/`. Do not
+  accept arbitrary preset names from config — an unknown name is an error, not an implicit rule
+  list.
+- **Provider is GitHub-only.** `crates/repolens-core/src/providers/` has exactly one trait
+  implementation. Multi-provider work is explicitly out of scope until a new design doc lands (see
+  the recentering spec).
 - **No `Co-authored-by` in commits or PRs.** Single primary author per commit. Mentioning
   contributors in the commit body without the `Co-authored-by:` trailer is allowed.
 - **No `feat!:` or similar `!` Conventional Commit shorthand.** The commit-msg hook rejects it.
   Use `feat: ...` + `BREAKING CHANGE: ...` in the body instead.
 - **GitHub authentication is dual-mode.** `GITHUB_TOKEN` env var is preferred (no `gh` CLI
   required); fallback is `gh auth token`. Both code paths must be tested and exercised in CI.
-- **`VALID_CATEGORIES` in `src/rules/constants.rs` must mirror the categories registered in
-  `src/rules/engine.rs`.** Adding a category requires updating both files; the unit test in
-  `constants.rs` asserts the count. The CLI `--only` / `--skip` flags rely on this constant.
+- **`VALID_CATEGORIES` in `crates/repolens-core/src/rules/constants.rs` must mirror the categories
+  registered in `crates/repolens-core/src/rules/engine.rs`.** Adding a category requires updating
+  both files; the unit test in `constants.rs` asserts the count. The CLI `--only` / `--skip` flags
+  rely on this constant.
+- **Workspace lint deviation: `unsafe_code = "deny"`, not `forbid`.** The template convention is
+  `forbid`; the workspace uses `deny` deliberately so the two documented `#[allow(unsafe_code)]`
+  env-var sites in `repolens-core` can compile. See `CONVENTIONS.md` and
+  `.superpowers/sdd/task-3-report.md`.
 
 ## Working conventions
 
-- Tests live in `tests/` (integration) and inline `#[cfg(test)] mod tests` (unit). Per-rule unit
-  tests are inside `src/rules/categories/<category>.rs`.
-- `cargo test --all` runs everything. `cargo test --lib` skips integration tests; useful while
-  iterating on rule logic.
+- Tests live in `crates/repolens/tests/` (integration) and inline `#[cfg(test)] mod tests` (unit,
+  in both crates). Per-rule unit tests are inside
+  `crates/repolens-core/src/rules/categories/<category>.rs`.
+- `cargo test --workspace` (alias: `cargo test --all`) runs everything across both crates.
+  `cargo test --lib` skips integration tests; useful while iterating on rule logic.
 - Snapshot tests with `insta` are not yet required for existing tests; new tests that produce stable
   structured output should prefer snapshots.
 - Use `tracing` for operator-facing diagnostic logs. The audit report (terminal / JSON / Markdown /
@@ -128,20 +158,24 @@ crates.io path (`cargo install repolens`) is also supported.
 ## Common commands
 
 ```bash
-cargo build                              # build the binary
-cargo run -- init                        # write a default .repolens.toml
-cargo run -- plan --preset opensource    # smoke the CLI
-cargo run -- report --format html        # generate an HTML report
-cargo test --all                         # all tests (unit + integration)
-cargo test --lib                         # unit tests only (faster iteration)
-cargo clippy --all-targets -- -D warnings
-cargo fmt
-cargo deny check                         # license + advisory audit
+cargo build --workspace                            # build both crates
+cargo run -p repolens -- init                       # write a default .repolens.toml
+cargo run -p repolens -- plan --preset opensource    # smoke the CLI
+cargo run -p repolens -- report --format html        # generate an HTML report
+cargo test --workspace                              # all tests (unit + integration, both crates)
+cargo test --lib                                    # unit tests only (faster iteration)
+cargo clippy --all-targets --workspace -- -D warnings
+cargo fmt --all
+cargo deny check                                    # license + advisory audit
 ```
 
 ## Reference
 
 - `docs/superpowers/specs/2026-05-13-repolens-recentering-design.md` — v2.0.0 recentering decision.
+- `docs/superpowers/specs/2026-07-02-workspace-skeleton-migration-design.md` — 2-crate workspace
+  split decision (`repolens-core` + `repolens`).
+- `docs/superpowers/plans/2026-07-02-workspace-skeleton-migration.md` — workspace migration
+  implementation plan.
 - `docs/superpowers/specs/` — per-version design specs.
 - `docs/superpowers/plans/` — implementation plans (Plans A, B, C).
 - `../../system/guardians/` — sibling Rust project. Edition, MSRV, license, and CI workflow

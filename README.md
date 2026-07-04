@@ -729,7 +729,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Development
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for development setup, architecture, and contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, and
+[docs/architecture.md](docs/architecture.md) for the module layout.
 
 ## License
 

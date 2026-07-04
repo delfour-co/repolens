@@ -4,14 +4,14 @@ preset = "opensource"
 
 ["rules.secrets"]
 ignore_patterns = [
-    "src/rules/patterns/**",
-    "src/rules/categories/**",
-    "src/rules/engine.rs",
-    "src/providers/**",
-    "src/scanner/**",
-    "src/actions/templates.rs",
-    "tests/**",
-    "benches/**",
+    "crates/*/src/rules/patterns/*",
+    "crates/*/src/rules/categories/*",
+    "crates/*/src/rules/engine.rs",
+    "crates/*/src/providers/*",
+    "crates/*/src/scanner/*",
+    "crates/*/src/actions/templates.rs",
+    "crates/*/tests/*",
+    "crates/*/benches/*",
     "integrations/**",
     ".github/workflows/**",
     "action.yml",
