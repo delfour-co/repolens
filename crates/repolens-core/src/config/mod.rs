@@ -32,16 +32,6 @@
 //! [actions.branch_protection]
 //! enabled = true
 //! required_approvals = 1
-//!
-//! ["rules.secrets"]
-//! ignore_patterns = ["test_*"]
-//! ignore_files = ["*.test.ts"]
-//!
-//! ["rules.custom"."no-todo"]
-//! pattern = "TODO"
-//! severity = "warning"
-//! files = ["**/*.rs"]
-//! message = "TODO comment found"
 //! ```
 //!
 //! ## Environment Variables
@@ -99,7 +89,6 @@ pub use loader::get_env_verbosity;
 pub use presets::Preset;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // Re-export CacheConfig from cache module for convenience
 pub use crate::cache::CacheConfig;
@@ -140,37 +129,6 @@ pub struct RuleConfig {
 
 fn default_true() -> bool {
     true
-}
-
-/// Configuration for secrets detection.
-///
-/// Controls which patterns and files are scanned for secrets,
-/// and allows defining custom secret patterns.
-///
-/// # Examples
-///
-/// ```toml
-/// ["rules.secrets"]
-/// ignore_patterns = ["test_*", "*_mock"]
-/// ignore_files = ["*.test.ts", "fixtures/**"]
-/// custom_patterns = ["MY_SECRET_\\w+"]
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SecretsConfig {
-    /// Patterns to ignore when scanning for secrets.
-    /// Supports glob patterns like `test_*` or `*_mock`.
-    #[serde(default)]
-    pub ignore_patterns: Vec<String>,
-
-    /// Files to ignore when scanning for secrets.
-    /// Supports glob patterns like `*.test.ts` or `vendor/**`.
-    #[serde(default)]
-    pub ignore_files: Vec<String>,
-
-    /// Custom regex patterns to detect as secrets.
-    /// Added to the default secret detection patterns.
-    #[serde(default)]
-    pub custom_patterns: Vec<String>,
 }
 
 /// Configuration for URL validation.
@@ -466,138 +424,6 @@ pub struct TemplatesConfig {
     pub project_description: Option<String>,
 }
 
-/// Configuration for a custom audit rule.
-///
-/// Custom rules allow defining project-specific checks using either
-/// regex patterns or shell commands.
-///
-/// # Pattern-based Rules
-///
-/// ```toml
-/// ["rules.custom"."no-todo"]
-/// pattern = "TODO|FIXME"
-/// severity = "warning"
-/// files = ["**/*.rs", "**/*.py"]
-/// message = "Found TODO/FIXME comment"
-/// remediation = "Complete the task or remove the comment"
-/// ```
-///
-/// # Command-based Rules
-///
-/// ```toml
-/// ["rules.custom"."has-makefile"]
-/// command = "test -f Makefile"
-/// severity = "info"
-/// message = "Makefile not found"
-/// invert = true
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CustomRule {
-    /// Regex pattern to match in file contents.
-    /// Required if `command` is not set.
-    #[serde(default)]
-    pub pattern: Option<String>,
-
-    /// Shell command to execute for the check.
-    /// The rule triggers if the command returns exit code 0
-    /// (or non-zero if `invert` is true).
-    /// Required if `pattern` is not set.
-    #[serde(default)]
-    pub command: Option<String>,
-
-    /// Severity level: "critical", "warning", or "info".
-    /// Defaults to "warning".
-    #[serde(default = "default_custom_severity")]
-    pub severity: String,
-
-    /// File glob patterns to scan (only used with `pattern`).
-    /// If empty, all files are scanned.
-    #[serde(default)]
-    pub files: Vec<String>,
-
-    /// Custom message shown when the rule triggers.
-    pub message: Option<String>,
-
-    /// Detailed description of the issue.
-    pub description: Option<String>,
-
-    /// Suggested steps to fix the issue.
-    pub remediation: Option<String>,
-
-    /// If true, inverts the matching logic:
-    /// - For patterns: triggers when pattern is NOT found
-    /// - For commands: triggers when command returns non-zero
-    #[serde(default)]
-    pub invert: bool,
-}
-
-fn default_custom_severity() -> String {
-    "warning".to_string()
-}
-
-/// Container for custom rule definitions.
-///
-/// Custom rules are defined under the `["rules.custom"]` section
-/// in the configuration file.
-///
-/// # Examples
-///
-/// ```toml
-/// ["rules.custom"."rule-id"]
-/// pattern = "some_pattern"
-/// severity = "warning"
-/// message = "Issue found"
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CustomRulesConfig {
-    /// Map of rule ID to rule configuration.
-    /// Rule IDs should be kebab-case (e.g., "no-todo", "require-tests").
-    #[serde(flatten)]
-    pub rules: HashMap<String, CustomRule>,
-}
-
-/// Configuration for dependency license compliance checking.
-///
-/// Allows specifying which licenses are allowed or denied for
-/// project dependencies.
-///
-/// # Examples
-///
-/// ```toml
-/// ["rules.licenses"]
-/// enabled = true
-/// allowed_licenses = ["MIT", "Apache-2.0", "BSD-3-Clause"]
-/// denied_licenses = ["GPL-3.0", "AGPL-3.0"]
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LicenseComplianceConfig {
-    /// Whether license compliance checking is enabled.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-
-    /// List of allowed SPDX license identifiers.
-    /// If empty, all known licenses are allowed (unless in `denied_licenses`).
-    /// Example: `["MIT", "Apache-2.0", "BSD-3-Clause"]`
-    #[serde(default)]
-    pub allowed_licenses: Vec<String>,
-
-    /// List of denied SPDX license identifiers.
-    /// Dependencies with these licenses will be flagged.
-    /// Example: `["GPL-3.0", "AGPL-3.0"]`
-    #[serde(default)]
-    pub denied_licenses: Vec<String>,
-}
-
-impl Default for LicenseComplianceConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            allowed_licenses: Vec::new(),
-            denied_licenses: Vec::new(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -618,14 +444,6 @@ mod tests {
         let config: RuleConfig = toml::from_str(toml_str).unwrap();
         assert!(config.enabled);
         assert_eq!(config.severity, Some("critical".to_string()));
-    }
-
-    #[test]
-    fn test_secrets_config_default() {
-        let config = SecretsConfig::default();
-        assert!(config.ignore_patterns.is_empty());
-        assert!(config.ignore_files.is_empty());
-        assert!(config.custom_patterns.is_empty());
     }
 
     #[test]
@@ -683,44 +501,6 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_rule_deserialize() {
-        let toml_str = r#"
-            pattern = "TODO|FIXME"
-            severity = "warning"
-            files = ["*.rs", "*.py"]
-            message = "Found TODO comment"
-            description = "TODO comments should be addressed"
-            remediation = "Complete the task or remove the comment"
-            invert = false
-        "#;
-        let rule: CustomRule = toml::from_str(toml_str).unwrap();
-        assert_eq!(rule.pattern, Some("TODO|FIXME".to_string()));
-        assert_eq!(rule.severity, "warning");
-        assert_eq!(rule.files.len(), 2);
-        assert!(!rule.invert);
-    }
-
-    #[test]
-    fn test_custom_rule_with_command() {
-        let toml_str = r#"
-            command = "test -f Makefile"
-            severity = "info"
-            message = "Makefile not found"
-            invert = true
-        "#;
-        let rule: CustomRule = toml::from_str(toml_str).unwrap();
-        assert!(rule.pattern.is_none());
-        assert_eq!(rule.command, Some("test -f Makefile".to_string()));
-        assert!(rule.invert);
-    }
-
-    #[test]
-    fn test_custom_rules_config_default() {
-        let config = CustomRulesConfig::default();
-        assert!(config.rules.is_empty());
-    }
-
-    #[test]
     fn test_default_true_function() {
         assert!(default_true());
     }
@@ -738,42 +518,5 @@ mod tests {
     #[test]
     fn test_default_approvals_function() {
         assert_eq!(default_approvals(), 1);
-    }
-
-    #[test]
-    fn test_default_custom_severity_function() {
-        assert_eq!(default_custom_severity(), "warning");
-    }
-
-    #[test]
-    fn test_license_compliance_config_default() {
-        let config = LicenseComplianceConfig::default();
-        assert!(config.enabled);
-        assert!(config.allowed_licenses.is_empty());
-        assert!(config.denied_licenses.is_empty());
-    }
-
-    #[test]
-    fn test_license_compliance_config_deserialize() {
-        let toml_str = r#"
-            enabled = true
-            allowed_licenses = ["MIT", "Apache-2.0"]
-            denied_licenses = ["GPL-3.0"]
-        "#;
-        let config: LicenseComplianceConfig = toml::from_str(toml_str).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.allowed_licenses.len(), 2);
-        assert_eq!(config.denied_licenses.len(), 1);
-        assert_eq!(config.allowed_licenses[0], "MIT");
-        assert_eq!(config.denied_licenses[0], "GPL-3.0");
-    }
-
-    #[test]
-    fn test_license_compliance_config_deserialize_defaults() {
-        let toml_str = r#""#;
-        let config: LicenseComplianceConfig = toml::from_str(toml_str).unwrap();
-        assert!(config.enabled);
-        assert!(config.allowed_licenses.is_empty());
-        assert!(config.denied_licenses.is_empty());
     }
 }

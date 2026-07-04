@@ -342,24 +342,6 @@ fn benchmark_read_file(c: &mut Criterion) {
     group.finish();
 }
 
-fn benchmark_files_in_directory(c: &mut Criterion) {
-    let mut group = c.benchmark_group("files_in_directory");
-
-    for size in &["small", "medium", "large"] {
-        group.bench_with_input(BenchmarkId::from_parameter(size), size, |b, &size| {
-            let temp_dir = create_test_repo(size);
-            let scanner = Scanner::new(temp_dir.path().to_path_buf());
-
-            b.iter(|| {
-                let files = scanner.files_in_directory(black_box("src"));
-                black_box(files);
-            });
-        });
-    }
-
-    group.finish();
-}
-
 fn benchmark_repository_name(c: &mut Criterion) {
     let temp_dir = create_test_repo("medium");
     let scanner = Scanner::new(temp_dir.path().to_path_buf());
@@ -380,7 +362,6 @@ criterion_group!(
     benchmark_files_matching_pattern,
     benchmark_files_larger_than,
     benchmark_read_file,
-    benchmark_files_in_directory,
     benchmark_repository_name,
 );
 criterion_main!(benches);
