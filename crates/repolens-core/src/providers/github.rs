@@ -45,6 +45,29 @@ pub struct RepoInfo {
     pub has_wiki_enabled: bool,
 }
 
+impl RepoInfo {
+    /// Build a [`RepoInfo`] from GitLab project settings.
+    ///
+    /// GitLab has no "discussions" concept, so `has_discussions_enabled` is
+    /// always `false`; the kept checks only read issues / wiki here.
+    pub fn from_gitlab(
+        name: &str,
+        owner: &str,
+        has_issues_enabled: bool,
+        has_wiki_enabled: bool,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            owner: RepoOwner {
+                login: owner.to_string(),
+            },
+            has_issues_enabled,
+            has_discussions_enabled: false,
+            has_wiki_enabled,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct RepoOwner {
@@ -815,6 +838,28 @@ pub struct BranchProtection {
     #[serde(rename = "allow_deletions")]
     #[allow(dead_code)]
     pub allow_deletions: Option<AllowDeletions>,
+}
+
+impl BranchProtection {
+    /// Build a [`BranchProtection`] from GitLab protected-branch state.
+    ///
+    /// GitLab exposes a force-push toggle and (via approval rules) a required
+    /// approval count. The remaining GitHub-shaped fields have no GitLab
+    /// equivalent and are left `None`.
+    pub fn from_gitlab(allow_force_push: bool, required_approvals: u32) -> Self {
+        Self {
+            required_status_checks: None,
+            enforce_admins: None,
+            required_pull_request_reviews: (required_approvals > 0).then_some(PullRequestReviews {
+                required_approving_review_count: required_approvals,
+            }),
+            required_linear_history: None,
+            allow_force_pushes: Some(AllowForcePushes {
+                enabled: allow_force_push,
+            }),
+            allow_deletions: None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

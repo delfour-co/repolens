@@ -352,7 +352,12 @@ fn create_spinner(message: &str) -> ProgressBar {
 
 pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
     // Load configuration
-    let config = Config::load_or_default()?;
+    let mut config = Config::load_or_default()?;
+
+    // CLI --provider overrides config / auto-detection.
+    if let Some(provider) = args.provider {
+        config.provider = provider.into();
+    }
 
     // Initialize scanner
     let scanner = Scanner::new(PathBuf::from("."));
