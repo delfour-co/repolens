@@ -85,14 +85,21 @@ pub enum ActionOperation {
         variables: std::collections::HashMap<String, String>,
     },
 
-    /// Configure branch protection
-    ConfigureBranchProtection {
+    /// Configure protected branch (provider-agnostic)
+    ConfigureProtectedBranch {
         branch: String,
         settings: BranchProtectionSettings,
     },
 
-    /// Update GitHub repository settings
-    UpdateGitHubSettings { settings: GitHubRepoSettings },
+    /// Update repository settings (provider-agnostic)
+    UpdateRepoSettings { settings: GitHubRepoSettings },
+
+    /// Update repository metadata (description, topics, homepage)
+    UpdateRepoMetadata {
+        description: Option<String>,
+        topics: Vec<String>,
+        homepage: Option<String>,
+    },
 }
 
 /// Branch protection settings
@@ -307,7 +314,7 @@ mod tests {
             "action2",
             "security",
             "Security action",
-            ActionOperation::ConfigureBranchProtection {
+            ActionOperation::ConfigureProtectedBranch {
                 branch: "main".to_string(),
                 settings: BranchProtectionSettings::default(),
             },
@@ -344,7 +351,7 @@ mod tests {
             "action2",
             "security",
             "Security action",
-            ActionOperation::ConfigureBranchProtection {
+            ActionOperation::ConfigureProtectedBranch {
                 branch: "main".to_string(),
                 settings: BranchProtectionSettings::default(),
             },
@@ -424,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn test_action_operation_update_github_settings() {
+    fn test_action_operation_update_repo_settings() {
         let settings = GitHubRepoSettings {
             enable_discussions: Some(true),
             enable_issues: Some(true),
@@ -436,18 +443,45 @@ mod tests {
         let action = Action::new(
             "action1",
             "security",
-            "Update GitHub settings",
-            ActionOperation::UpdateGitHubSettings {
+            "Update repository settings",
+            ActionOperation::UpdateRepoSettings {
                 settings: settings.clone(),
             },
         );
 
         match action.operation() {
-            ActionOperation::UpdateGitHubSettings { settings } => {
+            ActionOperation::UpdateRepoSettings { settings } => {
                 assert_eq!(settings.enable_discussions, Some(true));
                 assert_eq!(settings.enable_wiki, Some(false));
             }
-            _ => panic!("Expected UpdateGitHubSettings operation"),
+            _ => panic!("Expected UpdateRepoSettings operation"),
+        }
+    }
+
+    #[test]
+    fn test_action_operation_update_repo_metadata() {
+        let action = Action::new(
+            "action1",
+            "metadata",
+            "Update repository metadata",
+            ActionOperation::UpdateRepoMetadata {
+                description: Some("A test repo".to_string()),
+                topics: vec!["rust".to_string(), "cli".to_string()],
+                homepage: Some("https://example.com".to_string()),
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateRepoMetadata {
+                description,
+                topics,
+                homepage,
+            } => {
+                assert_eq!(description.as_deref(), Some("A test repo"));
+                assert_eq!(topics.len(), 2);
+                assert_eq!(homepage.as_deref(), Some("https://example.com"));
+            }
+            _ => panic!("Expected UpdateRepoMetadata operation"),
         }
     }
 }

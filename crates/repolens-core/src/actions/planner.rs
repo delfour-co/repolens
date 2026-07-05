@@ -114,6 +114,13 @@ impl ActionPlanner {
             plan.add(action);
         }
 
+        // Plan repository metadata (only if configured and a finding exists)
+        if self.config.actions.metadata.enabled {
+            if let Some(action) = self.plan_metadata_if_needed(results) {
+                plan.add(action);
+            }
+        }
+
         Ok(plan)
     }
 
@@ -398,7 +405,7 @@ impl ActionPlanner {
             "branch-protection",
             "github",
             format!("Enable branch protection on '{}'", bp.branch),
-            ActionOperation::ConfigureBranchProtection {
+            ActionOperation::ConfigureProtectedBranch {
                 branch: bp.branch.clone(),
                 settings,
             },
@@ -524,7 +531,7 @@ impl ActionPlanner {
             "github-settings",
             "github",
             "Update repository settings",
-            ActionOperation::UpdateGitHubSettings { settings },
+            ActionOperation::UpdateRepoSettings { settings },
         )
         .with_details(details)
     }
@@ -576,9 +583,61 @@ impl ActionPlanner {
             "github-settings",
             "github",
             "Update repository settings",
-            ActionOperation::UpdateGitHubSettings { settings },
+            ActionOperation::UpdateRepoSettings { settings },
         )
         .with_details(details)
+    }
+
+    /// Plan a repository-metadata update if needed.
+    ///
+    /// Metadata (description / topics / homepage) cannot be auto-filled from
+    /// nothing, so — like branch protection and repository settings — this
+    /// action applies the values the user configured. It is only emitted when:
+    /// the metadata action is enabled, at least one configured value is present,
+    /// and the audit reports a missing-metadata finding (META001/002/003 in the
+    /// `metadata` category).
+    fn plan_metadata_if_needed(&self, results: &AuditResults) -> Option<Action> {
+        let meta = &self.config.actions.metadata;
+
+        // Need at least one configured value to apply.
+        let has_value =
+            meta.description.is_some() || !meta.topics.is_empty() || meta.homepage.is_some();
+        if !has_value {
+            return None;
+        }
+
+        // Need a missing-metadata finding to act on.
+        let has_finding = results
+            .findings_by_category("metadata")
+            .any(|f| matches!(f.rule_id.as_str(), "META001" | "META002" | "META003"));
+        if !has_finding {
+            return None;
+        }
+
+        let mut details = Vec::new();
+        if let Some(desc) = &meta.description {
+            details.push(format!("Set description: {desc}"));
+        }
+        if !meta.topics.is_empty() {
+            details.push(format!("Set topics: {}", meta.topics.join(", ")));
+        }
+        if let Some(home) = &meta.homepage {
+            details.push(format!("Set homepage: {home}"));
+        }
+
+        Some(
+            Action::new(
+                "repo-metadata",
+                "metadata",
+                "Update repository metadata",
+                ActionOperation::UpdateRepoMetadata {
+                    description: meta.description.clone(),
+                    topics: meta.topics.clone(),
+                    homepage: meta.homepage.clone(),
+                },
+            )
+            .with_details(details),
+        )
     }
 }
 
@@ -942,13 +1001,13 @@ mod tests {
         assert!(action.description().contains("develop"));
 
         match action.operation() {
-            ActionOperation::ConfigureBranchProtection { branch, settings } => {
+            ActionOperation::ConfigureProtectedBranch { branch, settings } => {
                 assert_eq!(branch, "develop");
                 assert_eq!(settings.required_approvals, 2);
                 assert!(!settings.require_status_checks);
                 assert!(settings.block_force_push);
             }
-            _ => panic!("Expected ConfigureBranchProtection operation"),
+            _ => panic!("Expected ConfigureProtectedBranch operation"),
         }
     }
 
@@ -965,12 +1024,12 @@ mod tests {
         assert_eq!(action.id(), "github-settings");
 
         match action.operation() {
-            ActionOperation::UpdateGitHubSettings { settings } => {
+            ActionOperation::UpdateRepoSettings { settings } => {
                 assert_eq!(settings.enable_discussions, Some(true));
                 assert_eq!(settings.enable_vulnerability_alerts, Some(true));
                 assert_eq!(settings.enable_automated_security_fixes, Some(true));
             }
-            _ => panic!("Expected UpdateGitHubSettings operation"),
+            _ => panic!("Expected UpdateRepoSettings operation"),
         }
     }
 
@@ -989,14 +1048,107 @@ mod tests {
         );
 
         match action.operation() {
-            ActionOperation::UpdateGitHubSettings { settings } => {
+            ActionOperation::UpdateRepoSettings { settings } => {
                 assert!(settings.enable_discussions.is_some());
                 assert!(settings.enable_issues.is_none());
                 assert!(settings.enable_wiki.is_none());
                 assert!(settings.enable_vulnerability_alerts.is_none());
                 assert!(settings.enable_automated_security_fixes.is_none());
             }
-            _ => panic!("Expected UpdateGitHubSettings operation"),
+            _ => panic!("Expected UpdateRepoSettings operation"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_includes_metadata_when_configured() {
+        let mut config = Config::default();
+        config.actions.metadata.description = Some("My project".to_string());
+        config.actions.metadata.topics = vec!["rust".to_string()];
+
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "META001",
+            "metadata",
+            Severity::Info,
+            "Repository description is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        let action = plan
+            .actions()
+            .iter()
+            .find(|a| a.id() == "repo-metadata")
+            .expect("Should have repo-metadata action");
+
+        match action.operation() {
+            ActionOperation::UpdateRepoMetadata {
+                description,
+                topics,
+                homepage,
+            } => {
+                assert_eq!(description.as_deref(), Some("My project"));
+                assert_eq!(topics, &vec!["rust".to_string()]);
+                assert!(homepage.is_none());
+            }
+            _ => panic!("Expected UpdateRepoMetadata operation"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_metadata_when_unconfigured() {
+        // Finding present but no configured values -> no action.
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "META001",
+            "metadata",
+            Severity::Info,
+            "Repository description is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        assert!(!plan.actions().iter().any(|a| a.id() == "repo-metadata"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_metadata_when_no_finding() {
+        // Configured values but no META finding -> no action.
+        let mut config = Config::default();
+        config.actions.metadata.description = Some("My project".to_string());
+
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        assert!(!plan.actions().iter().any(|a| a.id() == "repo-metadata"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_metadata_when_disabled() {
+        // Configured + finding present, but action disabled -> no action.
+        let mut config = Config::default();
+        config.actions.metadata.enabled = false;
+        config.actions.metadata.description = Some("My project".to_string());
+
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "META001",
+            "metadata",
+            Severity::Info,
+            "Repository description is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        assert!(!plan.actions().iter().any(|a| a.id() == "repo-metadata"));
     }
 }

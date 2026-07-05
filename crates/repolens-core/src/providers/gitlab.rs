@@ -370,6 +370,133 @@ impl RepoProvider for GitLabProvider {
             command: "fork-pr-approval: unsupported on GitLab".to_string(),
         }))
     }
+
+    /// Protect `branch` via GitLab's protected-branches API.
+    ///
+    /// GitLab maps a subset of the GitHub branch-protection model: the
+    /// `allow_force_push` toggle and (separately) merge-request approval rules.
+    /// The remaining GitHub-shaped fields have no GitLab equivalent and are not
+    /// applied. The protected branch is (re)created via
+    /// `POST /projects/:id/protected_branches`.
+    fn set_protected_branch(
+        &self,
+        branch: &str,
+        settings: &crate::actions::plan::BranchProtectionSettings,
+    ) -> Result<(), RepoLensError> {
+        // GitLab's POST is idempotent only if the branch is not yet protected;
+        // unprotect first (best-effort) so re-applying settings succeeds.
+        let unprotect_path = format!(
+            "projects/{}/protected_branches/{}",
+            self.encoded_id(),
+            urlencode(branch)
+        );
+        let _ = Command::new("glab")
+            .args(["api", &unprotect_path, "--method", "DELETE"])
+            .output();
+
+        let protect_path = format!("projects/{}/protected_branches", self.encoded_id());
+        let allow_force_push = if settings.block_force_push {
+            "false"
+        } else {
+            "true"
+        };
+
+        let output = Command::new("glab")
+            .args([
+                "api",
+                &protect_path,
+                "--method",
+                "POST",
+                "-f",
+                &format!("name={branch}"),
+                "-f",
+                &format!("allow_force_push={allow_force_push}"),
+            ])
+            .output()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("glab api {protect_path}"),
+                })
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Action(
+                crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to protect branch on GitLab: {stderr}"),
+                },
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// GitLab has no faithful equivalent of the GitHub security toggles
+    /// (vulnerability alerts / automated security fixes / discussions). Return
+    /// `Err` so `apply` reports this action as failed gracefully rather than
+    /// silently doing nothing.
+    fn set_repo_settings(
+        &self,
+        _settings: &crate::actions::plan::GitHubRepoSettings,
+    ) -> Result<(), RepoLensError> {
+        Err(RepoLensError::Provider(ProviderError::CommandFailed {
+            command: "repo-settings: unsupported on GitLab".to_string(),
+        }))
+    }
+
+    /// Apply project metadata (description, topics, homepage) via
+    /// `PUT /projects/:id` (`glab api`).
+    fn set_repo_metadata(
+        &self,
+        description: Option<&str>,
+        topics: &[String],
+        homepage: Option<&str>,
+    ) -> Result<(), RepoLensError> {
+        let path = format!("projects/{}", self.encoded_id());
+        let mut args: Vec<String> = vec![
+            "api".to_string(),
+            path.clone(),
+            "--method".to_string(),
+            "PUT".to_string(),
+        ];
+
+        if let Some(desc) = description {
+            args.push("-f".to_string());
+            args.push(format!("description={desc}"));
+        }
+        if let Some(home) = homepage {
+            // GitLab stores the project website under `homepage`.
+            args.push("-f".to_string());
+            args.push(format!("homepage={home}"));
+        }
+        if !topics.is_empty() {
+            // GitLab accepts a comma-separated `topics` field on project update.
+            args.push("-f".to_string());
+            args.push(format!("topics={}", topics.join(",")));
+        }
+
+        // Nothing to update.
+        if args.len() == 4 {
+            return Ok(());
+        }
+
+        let output = Command::new("glab").args(&args).output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("glab api {path}"),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Action(
+                crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to update GitLab project metadata: {stderr}"),
+                },
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 impl GitLabProvider {

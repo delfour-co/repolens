@@ -548,6 +548,10 @@ pub fn is_github_auth_available() -> bool {
 }
 
 /// Get repository info (owner/name) from GitHub CLI
+///
+/// Retained as a public utility (exercised by integration tests); provider
+/// write paths now resolve the slug via the provider abstraction instead.
+#[allow(dead_code)]
 pub fn get_repo_info() -> Result<String> {
     let output = Command::new("gh")
         .args([
