@@ -464,6 +464,46 @@ impl RepoProvider for GitLabProvider {
         }))
     }
 
+    /// GitHub-specific (secret scanning + push protection toggle, review bug
+    /// #11: SEC013/SEC014). GitLab Secret Detection is a CI-job concept, not
+    /// this repo-setting shape — skip via `Err` (mirrors `get_secret_scanning`).
+    fn set_secret_scanning(
+        &self,
+        _secret_scanning: Option<bool>,
+        _push_protection: Option<bool>,
+    ) -> Result<(), RepoLensError> {
+        Err(RepoLensError::Provider(ProviderError::CommandFailed {
+            command: "secret-scanning: unsupported on GitLab".to_string(),
+        }))
+    }
+
+    /// GitHub Actions concept (review bug #11: SEC015). No GitLab equivalent
+    /// — skip via `Err`.
+    fn set_actions_permissions(&self, _allowed_actions: Option<&str>) -> Result<(), RepoLensError> {
+        Err(RepoLensError::Provider(ProviderError::CommandFailed {
+            command: "actions-permissions: unsupported on GitLab".to_string(),
+        }))
+    }
+
+    /// GitHub Actions workflow-token permissions (review bug #11: SEC016).
+    /// No GitLab equivalent — skip via `Err`.
+    fn set_actions_workflow_permissions(
+        &self,
+        _default_workflow_permissions: Option<&str>,
+    ) -> Result<(), RepoLensError> {
+        Err(RepoLensError::Provider(ProviderError::CommandFailed {
+            command: "workflow-permissions: unsupported on GitLab".to_string(),
+        }))
+    }
+
+    /// GitHub Actions fork-PR approval policy (review bug #11: SEC017). No
+    /// GitLab equivalent — skip via `Err`.
+    fn set_fork_pr_workflows_policy(&self, _require_approval: bool) -> Result<(), RepoLensError> {
+        Err(RepoLensError::Provider(ProviderError::CommandFailed {
+            command: "fork-pr-approval: unsupported on GitLab".to_string(),
+        }))
+    }
+
     /// Protect `branch` via GitLab's protected-branches API.
     ///
     /// GitLab maps a subset of the GitHub branch-protection model — see
@@ -1073,6 +1113,21 @@ mod tests {
         assert!(p.get_actions_permissions().is_err());
         assert!(p.get_actions_workflow_permissions().is_err());
         assert!(p.get_fork_pr_workflows_policy().is_err());
+    }
+
+    /// Regression test for review bug #11 (SEC013-017): before this
+    /// feature, `RepoProvider` had no write methods for secret scanning,
+    /// Actions permissions, workflow permissions, or fork-PR approval at
+    /// all. Now that they exist, GitLab's implementations must return `Err`
+    /// (graceful skip), never silently claim success for a GitHub-only
+    /// setting.
+    #[test]
+    fn test_gitlab_actions_security_write_methods_return_err() {
+        let p = test_provider();
+        assert!(p.set_secret_scanning(Some(true), Some(true)).is_err());
+        assert!(p.set_actions_permissions(Some("selected")).is_err());
+        assert!(p.set_actions_workflow_permissions(Some("read")).is_err());
+        assert!(p.set_fork_pr_workflows_policy(true).is_err());
     }
 
     #[test]

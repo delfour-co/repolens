@@ -225,6 +225,13 @@ pub struct ActionsConfig {
     /// Repository metadata configuration (description, topics, homepage).
     #[serde(default)]
     pub metadata: MetadataConfig,
+
+    /// GitHub Actions & repository security settings configuration (secret
+    /// scanning, push protection, Actions permissions, workflow
+    /// permissions, fork pull-request-workflow approval) -- review bug #11
+    /// (SEC013-017).
+    #[serde(default)]
+    pub actions_security: ActionsSecurityConfig,
 }
 
 impl Default for ActionsConfig {
@@ -243,6 +250,7 @@ impl Default for ActionsConfig {
             branch_protection: BranchProtectionConfig::default(),
             github_settings: GitHubSettingsConfig::default(),
             metadata: MetadataConfig::default(),
+            actions_security: ActionsSecurityConfig::default(),
         }
     }
 }
@@ -469,6 +477,82 @@ impl Default for MetadataConfig {
     }
 }
 
+/// Configuration for GitHub Actions & repository security settings.
+///
+/// Covers the five GitHub-only toggles behind SEC013-017 (review bug #11):
+/// secret scanning, push protection, Actions permissions (which actions are
+/// allowed to run), default workflow (`GITHUB_TOKEN`) permissions, and
+/// whether fork pull-request workflows require approval before running.
+/// These settings are applied via the GitHub API when running `repolens
+/// apply` with appropriate permissions. GitHub-only: on GitLab, `apply`
+/// skips this action gracefully (no GitLab equivalent exists for any of
+/// these five toggles -- `GitLabProvider`'s write methods all return `Err`,
+/// and the planner never plans this action for a non-GitHub provider).
+///
+/// # Examples
+///
+/// ```toml
+/// [actions.actions_security]
+/// enabled = true
+/// secret_scanning = true
+/// push_protection = true
+/// allowed_actions = "selected"
+/// default_workflow_permissions = "read"
+/// require_fork_pr_approval = true
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionsSecurityConfig {
+    /// Whether to apply these settings at all.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Whether secret scanning should be enabled (SEC013).
+    #[serde(default = "default_true")]
+    pub secret_scanning: bool,
+
+    /// Whether push protection should be enabled (SEC014). Only meaningful
+    /// once secret scanning itself is enabled.
+    #[serde(default = "default_true")]
+    pub push_protection: bool,
+
+    /// Desired Actions permissions: `"all"`, `"local_only"`, or `"selected"`
+    /// (SEC015). Defaults to `"selected"` (restrict to GitHub-owned and
+    /// verified-creator actions).
+    #[serde(default = "default_allowed_actions")]
+    pub allowed_actions: String,
+
+    /// Desired default `GITHUB_TOKEN` workflow permissions: `"read"` or
+    /// `"write"` (SEC016). Defaults to `"read"` (least privilege).
+    #[serde(default = "default_workflow_permissions")]
+    pub default_workflow_permissions: String,
+
+    /// Whether fork pull request workflows should require approval before
+    /// running (SEC017).
+    #[serde(default = "default_true")]
+    pub require_fork_pr_approval: bool,
+}
+
+impl Default for ActionsSecurityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            secret_scanning: true,
+            push_protection: true,
+            allowed_actions: default_allowed_actions(),
+            default_workflow_permissions: default_workflow_permissions(),
+            require_fork_pr_approval: true,
+        }
+    }
+}
+
+fn default_allowed_actions() -> String {
+    "selected".to_string()
+}
+
+fn default_workflow_permissions() -> String {
+    "read".to_string()
+}
+
 /// Configuration for file template generation.
 ///
 /// These values are used when generating files like LICENSE,
@@ -569,6 +653,23 @@ mod tests {
     }
 
     #[test]
+    fn test_actions_security_config_default() {
+        let config = ActionsSecurityConfig::default();
+        assert!(config.enabled);
+        assert!(config.secret_scanning);
+        assert!(config.push_protection);
+        assert_eq!(config.allowed_actions, "selected");
+        assert_eq!(config.default_workflow_permissions, "read");
+        assert!(config.require_fork_pr_approval);
+    }
+
+    #[test]
+    fn test_actions_config_default_includes_actions_security() {
+        let config = ActionsConfig::default();
+        assert!(config.actions_security.enabled);
+    }
+
+    #[test]
     fn test_templates_config_default() {
         let config = TemplatesConfig::default();
         assert!(config.license_author.is_none());
@@ -595,5 +696,15 @@ mod tests {
     #[test]
     fn test_default_approvals_function() {
         assert_eq!(default_approvals(), 1);
+    }
+
+    #[test]
+    fn test_default_allowed_actions_function() {
+        assert_eq!(default_allowed_actions(), "selected");
+    }
+
+    #[test]
+    fn test_default_workflow_permissions_function() {
+        assert_eq!(default_workflow_permissions(), "read");
     }
 }

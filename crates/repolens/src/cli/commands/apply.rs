@@ -340,6 +340,39 @@ fn preview_action_diff(action: &Action) {
 
             display_diff(&old_content, &new_content, path);
         }
+        ActionOperation::UpdateActionsSecuritySettings { settings } => {
+            let old_content = "(Current GitHub Actions & security settings)".to_string();
+            let mut changes = Vec::new();
+            if let Some(v) = settings.secret_scanning {
+                changes.push(format!("Enable secret scanning: {}", v));
+            }
+            if let Some(v) = settings.secret_scanning_push_protection {
+                changes.push(format!("Enable push protection: {}", v));
+            }
+            if let Some(v) = &settings.allowed_actions {
+                changes.push(format!("Restrict allowed Actions to: {}", v));
+            }
+            if let Some(v) = &settings.default_workflow_permissions {
+                changes.push(format!("Set default workflow permissions: {}", v));
+            }
+            if let Some(v) = settings.require_fork_pr_approval {
+                changes.push(format!(
+                    "Require approval for fork pull request workflows: {}",
+                    v
+                ));
+            }
+            let new_content = if changes.is_empty() {
+                "(No changes)".to_string()
+            } else {
+                changes.join("\n")
+            };
+
+            display_diff(
+                &old_content,
+                &new_content,
+                "GitHub Actions & security settings",
+            );
+        }
     }
 }
 
@@ -913,7 +946,8 @@ async fn handle_git_operations(
 mod tests {
     use super::*;
     use repolens_core::actions::plan::{
-        Action, ActionOperation, BranchProtectionSettings, GitHubRepoSettings,
+        Action, ActionOperation, BranchProtectionSettings, GitHubActionsSecuritySettings,
+        GitHubRepoSettings,
     };
     use std::collections::HashMap;
 
@@ -1044,6 +1078,26 @@ mod tests {
                     enable_wiki: Some(false),
                     enable_vulnerability_alerts: Some(true),
                     enable_automated_security_fixes: Some(true),
+                },
+            },
+        );
+
+        preview_action_diff(&action);
+    }
+
+    #[test]
+    fn test_preview_action_diff_actions_security_settings() {
+        let action = Action::new(
+            "actions-security-settings",
+            "github",
+            "Update GitHub Actions & security settings",
+            ActionOperation::UpdateActionsSecuritySettings {
+                settings: GitHubActionsSecuritySettings {
+                    secret_scanning: Some(true),
+                    secret_scanning_push_protection: Some(true),
+                    allowed_actions: Some("selected".to_string()),
+                    default_workflow_permissions: Some("read".to_string()),
+                    require_fork_pr_approval: Some(true),
                 },
             },
         );

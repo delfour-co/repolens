@@ -122,6 +122,16 @@ pub enum ActionOperation {
         /// Whether `required_status_checks` must be added (SEC010).
         ensure_status_checks: bool,
     },
+
+    /// Update GitHub Actions & repository security settings: secret
+    /// scanning, push protection, Actions permissions, default workflow
+    /// permissions, and fork pull-request-workflow approval (review bug
+    /// #11 -- SEC013-017). GitHub-only: `GitLabProvider`'s corresponding
+    /// write methods all return `Err`, so the planner never plans this
+    /// action for a non-GitHub provider.
+    UpdateActionsSecuritySettings {
+        settings: GitHubActionsSecuritySettings,
+    },
 }
 
 /// Branch protection settings
@@ -160,6 +170,25 @@ pub struct GitHubRepoSettings {
     pub enable_wiki: Option<bool>,
     pub enable_vulnerability_alerts: Option<bool>,
     pub enable_automated_security_fixes: Option<bool>,
+}
+
+/// GitHub Actions & repository security settings (SEC013-017).
+///
+/// Each field is `Some(desired_value)` when that specific toggle needs to
+/// change and `None` when it should be left untouched -- mirrors
+/// [`GitHubRepoSettings`]'s "only touch what's needed" shape.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GitHubActionsSecuritySettings {
+    /// Enable/disable secret scanning (SEC013).
+    pub secret_scanning: Option<bool>,
+    /// Enable/disable push protection (SEC014).
+    pub secret_scanning_push_protection: Option<bool>,
+    /// Desired Actions permissions: `"all"`, `"local_only"`, or `"selected"` (SEC015).
+    pub allowed_actions: Option<String>,
+    /// Desired default `GITHUB_TOKEN` workflow permissions: `"read"` or `"write"` (SEC016).
+    pub default_workflow_permissions: Option<String>,
+    /// Whether fork pull request workflows must require approval (SEC017).
+    pub require_fork_pr_approval: Option<bool>,
 }
 
 /// A collection of actions to perform
@@ -510,6 +539,49 @@ mod tests {
                 assert!(!ensure_status_checks);
             }
             _ => panic!("Expected UpdateSettingsFile operation"),
+        }
+    }
+
+    #[test]
+    fn test_github_actions_security_settings_default() {
+        let settings = GitHubActionsSecuritySettings::default();
+        assert!(settings.secret_scanning.is_none());
+        assert!(settings.secret_scanning_push_protection.is_none());
+        assert!(settings.allowed_actions.is_none());
+        assert!(settings.default_workflow_permissions.is_none());
+        assert!(settings.require_fork_pr_approval.is_none());
+    }
+
+    #[test]
+    fn test_action_operation_update_actions_security_settings() {
+        let settings = GitHubActionsSecuritySettings {
+            secret_scanning: Some(true),
+            secret_scanning_push_protection: Some(true),
+            allowed_actions: Some("selected".to_string()),
+            default_workflow_permissions: Some("read".to_string()),
+            require_fork_pr_approval: Some(true),
+        };
+
+        let action = Action::new(
+            "actions-security-settings",
+            "github",
+            "Update GitHub Actions & security settings",
+            ActionOperation::UpdateActionsSecuritySettings {
+                settings: settings.clone(),
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateActionsSecuritySettings { settings } => {
+                assert_eq!(settings.secret_scanning, Some(true));
+                assert_eq!(settings.allowed_actions.as_deref(), Some("selected"));
+                assert_eq!(
+                    settings.default_workflow_permissions.as_deref(),
+                    Some("read")
+                );
+                assert_eq!(settings.require_fork_pr_approval, Some(true));
+            }
+            _ => panic!("Expected UpdateActionsSecuritySettings operation"),
         }
     }
 

@@ -153,6 +153,35 @@ pub trait RepoProvider: Send + Sync {
         homepage: Option<&str>,
     ) -> Result<(), RepoLensError>;
 
+    // --- Actions & security settings write side (review bug #11: SEC013-017) ---
+
+    /// Enable/disable secret scanning and/or push protection via the
+    /// `security_and_analysis` repository setting (SEC013/SEC014). `None`
+    /// leaves the corresponding GitHub-side toggle untouched. GitHub-only:
+    /// GitLab has no equivalent concept, so `GitLabProvider` returns `Err`.
+    fn set_secret_scanning(
+        &self,
+        secret_scanning: Option<bool>,
+        push_protection: Option<bool>,
+    ) -> Result<(), RepoLensError>;
+
+    /// Restrict which Actions/reusable workflows may run
+    /// (`allowed_actions`: `"all"` | `"local_only"` | `"selected"`, SEC015).
+    /// `None` leaves the current value untouched. GitHub-only.
+    fn set_actions_permissions(&self, allowed_actions: Option<&str>) -> Result<(), RepoLensError>;
+
+    /// Set the default `GITHUB_TOKEN` workflow permissions (`"read"` or
+    /// `"write"`, SEC016). `None` leaves the current value untouched.
+    /// GitHub-only.
+    fn set_actions_workflow_permissions(
+        &self,
+        default_workflow_permissions: Option<&str>,
+    ) -> Result<(), RepoLensError>;
+
+    /// Require approval before workflows triggered by fork pull requests run
+    /// (SEC017). GitHub-only.
+    fn set_fork_pr_workflows_policy(&self, require_approval: bool) -> Result<(), RepoLensError>;
+
     /// Create an issue in the repository, returning its URL.
     ///
     /// Foundation for review bug #8: `apply --create-pr`'s issue-creation path

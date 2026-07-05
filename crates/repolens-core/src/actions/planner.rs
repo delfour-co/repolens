@@ -5,12 +5,13 @@
 
 use std::collections::HashMap;
 
-use crate::config::{Config, GitHubSettingsConfig};
-use crate::providers::Provider;
+use crate::config::{ActionsSecurityConfig, Config, GitHubSettingsConfig};
+use crate::providers::{ActionsPermissions, Provider, SecretScanningSettings};
 use crate::rules::results::AuditResults;
 
 use super::plan::{
-    Action, ActionOperation, ActionPlan, BranchProtectionSettings, GitHubRepoSettings,
+    Action, ActionOperation, ActionPlan, BranchProtectionSettings, GitHubActionsSecuritySettings,
+    GitHubRepoSettings,
 };
 
 /// Parameters for planning file creation
@@ -165,6 +166,15 @@ impl ActionPlanner {
         // Plan GitHub settings (only if not already configured)
         if let Some(action) = self.plan_github_settings_if_needed().await? {
             plan.add(action);
+        }
+
+        // Plan GitHub Actions & security settings -- secret scanning, push
+        // protection, Actions permissions, workflow permissions, fork-PR
+        // approval (review bug #11: SEC013-017 genuine remediation).
+        if self.config.actions.actions_security.enabled {
+            if let Some(action) = self.plan_actions_security_if_needed().await? {
+                plan.add(action);
+            }
         }
 
         // Plan repository metadata (only if configured and a finding exists)
@@ -856,6 +866,189 @@ impl ActionPlanner {
             "github",
             "Update repository settings",
             ActionOperation::UpdateRepoSettings { settings },
+        )
+        .with_details(details)
+    }
+
+    /// Pure computation of which Actions/security-settings fields need to
+    /// change, given already-fetched provider state (review bug #11:
+    /// SEC013-017). Extracted out of [`Self::plan_actions_security_if_needed`]
+    /// so it can be pinned with a plain unit test that doesn't require a
+    /// live, authenticated provider.
+    ///
+    /// On a read error, each field fails SAFE by assuming the *least*
+    /// secure current state (scanning/protection/approval off, actions
+    /// unrestricted, workflow permissions `"write"`) -- mirroring bug #14's
+    /// fail-safe fallback -- so a mismatch against the (more secure) desired
+    /// default always triggers remediation rather than silently skipping it.
+    ///
+    /// Returns `(needs_secret_scanning, needs_push_protection,
+    /// needs_restrict_actions, needs_workflow_permissions,
+    /// needs_fork_pr_approval)`.
+    fn compute_actions_security_needs(
+        cfg: &ActionsSecurityConfig,
+        secret_scanning: Result<SecretScanningSettings, crate::error::RepoLensError>,
+        actions_permissions: Result<ActionsPermissions, crate::error::RepoLensError>,
+        workflow_permissions: Result<ActionsPermissions, crate::error::RepoLensError>,
+        fork_pr_requires_approval: Result<bool, crate::error::RepoLensError>,
+    ) -> (bool, bool, bool, bool, bool) {
+        let (current_secret_scanning, current_push_protection) = match secret_scanning {
+            Ok(s) => (s.enabled, s.push_protection_enabled),
+            Err(e) => {
+                tracing::debug!("Could not check secret scanning status: {:?}", e);
+                (false, false)
+            }
+        };
+        let needs_secret_scanning = current_secret_scanning != cfg.secret_scanning;
+        let needs_push_protection = current_push_protection != cfg.push_protection;
+
+        let current_allowed_actions = actions_permissions
+            .map(|p| p.allowed_actions.unwrap_or_else(|| "all".to_string()))
+            .unwrap_or_else(|e| {
+                tracing::debug!("Could not check Actions permissions: {:?}", e);
+                "all".to_string()
+            });
+        let needs_restrict_actions = current_allowed_actions != cfg.allowed_actions;
+
+        let current_workflow_permissions = workflow_permissions
+            .ok()
+            .and_then(|p| p.default_workflow_permissions)
+            .unwrap_or_else(|| "write".to_string());
+        let needs_workflow_permissions =
+            current_workflow_permissions != cfg.default_workflow_permissions;
+
+        let current_requires_approval = fork_pr_requires_approval.unwrap_or_else(|e| {
+            tracing::debug!("Could not check fork-PR workflow approval policy: {:?}", e);
+            false
+        });
+        let needs_fork_pr_approval = current_requires_approval != cfg.require_fork_pr_approval;
+
+        (
+            needs_secret_scanning,
+            needs_push_protection,
+            needs_restrict_actions,
+            needs_workflow_permissions,
+            needs_fork_pr_approval,
+        )
+    }
+
+    /// Plan GitHub Actions & security-settings updates if needed (review bug
+    /// #11: SEC013-017).
+    ///
+    /// GitHub-only: every one of these five toggles has no GitLab
+    /// equivalent (`GitLabProvider`'s write methods all return `Err`), so
+    /// this never plans anything unless the effective provider is GitHub --
+    /// consistent with [`Self::supports_github_only_settings`]'s gating of
+    /// the sibling repo-settings toggles (review bug #9).
+    ///
+    /// # Returns
+    ///
+    /// An `Action` to update Actions/security settings, or `None` if
+    /// already configured correctly (or the provider isn't GitHub).
+    async fn plan_actions_security_if_needed(
+        &self,
+    ) -> Result<Option<Action>, crate::error::RepoLensError> {
+        if !self.supports_github_only_settings() {
+            return Ok(None);
+        }
+
+        let cfg = &self.config.actions.actions_security;
+
+        let provider = match crate::providers::for_config(&self.config) {
+            Some(p) => p,
+            None => {
+                // No authenticated provider yet: plan the full fix so
+                // `apply` can retry once one is available (same fail-safe
+                // shape as branch protection / repo settings).
+                return Ok(Some(self.create_actions_security_action_filtered(
+                    true, true, true, true, true,
+                )));
+            }
+        };
+
+        let (
+            needs_secret_scanning,
+            needs_push_protection,
+            needs_restrict_actions,
+            needs_workflow_permissions,
+            needs_fork_pr_approval,
+        ) = Self::compute_actions_security_needs(
+            cfg,
+            provider.get_secret_scanning(),
+            provider.get_actions_permissions(),
+            provider.get_actions_workflow_permissions(),
+            provider.get_fork_pr_workflows_policy(),
+        );
+
+        if needs_secret_scanning
+            || needs_push_protection
+            || needs_restrict_actions
+            || needs_workflow_permissions
+            || needs_fork_pr_approval
+        {
+            Ok(Some(self.create_actions_security_action_filtered(
+                needs_secret_scanning,
+                needs_push_protection,
+                needs_restrict_actions,
+                needs_workflow_permissions,
+                needs_fork_pr_approval,
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Create an Actions/security-settings action with only the fields that
+    /// need to change (review bug #11: SEC013-017).
+    fn create_actions_security_action_filtered(
+        &self,
+        needs_secret_scanning: bool,
+        needs_push_protection: bool,
+        needs_restrict_actions: bool,
+        needs_workflow_permissions: bool,
+        needs_fork_pr_approval: bool,
+    ) -> Action {
+        let cfg = &self.config.actions.actions_security;
+
+        let settings = GitHubActionsSecuritySettings {
+            secret_scanning: needs_secret_scanning.then_some(cfg.secret_scanning),
+            secret_scanning_push_protection: needs_push_protection.then_some(cfg.push_protection),
+            allowed_actions: needs_restrict_actions.then(|| cfg.allowed_actions.clone()),
+            default_workflow_permissions: needs_workflow_permissions
+                .then(|| cfg.default_workflow_permissions.clone()),
+            require_fork_pr_approval: needs_fork_pr_approval
+                .then_some(cfg.require_fork_pr_approval),
+        };
+
+        let mut details = Vec::new();
+        if needs_secret_scanning {
+            details.push(format!("Enable secret scanning: {}", cfg.secret_scanning)); // SEC013
+        }
+        if needs_push_protection {
+            details.push(format!("Enable push protection: {}", cfg.push_protection)); // SEC014
+        }
+        if needs_restrict_actions {
+            details.push(format!(
+                "Restrict allowed Actions to: {}",
+                cfg.allowed_actions
+            )); // SEC015
+        }
+        if needs_workflow_permissions {
+            details.push(format!(
+                "Set default workflow permissions: {}",
+                cfg.default_workflow_permissions
+            )); // SEC016
+        }
+        if needs_fork_pr_approval {
+            details.push("Require approval for fork pull request workflows".to_string());
+            // SEC017
+        }
+
+        Action::new(
+            "actions-security-settings",
+            "github",
+            "Update GitHub Actions & security settings",
+            ActionOperation::UpdateActionsSecuritySettings { settings },
         )
         .with_details(details)
     }
@@ -1844,6 +2037,358 @@ mod tests {
     // `test_vulnerability_alerts_error_fails_safe_plans_fix`) already cover
     // the GitHub-only-toggles-supported branch deterministically.
 
+    // ===== Review bug #11: real remediation for SEC013-017 =====
+    //
+    // Before this feature, SEC013-017 had no wiring in the planner at all --
+    // `compute_actions_security_needs` and `plan_actions_security_if_needed`
+    // did not exist, so these tests fail to even compile against pre-T10c
+    // code (the strongest possible "fails before" signal). Each test below
+    // pins one rule's "needs" computation deterministically, without a live
+    // provider (see the no-control-test note above for why: this sandbox's
+    // `gh` is authenticated against a real repository).
+
+    fn default_actions_security_config() -> ActionsSecurityConfig {
+        ActionsSecurityConfig::default()
+    }
+
+    /// SEC013: secret scanning disabled must be flagged as needing a fix.
+    #[test]
+    fn test_sec013_secret_scanning_disabled_needs_fix() {
+        let cfg = default_actions_security_config();
+        let (needs_secret_scanning, _, _, _, _) = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Ok(SecretScanningSettings {
+                enabled: false,
+                push_protection_enabled: false,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: Some(cfg.allowed_actions.clone()),
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(cfg.require_fork_pr_approval),
+        );
+
+        assert!(
+            needs_secret_scanning,
+            "secret scanning disabled must plan SEC013's remediation"
+        );
+    }
+
+    /// SEC013 (error path): a provider error must fail SAFE (assume secret
+    /// scanning is NOT enabled), not silently skip the fix.
+    #[test]
+    fn test_sec013_secret_scanning_error_fails_safe_plans_fix() {
+        let cfg = default_actions_security_config();
+        let err =
+            crate::error::RepoLensError::Provider(crate::error::ProviderError::CommandFailed {
+                command: "gh api ...".to_string(),
+            });
+
+        let (needs_secret_scanning, _, _, _, _) = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Err(err),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: Some(cfg.allowed_actions.clone()),
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(cfg.require_fork_pr_approval),
+        );
+
+        assert!(
+            needs_secret_scanning,
+            "a provider error must fail SAFE: plan SEC013's fix rather than assume it's already enabled"
+        );
+    }
+
+    /// SEC014: push protection disabled (while secret scanning IS enabled)
+    /// must be flagged as needing a fix.
+    #[test]
+    fn test_sec014_push_protection_disabled_needs_fix() {
+        let cfg = default_actions_security_config();
+        let (_, needs_push_protection, _, _, _) = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Ok(SecretScanningSettings {
+                enabled: true,
+                push_protection_enabled: false,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: Some(cfg.allowed_actions.clone()),
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(cfg.require_fork_pr_approval),
+        );
+
+        assert!(
+            needs_push_protection,
+            "push protection disabled must plan SEC014's remediation"
+        );
+    }
+
+    /// SEC015: `allowed_actions == "all"` (unrestricted) must be flagged as
+    /// needing a fix when the desired value is more restrictive.
+    #[test]
+    fn test_sec015_unrestricted_actions_needs_fix() {
+        let cfg = default_actions_security_config();
+        let (_, _, needs_restrict_actions, _, _) = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Ok(SecretScanningSettings {
+                enabled: cfg.secret_scanning,
+                push_protection_enabled: cfg.push_protection,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: Some("all".to_string()),
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(cfg.require_fork_pr_approval),
+        );
+
+        assert!(
+            needs_restrict_actions,
+            "allowed_actions == \"all\" must plan SEC015's remediation"
+        );
+    }
+
+    /// SEC015 (error path): a provider error must fail SAFE (assume "all",
+    /// the least restrictive value), not silently skip the fix.
+    #[test]
+    fn test_sec015_actions_permissions_error_fails_safe_plans_fix() {
+        let cfg = default_actions_security_config();
+        let err =
+            crate::error::RepoLensError::Provider(crate::error::ProviderError::CommandFailed {
+                command: "gh api ...".to_string(),
+            });
+
+        let (_, _, needs_restrict_actions, _, _) = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Ok(SecretScanningSettings {
+                enabled: cfg.secret_scanning,
+                push_protection_enabled: cfg.push_protection,
+            }),
+            Err(err),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(cfg.require_fork_pr_approval),
+        );
+
+        assert!(
+            needs_restrict_actions,
+            "a provider error must fail SAFE: plan SEC015's fix rather than assume actions are already restricted"
+        );
+    }
+
+    /// SEC016: `default_workflow_permissions == "write"` must be flagged as
+    /// needing a fix when the desired value is `"read"`.
+    #[test]
+    fn test_sec016_write_workflow_permissions_needs_fix() {
+        let cfg = default_actions_security_config();
+        let (_, _, _, needs_workflow_permissions, _) =
+            ActionPlanner::compute_actions_security_needs(
+                &cfg,
+                Ok(SecretScanningSettings {
+                    enabled: cfg.secret_scanning,
+                    push_protection_enabled: cfg.push_protection,
+                }),
+                Ok(ActionsPermissions {
+                    enabled: true,
+                    allowed_actions: Some(cfg.allowed_actions.clone()),
+                    default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                    can_approve_pull_request_reviews: None,
+                }),
+                Ok(ActionsPermissions {
+                    enabled: true,
+                    allowed_actions: None,
+                    default_workflow_permissions: Some("write".to_string()),
+                    can_approve_pull_request_reviews: None,
+                }),
+                Ok(cfg.require_fork_pr_approval),
+            );
+
+        assert!(
+            needs_workflow_permissions,
+            "default_workflow_permissions == \"write\" must plan SEC016's remediation"
+        );
+    }
+
+    /// SEC017: fork-PR workflows not requiring approval must be flagged as
+    /// needing a fix.
+    #[test]
+    fn test_sec017_fork_pr_approval_not_required_needs_fix() {
+        let cfg = default_actions_security_config();
+        let (_, _, _, _, needs_fork_pr_approval) = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Ok(SecretScanningSettings {
+                enabled: cfg.secret_scanning,
+                push_protection_enabled: cfg.push_protection,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: Some(cfg.allowed_actions.clone()),
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(false),
+        );
+
+        assert!(
+            needs_fork_pr_approval,
+            "fork-PR workflows not requiring approval must plan SEC017's remediation"
+        );
+    }
+
+    /// SEC017 (error path): a provider error must fail SAFE (assume
+    /// approval is NOT required), not silently skip the fix.
+    #[test]
+    fn test_sec017_fork_pr_approval_error_fails_safe_plans_fix() {
+        let cfg = default_actions_security_config();
+        let err =
+            crate::error::RepoLensError::Provider(crate::error::ProviderError::CommandFailed {
+                command: "gh api ...".to_string(),
+            });
+
+        let (_, _, _, _, needs_fork_pr_approval) = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Ok(SecretScanningSettings {
+                enabled: cfg.secret_scanning,
+                push_protection_enabled: cfg.push_protection,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: Some(cfg.allowed_actions.clone()),
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Err(err),
+        );
+
+        assert!(
+            needs_fork_pr_approval,
+            "a provider error must fail SAFE: plan SEC017's fix rather than assume approval is already required"
+        );
+    }
+
+    /// All fields already matching the desired configuration -> nothing to
+    /// plan (proves the "needs" computation doesn't spuriously fire).
+    #[test]
+    fn test_all_actions_security_fields_already_correct_needs_nothing() {
+        let cfg = default_actions_security_config();
+        let needs = ActionPlanner::compute_actions_security_needs(
+            &cfg,
+            Ok(SecretScanningSettings {
+                enabled: cfg.secret_scanning,
+                push_protection_enabled: cfg.push_protection,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: Some(cfg.allowed_actions.clone()),
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(ActionsPermissions {
+                enabled: true,
+                allowed_actions: None,
+                default_workflow_permissions: Some(cfg.default_workflow_permissions.clone()),
+                can_approve_pull_request_reviews: None,
+            }),
+            Ok(cfg.require_fork_pr_approval),
+        );
+
+        assert_eq!(needs, (false, false, false, false, false));
+    }
+
+    /// Review bug #11's GitLab counterpart to bug #9: `GitLabProvider`'s
+    /// four new write methods all return `Err` (no GitLab equivalent for
+    /// any of SEC013-017), so the planner must never plan
+    /// "actions-security-settings" for a GitLab repository -- otherwise
+    /// `apply` would plan an action that can never succeed.
+    ///
+    /// Fails before this feature (no gating existed because the action
+    /// itself didn't exist); passes after `supports_github_only_settings()`
+    /// gates `plan_actions_security_if_needed`.
+    #[tokio::test]
+    async fn test_gitlab_provider_never_plans_actions_security_settings() {
+        let config = Config {
+            provider: Some(crate::providers::Provider::GitLab),
+            ..Config::default()
+        };
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        assert!(
+            !plan
+                .actions()
+                .iter()
+                .any(|a| a.id() == "actions-security-settings"),
+            "SEC013-017 have no GitLab equivalent -- must never be planned for GitLab"
+        );
+    }
+
+    /// GitHub-only gating: when the effective provider is NOT GitHub (and
+    /// there is no live provider to consult), `plan_actions_security_if_needed`
+    /// must return `None` outright rather than reaching the fail-safe
+    /// "no provider" branch (which is reserved for an unauthenticated GitHub
+    /// provider, not a fundamentally unsupported one).
+    #[tokio::test]
+    async fn test_actions_security_not_planned_when_provider_unsupported() {
+        let config = Config {
+            provider: Some(crate::providers::Provider::GitLab),
+            ..Config::default()
+        };
+        let planner = ActionPlanner::new(config);
+
+        let action = planner.plan_actions_security_if_needed().await.unwrap();
+        assert!(action.is_none());
+    }
+
     // ===== Review bug #12: real remediation for SEC008/009/010 =====
 
     #[tokio::test]
@@ -2081,9 +2626,20 @@ mod tests {
             // ConfigureProtectedBranch, which configures live branch
             // protection via the provider API and does not touch this file)
             "SEC008", "SEC009", "SEC010",
-            // UpdateRepoSettings (GitHub security/analysis toggles)
-            "SEC011", "SEC012", "SEC013", "SEC014", "SEC015", "SEC016", "SEC017",
-            // UpdateRepoMetadata
+            // UpdateRepoSettings (GitHub repo-settings toggles: discussions
+            // / issues / wiki / vulnerability alerts / automated security
+            // fixes)
+            "SEC011", "SEC012",
+            // UpdateActionsSecuritySettings (GitHub `security_and_analysis`
+            // + Actions-permissions API writes -- review bug #11; SEC013-017
+            // were previously listed here as "remediable via UpdateRepoSettings"
+            // but NO planner mapping actually existed for them until this
+            // action was added: see providers::RepoProvider::set_secret_scanning
+            // (SEC013/SEC014), ::set_actions_permissions (SEC015),
+            // ::set_actions_workflow_permissions (SEC016), and
+            // ::set_fork_pr_workflows_policy (SEC017), wired via
+            // ActionPlanner::plan_actions_security_if_needed)
+            "SEC013", "SEC014", "SEC015", "SEC016", "SEC017", // UpdateRepoMetadata
             "META001", "META002", "META003",
         ]
         .into_iter()

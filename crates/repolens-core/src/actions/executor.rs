@@ -11,7 +11,10 @@ use crate::config::Config;
 
 use super::plan::{Action, ActionOperation, ActionPlan};
 use super::settings_file::SettingsFileUpdate;
-use super::{branch_protection, github_settings, gitignore, metadata, settings_file, templates};
+use super::{
+    actions_security, branch_protection, github_settings, gitignore, metadata, settings_file,
+    templates,
+};
 
 /// Result of executing a single action
 ///
@@ -167,6 +170,11 @@ impl ActionExecutor {
                     ensure_status_checks: *ensure_status_checks,
                 };
                 settings_file::update_settings_file_at(&current_dir, path, &update)?;
+            }
+
+            ActionOperation::UpdateActionsSecuritySettings { settings } => {
+                debug!("Updating GitHub Actions & security settings");
+                actions_security::update(&self.config, settings).await?;
             }
         }
 
@@ -401,6 +409,55 @@ mod tests {
         let results = executor.execute(&plan).await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].action_name, "Update repository metadata");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_dispatches_update_actions_security_settings() {
+        // Regression test for review bug #11 (SEC013-017): the executor must
+        // dispatch UpdateActionsSecuritySettings to actions_security::update
+        // rather than silently doing nothing.
+        //
+        // Deliberately configured for GitLab (not `Config::default()`):
+        // this sandbox has an authenticated `gh` CLI bound to a real GitHub
+        // repository, and `Config::default()` would route through the LIVE
+        // GitHub provider -- actually restricting Actions permissions /
+        // enabling secret scanning on that real repository. `glab` is not
+        // installed here, so `for_config` deterministically returns `None`
+        // and the call fails fast with no network I/O at all, while still
+        // exercising the executor's dispatch arm end-to-end.
+        let config = Config {
+            provider: Some(crate::providers::Provider::GitLab),
+            ..Config::default()
+        };
+        let executor = ActionExecutor::new(config);
+
+        let mut plan = ActionPlan::new();
+        plan.add(Action::new(
+            "actions-security-settings",
+            "github",
+            "Update GitHub Actions & security settings",
+            ActionOperation::UpdateActionsSecuritySettings {
+                settings: crate::actions::plan::GitHubActionsSecuritySettings {
+                    secret_scanning: Some(true),
+                    secret_scanning_push_protection: Some(true),
+                    allowed_actions: Some("selected".to_string()),
+                    default_workflow_permissions: Some("read".to_string()),
+                    require_fork_pr_approval: Some(true),
+                },
+            },
+        ));
+
+        let results = executor.execute(&plan).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].action_name,
+            "Update GitHub Actions & security settings"
+        );
+        assert!(
+            !results[0].success,
+            "no glab CLI is installed in this sandbox, so this must fail fast, not panic"
+        );
     }
 
     #[tokio::test]

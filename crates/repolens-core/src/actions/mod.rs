@@ -60,6 +60,7 @@
 //! # }
 //! ```
 
+mod actions_security;
 mod branch_protection;
 pub mod executor;
 pub mod git;

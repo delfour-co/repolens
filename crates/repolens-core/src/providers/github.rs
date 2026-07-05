@@ -727,6 +727,134 @@ impl GitHubProvider {
         }
         flags
     }
+
+    /// Build the `security_and_analysis` PATCH payload for
+    /// [`Self::set_secret_scanning`] (SEC013/SEC014). Returns `None` when
+    /// neither field is requested (nothing to send) -- a pure, unit-tested
+    /// builder so the request shape can be verified without invoking `gh`.
+    fn secret_scanning_payload(
+        secret_scanning: Option<bool>,
+        push_protection: Option<bool>,
+    ) -> Option<serde_json::Value> {
+        if secret_scanning.is_none() && push_protection.is_none() {
+            return None;
+        }
+
+        let mut security_and_analysis = serde_json::Map::new();
+        if let Some(enabled) = secret_scanning {
+            security_and_analysis.insert(
+                "secret_scanning".to_string(),
+                serde_json::json!({ "status": if enabled { "enabled" } else { "disabled" } }),
+            );
+        }
+        if let Some(enabled) = push_protection {
+            security_and_analysis.insert(
+                "secret_scanning_push_protection".to_string(),
+                serde_json::json!({ "status": if enabled { "enabled" } else { "disabled" } }),
+            );
+        }
+
+        Some(serde_json::json!({ "security_and_analysis": security_and_analysis }))
+    }
+
+    /// Build the `PUT actions/permissions` payload for
+    /// [`Self::set_actions_permissions`] (SEC015). `None` -> nothing to send.
+    fn actions_permissions_payload(allowed_actions: Option<&str>) -> Option<serde_json::Value> {
+        allowed_actions
+            .map(|allowed| serde_json::json!({ "enabled": true, "allowed_actions": allowed }))
+    }
+
+    /// Default scoping applied when [`Self::set_actions_permissions`]
+    /// restricts `allowed_actions` to `"selected"`. Without this follow-up
+    /// call GitHub blocks every third-party action outright, which would
+    /// silently break most existing CI; scoping to GitHub-owned + verified
+    /// creators mirrors the SEC015 finding's own remediation text
+    /// ("Restrict actions to verified creators or selected actions only").
+    fn selected_actions_payload() -> serde_json::Value {
+        serde_json::json!({
+            "github_owned_allowed": true,
+            "verified_allowed": true,
+            "patterns_allowed": [],
+        })
+    }
+
+    /// Build the `PUT actions/permissions/workflow` payload for
+    /// [`Self::set_actions_workflow_permissions`] (SEC016). `None` ->
+    /// nothing to send.
+    fn actions_workflow_permissions_payload(
+        default_workflow_permissions: Option<&str>,
+    ) -> Option<serde_json::Value> {
+        default_workflow_permissions
+            .map(|perm| serde_json::json!({ "default_workflow_permissions": perm }))
+    }
+
+    /// Build the `PUT actions/permissions/access` payload for
+    /// [`Self::set_fork_pr_workflows_policy`] (SEC017). Mirrors
+    /// `get_fork_pr_workflows_policy`'s own read of the same endpoint
+    /// (`access_level == "none"` means approval is required), so the
+    /// write side stays symmetric with what the rule actually checks.
+    fn fork_pr_access_payload(require_approval: bool) -> serde_json::Value {
+        serde_json::json!({ "access_level": if require_approval { "none" } else { "organization" } })
+    }
+
+    /// Run `gh api <path> --method <method> --input -` with `payload` piped
+    /// via stdin, returning `Ok(())` on success. Shared plumbing for the
+    /// Actions/security-settings write methods (review bug #11): each PATCHes
+    /// or PUTs a small JSON body to a single GitHub REST endpoint, identical
+    /// in shape to the existing `--input -` calls in
+    /// [`Self::set_protected_branch`]/[`RepoProvider::set_repo_metadata`].
+    fn gh_api_write(
+        &self,
+        path: &str,
+        method: &str,
+        payload: &serde_json::Value,
+    ) -> Result<(), RepoLensError> {
+        use std::io::Write as _;
+        use std::process::Stdio;
+
+        let mut child = Command::new("gh")
+            .args(["api", path, "--method", method, "--input", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api {path} --method {method}"),
+                })
+            })?;
+
+        let json_str = serde_json::to_string(payload).map_err(|e| {
+            RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                message: format!("Failed to serialize request payload for {path}: {e}"),
+            })
+        })?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(json_str.as_bytes()).map_err(|e| {
+                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to write to gh CLI stdin: {e}"),
+                })
+            })?;
+        }
+
+        let output = child.wait_with_output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("gh api {path} --method {method}"),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Action(
+                crate::error::ActionError::ExecutionFailed {
+                    message: format!("gh api {path} --method {method} failed: {stderr}"),
+                },
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 impl RepoProvider for GitHubProvider {
@@ -1107,6 +1235,83 @@ impl RepoProvider for GitHubProvider {
         }
 
         Ok(())
+    }
+
+    /// Enable/disable secret scanning and/or push protection via a single
+    /// `PATCH repos/{full}` call against `security_and_analysis` (review bug
+    /// #11: SEC013/SEC014). Only the requested fields are sent; `None`
+    /// leaves the current GitHub-side setting untouched.
+    fn set_secret_scanning(
+        &self,
+        secret_scanning: Option<bool>,
+        push_protection: Option<bool>,
+    ) -> Result<(), RepoLensError> {
+        match Self::secret_scanning_payload(secret_scanning, push_protection) {
+            Some(payload) => {
+                self.gh_api_write(&format!("repos/{}", self.full_name()), "PATCH", &payload)
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// Restrict Actions permissions via `PUT actions/permissions` (review bug
+    /// #11: SEC015). When restricting to `"selected"`, also scopes the
+    /// selected-actions sub-resource to GitHub-owned + verified creators so
+    /// existing CI doesn't break outright (see
+    /// [`Self::selected_actions_payload`]).
+    fn set_actions_permissions(&self, allowed_actions: Option<&str>) -> Result<(), RepoLensError> {
+        let Some(payload) = Self::actions_permissions_payload(allowed_actions) else {
+            return Ok(());
+        };
+
+        self.gh_api_write(
+            &format!("repos/{}/actions/permissions", self.full_name()),
+            "PUT",
+            &payload,
+        )?;
+
+        if allowed_actions == Some("selected") {
+            self.gh_api_write(
+                &format!(
+                    "repos/{}/actions/permissions/selected-actions",
+                    self.full_name()
+                ),
+                "PUT",
+                &Self::selected_actions_payload(),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Set default `GITHUB_TOKEN` workflow permissions via `PUT
+    /// actions/permissions/workflow` (review bug #11: SEC016).
+    fn set_actions_workflow_permissions(
+        &self,
+        default_workflow_permissions: Option<&str>,
+    ) -> Result<(), RepoLensError> {
+        let Some(payload) =
+            Self::actions_workflow_permissions_payload(default_workflow_permissions)
+        else {
+            return Ok(());
+        };
+
+        self.gh_api_write(
+            &format!("repos/{}/actions/permissions/workflow", self.full_name()),
+            "PUT",
+            &payload,
+        )
+    }
+
+    /// Set fork pull-request-workflow approval policy via `PUT
+    /// actions/permissions/access` (review bug #11: SEC017).
+    fn set_fork_pr_workflows_policy(&self, require_approval: bool) -> Result<(), RepoLensError> {
+        let payload = Self::fork_pr_access_payload(require_approval);
+        self.gh_api_write(
+            &format!("repos/{}/actions/permissions/access", self.full_name()),
+            "PUT",
+            &payload,
+        )
     }
 
     /// Behaviour-identical to the inherent [`GitHubProvider::create_issue`].
@@ -1604,5 +1809,102 @@ mod tests {
     fn test_repo_edit_flags_none_when_all_unset() {
         let settings = crate::actions::plan::GitHubRepoSettings::default();
         assert!(GitHubProvider::repo_edit_flags(&settings).is_empty());
+    }
+
+    // ===== Review bug #11: SEC013-017 write-side payload builders =====
+    //
+    // These test the pure JSON-payload construction only -- no `gh` process
+    // is spawned, matching the existing `protect_branch_calls`/
+    // `repo_settings_fields` pure-builder pattern in `gitlab.rs`.
+
+    /// Regression test for SEC013/SEC014: before this feature, secret
+    /// scanning / push protection had no write path at all -- this proves
+    /// the `security_and_analysis` PATCH payload carries both statuses.
+    #[test]
+    fn test_secret_scanning_payload_both_fields() {
+        let payload = GitHubProvider::secret_scanning_payload(Some(true), Some(false))
+            .expect("expected Some when at least one field is requested");
+        assert_eq!(
+            payload["security_and_analysis"]["secret_scanning"]["status"],
+            "enabled"
+        );
+        assert_eq!(
+            payload["security_and_analysis"]["secret_scanning_push_protection"]["status"],
+            "disabled"
+        );
+    }
+
+    #[test]
+    fn test_secret_scanning_payload_single_field() {
+        let payload = GitHubProvider::secret_scanning_payload(Some(true), None)
+            .expect("expected Some when secret_scanning is requested");
+        assert_eq!(
+            payload["security_and_analysis"]["secret_scanning"]["status"],
+            "enabled"
+        );
+        assert!(
+            payload["security_and_analysis"]
+                .get("secret_scanning_push_protection")
+                .is_none(),
+            "an untouched field must not appear in the payload at all"
+        );
+    }
+
+    #[test]
+    fn test_secret_scanning_payload_none_when_both_unset() {
+        assert!(GitHubProvider::secret_scanning_payload(None, None).is_none());
+    }
+
+    /// Regression test for SEC015: before this feature, unrestricted Actions
+    /// permissions had no write path -- this proves the `allowed_actions`
+    /// PUT payload carries the desired restriction.
+    #[test]
+    fn test_actions_permissions_payload_selected() {
+        let payload = GitHubProvider::actions_permissions_payload(Some("selected"))
+            .expect("expected Some when allowed_actions is requested");
+        assert_eq!(payload["enabled"], true);
+        assert_eq!(payload["allowed_actions"], "selected");
+    }
+
+    #[test]
+    fn test_actions_permissions_payload_none_when_unset() {
+        assert!(GitHubProvider::actions_permissions_payload(None).is_none());
+    }
+
+    #[test]
+    fn test_selected_actions_payload_scopes_to_verified_and_github_owned() {
+        let payload = GitHubProvider::selected_actions_payload();
+        assert_eq!(payload["github_owned_allowed"], true);
+        assert_eq!(payload["verified_allowed"], true);
+        assert_eq!(payload["patterns_allowed"], serde_json::json!([]));
+    }
+
+    /// Regression test for SEC016: before this feature, permissive default
+    /// workflow permissions had no write path.
+    #[test]
+    fn test_actions_workflow_permissions_payload_read() {
+        let payload = GitHubProvider::actions_workflow_permissions_payload(Some("read"))
+            .expect("expected Some when default_workflow_permissions is requested");
+        assert_eq!(payload["default_workflow_permissions"], "read");
+    }
+
+    #[test]
+    fn test_actions_workflow_permissions_payload_none_when_unset() {
+        assert!(GitHubProvider::actions_workflow_permissions_payload(None).is_none());
+    }
+
+    /// Regression test for SEC017: before this feature, fork-PR-workflow
+    /// approval had no write path. Mirrors `get_fork_pr_workflows_policy`'s
+    /// own read (`access_level == "none"` means approval is required).
+    #[test]
+    fn test_fork_pr_access_payload_require_approval_true() {
+        let payload = GitHubProvider::fork_pr_access_payload(true);
+        assert_eq!(payload["access_level"], "none");
+    }
+
+    #[test]
+    fn test_fork_pr_access_payload_require_approval_false() {
+        let payload = GitHubProvider::fork_pr_access_payload(false);
+        assert_eq!(payload["access_level"], "organization");
     }
 }
