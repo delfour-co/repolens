@@ -79,12 +79,10 @@ impl Preset {
                 "docs/security",
                 "docs/changelog",
                 "files/sensitive",
-                "files/large",
                 "files/gitignore",
                 "security/branch-protection",
                 "security/vulnerability-alerts",
                 "security/dependabot-updates",
-                "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
                 "codeowners/presence",
@@ -93,7 +91,6 @@ impl Preset {
                 "docs/readme",
                 "docs/security",
                 "files/sensitive",
-                "files/large",
                 "files/gitignore",
                 "security/codeowners",
                 "security/signed-commits",
@@ -105,7 +102,6 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
                 "codeowners/presence",
@@ -121,7 +117,6 @@ impl Preset {
                 "docs/changelog-format",
                 "docs/changelog-unreleased",
                 "files/sensitive",
-                "files/large",
                 "files/gitignore",
                 "files/editorconfig",
                 "security/codeowners",
@@ -134,7 +129,6 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
                 "codeowners/presence",
@@ -156,7 +150,6 @@ impl Preset {
                 "docs/license",
                 "security/codeowners",
                 "security/signed-commits",
-                "git/large-binaries",
             ],
         }
     }
@@ -253,9 +246,10 @@ mod tests {
     }
 
     #[test]
-    fn test_preset_critical_rules_strict_git() {
-        let rules = Preset::Strict.critical_rules();
-        assert!(rules.contains(&"git/large-binaries"));
+    fn test_preset_strict_enables_git_rules() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(rules.contains(&"git/gitattributes"));
+        assert!(rules.contains(&"git/sensitive-files"));
     }
 
     #[test]

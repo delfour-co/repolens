@@ -1487,12 +1487,9 @@ mod tests {
             "DOC009",
             "DOC010",
             // files.rs
-            "FILE001",
             "FILE002",
             "FILE003",
-            "FILE004",
             // git.rs
-            "GIT001",
             "GIT002",
             "GIT003",
             // codeowners.rs (CODE003 is defined but never emitted)
@@ -1502,7 +1499,6 @@ mod tests {
             "META001",
             "META002",
             "META003",
-            "META004",
             // security.rs
             "SECURITY003",
             "SEC007",
@@ -1556,10 +1552,6 @@ mod tests {
             "DOC010",      // CHANGELOG empty Unreleased section — needs real change notes.
             "CODE002",     // CODEOWNERS syntax error — fix depends on intended owners.
             "SECURITY003", // No runtime version file — the version is a project decision.
-            "FILE001",     // Large file — keep/LFS/delete is a human call.
-            "FILE004",     // Temporary file in repo — removal is a human call.
-            "GIT001",      // Large binary file — LFS/external-store is a human call.
-            "META004",     // Social preview image — a binary asset must be uploaded by a human.
         ]
         .into_iter()
         .collect();

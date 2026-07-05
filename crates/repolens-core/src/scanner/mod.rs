@@ -208,6 +208,7 @@ impl Scanner {
     /// # Returns
     ///
     /// A vector of references to `FileInfo` for files larger than the specified size
+    #[allow(dead_code)]
     pub fn files_larger_than(&self, size: u64) -> Vec<&FileInfo> {
         self.file_cache.iter().filter(|f| f.size > size).collect()
     }

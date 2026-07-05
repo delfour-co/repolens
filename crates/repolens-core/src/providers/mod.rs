@@ -90,9 +90,11 @@ pub struct RepoMetadata {
 /// "skip this check, emit no finding".
 pub trait RepoProvider: Send + Sync {
     /// Repository owner / namespace (e.g. the `owner` in `owner/name`).
+    #[allow(dead_code)]
     fn owner(&self) -> &str;
 
     /// Repository name / project (e.g. the `name` in `owner/name`).
+    #[allow(dead_code)]
     fn name(&self) -> &str;
 
     /// Fetch repository metadata (description, topics, homepage).
