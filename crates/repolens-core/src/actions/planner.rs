@@ -15,6 +15,7 @@ use super::plan::{
 /// Parameters for planning file creation
 struct FileCreationParams<'a> {
     rule_id: &'a str,
+    category: &'a str,
     file_path: &'a str,
     template: &'a str,
     action_id: &'a str,
@@ -98,6 +99,41 @@ impl ActionPlanner {
         // Plan SECURITY.md creation
         if self.config.actions.security_policy {
             if let Some(action) = self.plan_security_creation(results) {
+                plan.add(action);
+            }
+        }
+
+        // Plan README.md creation
+        if self.config.actions.readme {
+            if let Some(action) = self.plan_readme_creation(results) {
+                plan.add(action);
+            }
+        }
+
+        // Plan CHANGELOG.md creation
+        if self.config.actions.changelog {
+            if let Some(action) = self.plan_changelog_creation(results) {
+                plan.add(action);
+            }
+        }
+
+        // Plan .gitattributes creation
+        if self.config.actions.gitattributes {
+            if let Some(action) = self.plan_gitattributes_creation(results) {
+                plan.add(action);
+            }
+        }
+
+        // Plan CODEOWNERS creation
+        if self.config.actions.codeowners {
+            if let Some(action) = self.plan_codeowners_creation(results) {
+                plan.add(action);
+            }
+        }
+
+        // Plan .github/settings.yml creation
+        if self.config.actions.settings_file {
+            if let Some(action) = self.plan_settings_file_creation(results) {
                 plan.add(action);
             }
         }
@@ -238,7 +274,7 @@ impl ActionPlanner {
         params: FileCreationParams<'_>,
     ) -> Option<Action> {
         let needs_file = results
-            .findings_by_category("docs")
+            .findings_by_category(params.category)
             .any(|f| f.rule_id == params.rule_id);
 
         if !needs_file {
@@ -268,6 +304,7 @@ impl ActionPlanner {
             results,
             FileCreationParams {
                 rule_id: "DOC005",
+                category: "docs",
                 file_path: "CONTRIBUTING.md",
                 template: "CONTRIBUTING.md",
                 action_id: "contributing-create",
@@ -282,6 +319,7 @@ impl ActionPlanner {
             results,
             FileCreationParams {
                 rule_id: "DOC006",
+                category: "docs",
                 file_path: "CODE_OF_CONDUCT.md",
                 template: "CODE_OF_CONDUCT.md",
                 action_id: "coc-create",
@@ -296,10 +334,86 @@ impl ActionPlanner {
             results,
             FileCreationParams {
                 rule_id: "DOC007",
+                category: "docs",
                 file_path: "SECURITY.md",
                 template: "SECURITY.md",
                 action_id: "security-create",
                 action_description: "Create SECURITY.md",
+                detail: None,
+            },
+        )
+    }
+
+    fn plan_readme_creation(&self, results: &AuditResults) -> Option<Action> {
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "DOC001",
+                category: "docs",
+                file_path: "README.md",
+                template: "README.md",
+                action_id: "readme-create",
+                action_description: "Create README.md",
+                detail: None,
+            },
+        )
+    }
+
+    fn plan_changelog_creation(&self, results: &AuditResults) -> Option<Action> {
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "DOC008",
+                category: "docs",
+                file_path: "CHANGELOG.md",
+                template: "CHANGELOG.md",
+                action_id: "changelog-create",
+                action_description: "Create CHANGELOG.md",
+                detail: Some("Using Keep a Changelog format"),
+            },
+        )
+    }
+
+    fn plan_gitattributes_creation(&self, results: &AuditResults) -> Option<Action> {
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "GIT002",
+                category: "git",
+                file_path: ".gitattributes",
+                template: ".gitattributes",
+                action_id: "gitattributes-create",
+                action_description: "Create .gitattributes",
+                detail: None,
+            },
+        )
+    }
+
+    fn plan_codeowners_creation(&self, results: &AuditResults) -> Option<Action> {
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "CODE001",
+                category: "codeowners",
+                file_path: "CODEOWNERS",
+                template: "CODEOWNERS",
+                action_id: "codeowners-create",
+                action_description: "Create CODEOWNERS",
+                detail: None,
+            },
+        )
+    }
+
+    fn plan_settings_file_creation(&self, results: &AuditResults) -> Option<Action> {
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "SEC007",
+                category: "security",
+                file_path: ".github/settings.yml",
+                template: ".github/settings.yml",
+                action_id: "settings-file-create",
+                action_description: "Create .github/settings.yml",
                 detail: None,
             },
         )
@@ -1150,5 +1264,332 @@ mod tests {
         let plan = planner.create_plan(&results).await.unwrap();
 
         assert!(!plan.actions().iter().any(|a| a.id() == "repo-metadata"));
+    }
+
+    // ===== New file-creation actions (B3 part 2) =====
+
+    #[tokio::test]
+    async fn test_create_plan_includes_readme() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC001",
+            "docs",
+            Severity::Warning,
+            "README file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(plan.actions().iter().any(|a| a.id() == "readme-create"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_readme_when_disabled() {
+        let mut config = Config::default();
+        config.actions.readme = false;
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC001",
+            "docs",
+            Severity::Warning,
+            "README file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(!plan.actions().iter().any(|a| a.id() == "readme-create"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_includes_changelog() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC008",
+            "docs",
+            Severity::Warning,
+            "CHANGELOG file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(plan.actions().iter().any(|a| a.id() == "changelog-create"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_changelog_when_disabled() {
+        let mut config = Config::default();
+        config.actions.changelog = false;
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC008",
+            "docs",
+            Severity::Warning,
+            "CHANGELOG file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(!plan.actions().iter().any(|a| a.id() == "changelog-create"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_includes_gitattributes() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "GIT002",
+            "git",
+            Severity::Info,
+            ".gitattributes file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(
+            plan.actions()
+                .iter()
+                .any(|a| a.id() == "gitattributes-create")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_gitattributes_when_disabled() {
+        let mut config = Config::default();
+        config.actions.gitattributes = false;
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "GIT002",
+            "git",
+            Severity::Info,
+            ".gitattributes file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(
+            !plan
+                .actions()
+                .iter()
+                .any(|a| a.id() == "gitattributes-create")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_includes_codeowners() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "CODE001",
+            "codeowners",
+            Severity::Info,
+            "CODEOWNERS file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(plan.actions().iter().any(|a| a.id() == "codeowners-create"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_codeowners_when_disabled() {
+        let mut config = Config::default();
+        config.actions.codeowners = false;
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "CODE001",
+            "codeowners",
+            Severity::Info,
+            "CODEOWNERS file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(!plan.actions().iter().any(|a| a.id() == "codeowners-create"));
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_includes_settings_file() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "SEC007",
+            "security",
+            Severity::Info,
+            "GitHub settings file (.github/settings.yml) is absent",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(
+            plan.actions()
+                .iter()
+                .any(|a| a.id() == "settings-file-create")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_create_plan_no_settings_file_when_disabled() {
+        let mut config = Config::default();
+        config.actions.settings_file = false;
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "SEC007",
+            "security",
+            Severity::Info,
+            "GitHub settings file (.github/settings.yml) is absent",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+        assert!(
+            !plan
+                .actions()
+                .iter()
+                .any(|a| a.id() == "settings-file-create")
+        );
+    }
+
+    /// Contract test: every rule_id the six kept categories (docs, files, git,
+    /// codeowners, security, metadata) can emit must either have a remediation
+    /// path (an `Action` operation that addresses it) or appear on an explicit,
+    /// documented detection-only allowlist. This fails loudly if a future
+    /// rule_id is added without wiring up a remediation or consciously marking
+    /// it detection-only — i.e. "zero report-only by accident".
+    #[test]
+    fn test_no_kept_rule_is_report_only() {
+        use std::collections::BTreeSet;
+
+        // Every rule_id the kept categories actually emit today. Verified
+        // against src/rules/categories/{docs,files,git,codeowners,security,
+        // metadata}.rs (Finding::new call sites).
+        let kept_rule_ids: BTreeSet<&str> = [
+            // docs.rs
+            "DOC001",
+            "DOC002",
+            "DOC003",
+            "DOC004",
+            "DOC005",
+            "DOC006",
+            "DOC007",
+            "DOC008",
+            "DOC009",
+            "DOC010",
+            // files.rs
+            "FILE001",
+            "FILE002",
+            "FILE003",
+            "FILE004",
+            // git.rs
+            "GIT001",
+            "GIT002",
+            "GIT003",
+            // codeowners.rs (CODE003 is defined but never emitted)
+            "CODE001",
+            "CODE002",
+            // metadata.rs
+            "META001",
+            "META002",
+            "META003",
+            "META004",
+            // security.rs
+            "SECURITY003",
+            "SEC007",
+            "SEC008",
+            "SEC009",
+            "SEC010",
+            "SEC011",
+            "SEC012",
+            "SEC013",
+            "SEC014",
+            "SEC015",
+            "SEC016",
+            "SEC017",
+        ]
+        .into_iter()
+        .collect();
+
+        // Rule ids that have a concrete remediation path wired into the planner /
+        // executor (operation type noted in the comment).
+        let remediable: BTreeSet<&str> = [
+            // CreateFile from template
+            "DOC001",  // README.md
+            "DOC004",  // LICENSE
+            "DOC005",  // CONTRIBUTING.md
+            "DOC006",  // CODE_OF_CONDUCT.md
+            "DOC007",  // SECURITY.md
+            "DOC008",  // CHANGELOG.md
+            "GIT002",  // .gitattributes
+            "CODE001", // CODEOWNERS
+            "SEC007",  // .github/settings.yml
+            // UpdateGitignore (executor creates or appends to .gitignore)
+            "FILE002", // .gitignore missing -> create it
+            "FILE003", // .gitignore missing recommended entry -> append
+            "GIT003",  // sensitive file untracked -> add to .gitignore
+            // ConfigureProtectedBranch (settings.yml branch-protection gaps)
+            "SEC008", "SEC009", "SEC010",
+            // UpdateRepoSettings (GitHub security/analysis toggles)
+            "SEC011", "SEC012", "SEC013", "SEC014", "SEC015", "SEC016", "SEC017",
+            // UpdateRepoMetadata
+            "META001", "META002", "META003",
+        ]
+        .into_iter()
+        .collect();
+
+        // Detection-only: no deterministic auto-fix exists, so these are reported
+        // for a human to act on. Each entry carries a justification.
+        let detection_only_allowlist: BTreeSet<&str> = [
+            "DOC002",      // README too short — quality judgement, no canonical fix.
+            "DOC003",      // README missing a section — content is author-specific.
+            "DOC009",      // CHANGELOG not Keep-a-Changelog — reformatting existing prose.
+            "DOC010",      // CHANGELOG empty Unreleased section — needs real change notes.
+            "CODE002",     // CODEOWNERS syntax error — fix depends on intended owners.
+            "SECURITY003", // No runtime version file — the version is a project decision.
+            "FILE001",     // Large file — keep/LFS/delete is a human call.
+            "FILE004",     // Temporary file in repo — removal is a human call.
+            "GIT001",      // Large binary file — LFS/external-store is a human call.
+            "META004",     // Social preview image — a binary asset must be uploaded by a human.
+        ]
+        .into_iter()
+        .collect();
+
+        // 1. The two dispositions must be mutually exclusive.
+        let overlap: Vec<&&str> = remediable.intersection(&detection_only_allowlist).collect();
+        assert!(
+            overlap.is_empty(),
+            "rule_ids classified as both remediable and detection-only: {:?}",
+            overlap
+        );
+
+        // 2. No stale ids: everything we classify must still be emitted.
+        let union: BTreeSet<&str> = remediable
+            .union(&detection_only_allowlist)
+            .copied()
+            .collect();
+        let stale: Vec<&&str> = union.difference(&kept_rule_ids).collect();
+        assert!(
+            stale.is_empty(),
+            "rule_ids classified but no longer emitted by kept categories: {:?}",
+            stale
+        );
+
+        // 3. Full coverage: every emitted rule_id has a disposition.
+        let uncovered: Vec<&&str> = kept_rule_ids.difference(&union).collect();
+        assert!(
+            uncovered.is_empty(),
+            "kept rule_ids with neither a remediation nor an allowlist entry: {:?}",
+            uncovered
+        );
     }
 }

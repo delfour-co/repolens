@@ -194,6 +194,26 @@ pub struct ActionsConfig {
     #[serde(default = "default_true")]
     pub security_policy: bool,
 
+    /// Whether to create `README.md` if missing.
+    #[serde(default = "default_true")]
+    pub readme: bool,
+
+    /// Whether to create `CHANGELOG.md` if missing.
+    #[serde(default = "default_true")]
+    pub changelog: bool,
+
+    /// Whether to create `.gitattributes` if missing.
+    #[serde(default = "default_true")]
+    pub gitattributes: bool,
+
+    /// Whether to create `CODEOWNERS` if missing.
+    #[serde(default = "default_true")]
+    pub codeowners: bool,
+
+    /// Whether to create `.github/settings.yml` if missing.
+    #[serde(default = "default_true")]
+    pub settings_file: bool,
+
     /// GitHub branch protection rule configuration.
     #[serde(default)]
     pub branch_protection: BranchProtectionConfig,
@@ -215,6 +235,11 @@ impl Default for ActionsConfig {
             contributing: true,
             code_of_conduct: true,
             security_policy: true,
+            readme: true,
+            changelog: true,
+            gitattributes: true,
+            codeowners: true,
+            settings_file: true,
             branch_protection: BranchProtectionConfig::default(),
             github_settings: GitHubSettingsConfig::default(),
             metadata: MetadataConfig::default(),
