@@ -388,10 +388,20 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_execute_dispatches_update_repo_metadata() {
-        // Dispatch the metadata operation through the executor. Without a
-        // configured/authenticated provider it surfaces as a failed result
-        // (never a panic); with one it would route to set_repo_metadata.
-        let config = Config::default();
+        // Dispatch the metadata operation through the executor and assert it
+        // surfaces a (failed) result rather than panicking.
+        //
+        // Deliberately configured for GitLab (not `Config::default()`): this
+        // sandbox has an authenticated `gh` CLI bound to a real GitHub repo,
+        // and `Config::default()` would route through the LIVE GitHub provider
+        // -- actually running `gh repo edit` and overwriting that real repo's
+        // description/topics. `glab` is not installed here, so `for_config`
+        // deterministically returns `None` and the call fails fast with no
+        // network I/O, while still exercising the executor's dispatch arm.
+        let config = Config {
+            provider: Some(crate::providers::Provider::GitLab),
+            ..Config::default()
+        };
         let executor = ActionExecutor::new(config);
 
         let mut plan = ActionPlan::new();
