@@ -8,24 +8,10 @@
 
 use crate::config::Config;
 use crate::error::RepoLensError;
-use crate::providers::github::GitHubProvider;
+use crate::providers::{RepoMetadata, RepoProvider};
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
-
-use serde::Deserialize;
-
-/// Metadata returned from the GitHub API
-#[derive(Debug, Deserialize)]
-struct RepoMetadata {
-    description: Option<String>,
-    #[serde(default)]
-    topics: Vec<String>,
-    homepage: Option<String>,
-    #[serde(rename = "hasPages")]
-    #[allow(dead_code)]
-    has_pages: Option<bool>,
-}
 
 /// Rules for checking repository metadata
 pub struct MetadataRules;
@@ -43,16 +29,12 @@ impl RuleCategory for MetadataRules {
     ) -> Result<Vec<Finding>, RepoLensError> {
         let mut findings = Vec::new();
 
-        if !GitHubProvider::is_available() {
-            return Ok(findings);
-        }
-
-        let provider = match GitHubProvider::new() {
-            Ok(p) => p,
-            Err(_) => return Ok(findings),
+        let provider = match crate::providers::for_config(config) {
+            Some(p) => p,
+            None => return Ok(findings),
         };
 
-        let metadata = match get_repo_metadata(&provider) {
+        let metadata = match provider.repo_metadata() {
             Ok(m) => m,
             Err(_) => return Ok(findings),
         };
@@ -70,40 +52,11 @@ impl RuleCategory for MetadataRules {
         }
 
         if config.is_rule_enabled("metadata/social-preview") {
-            findings.extend(check_social_preview(&provider));
+            findings.extend(check_social_preview(provider.as_ref()));
         }
 
         Ok(findings)
     }
-}
-
-/// Fetch repository metadata from GitHub API
-fn get_repo_metadata(provider: &GitHubProvider) -> Result<RepoMetadata, RepoLensError> {
-    let output = std::process::Command::new("gh")
-        .args([
-            "repo",
-            "view",
-            &format!("{}/{}", provider.owner(), provider.name()),
-            "--json",
-            "description,topics,homepage,hasPages",
-        ])
-        .output()
-        .map_err(|_| {
-            RepoLensError::Provider(crate::error::ProviderError::CommandFailed {
-                command: "gh repo view".to_string(),
-            })
-        })?;
-
-    if !output.status.success() {
-        return Err(RepoLensError::Provider(
-            crate::error::ProviderError::CommandFailed {
-                command: "gh repo view".to_string(),
-            },
-        ));
-    }
-
-    let metadata: RepoMetadata = serde_json::from_slice(&output.stdout)?;
-    Ok(metadata)
 }
 
 /// META001: Check for repository description
@@ -193,7 +146,11 @@ fn check_homepage(metadata: &RepoMetadata) -> Vec<Finding> {
 }
 
 /// META004: Check for social preview image
-fn check_social_preview(provider: &GitHubProvider) -> Vec<Finding> {
+///
+/// Note: the social-preview / OpenGraph image is a GitHub-specific concept with
+/// no portable provider API, so this still issues a `gh api` call directly,
+/// addressing the repository via the trait's `owner()` / `name()`.
+fn check_social_preview(provider: &dyn RepoProvider) -> Vec<Finding> {
     let mut findings = Vec::new();
 
     // Check social preview via API - the openGraphImageUrl field

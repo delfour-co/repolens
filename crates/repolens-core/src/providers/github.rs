@@ -10,6 +10,7 @@
 //! 2. `gh auth login` - Fallback via gh CLI
 
 use crate::error::{ProviderError, RepoLensError};
+use crate::providers::{RepoMetadata, RepoProvider};
 use octocrab::Octocrab;
 use serde::Deserialize;
 use std::env;
@@ -537,200 +538,6 @@ impl GitHubProvider {
             .unwrap_or(false))
     }
 
-    // ===== Access Control Methods =====
-
-    /// List repository collaborators
-    #[allow(dead_code)]
-    pub fn list_collaborators(&self) -> Result<Vec<Collaborator>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/collaborators", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/collaborators", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let collaborators: Vec<Collaborator> = serde_json::from_slice(&output.stdout)?;
-        Ok(collaborators)
-    }
-
-    /// List repository teams
-    #[allow(dead_code)]
-    pub fn list_teams(&self) -> Result<Vec<Team>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/teams", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/teams", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let teams: Vec<Team> = serde_json::from_slice(&output.stdout)?;
-        Ok(teams)
-    }
-
-    /// List deploy keys
-    #[allow(dead_code)]
-    pub fn list_deploy_keys(&self) -> Result<Vec<DeployKey>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/keys", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/keys", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let keys: Vec<DeployKey> = serde_json::from_slice(&output.stdout)?;
-        Ok(keys)
-    }
-
-    /// List GitHub App installations on this repository
-    #[allow(dead_code)]
-    pub fn list_installations(&self) -> Result<Vec<Installation>, RepoLensError> {
-        let output = Command::new("gh")
-            .args(["api", &format!("repos/{}/installation", self.full_name())])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/installation", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        // The installation endpoint returns a single installation, not an array
-        let installation: Result<Installation, _> = serde_json::from_slice(&output.stdout);
-        match installation {
-            Ok(inst) => Ok(vec![inst]),
-            Err(_) => Ok(Vec::new()),
-        }
-    }
-
-    // ===== Infrastructure Methods =====
-
-    /// List repository webhooks
-    #[allow(dead_code)]
-    pub fn list_webhooks(&self) -> Result<Vec<Webhook>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/hooks", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/hooks", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let webhooks: Vec<Webhook> = serde_json::from_slice(&output.stdout)?;
-        Ok(webhooks)
-    }
-
-    /// List repository environments
-    #[allow(dead_code)]
-    pub fn list_environments(&self) -> Result<Vec<Environment>, RepoLensError> {
-        let output = Command::new("gh")
-            .args(["api", &format!("repos/{}/environments", self.full_name())])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/environments", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        #[derive(Deserialize)]
-        struct EnvironmentsResponse {
-            environments: Vec<Environment>,
-        }
-
-        let response: Result<EnvironmentsResponse, _> = serde_json::from_slice(&output.stdout);
-        match response {
-            Ok(r) => Ok(r.environments),
-            Err(_) => Ok(Vec::new()),
-        }
-    }
-
-    /// Get environment protection rules
-    #[allow(dead_code)]
-    pub fn get_environment_protection(
-        &self,
-        environment_name: &str,
-    ) -> Result<EnvironmentProtection, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!(
-                    "repos/{}/environments/{}",
-                    self.full_name(),
-                    environment_name
-                ),
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!(
-                        "gh api repos/{}/environments/{}",
-                        self.full_name(),
-                        environment_name
-                    ),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty protection if API call fails
-            return Ok(EnvironmentProtection::default());
-        }
-
-        let protection: EnvironmentProtection =
-            serde_json::from_slice(&output.stdout).unwrap_or_default();
-        Ok(protection)
-    }
-
     /// Ensure a label exists in the repository, creating it if necessary
     pub fn ensure_label(&self, label: &str, color: &str, description: &str) {
         // Check if label exists by trying to view it
@@ -878,6 +685,82 @@ impl GitHubProvider {
     }
 }
 
+impl RepoProvider for GitHubProvider {
+    fn owner(&self) -> &str {
+        &self.repo_owner
+    }
+
+    fn name(&self) -> &str {
+        &self.repo_name
+    }
+
+    /// Fetch repository metadata (description, topics, homepage) via `gh repo view`.
+    fn repo_metadata(&self) -> Result<RepoMetadata, RepoLensError> {
+        let output = Command::new("gh")
+            .args([
+                "repo",
+                "view",
+                &self.full_name(),
+                "--json",
+                "description,topics,homepage,hasPages",
+            ])
+            .output()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: "gh repo view".to_string(),
+                })
+            })?;
+
+        if !output.status.success() {
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: "gh repo view".to_string(),
+            }));
+        }
+
+        let metadata: RepoMetadata = serde_json::from_slice(&output.stdout)?;
+        Ok(metadata)
+    }
+
+    fn get_branch_protection(
+        &self,
+        branch: &str,
+    ) -> Result<Option<BranchProtection>, RepoLensError> {
+        GitHubProvider::get_branch_protection(self, branch)
+    }
+
+    fn get_repo_settings(&self) -> Result<RepoInfo, RepoLensError> {
+        GitHubProvider::get_repo_settings(self)
+    }
+
+    fn has_vulnerability_alerts(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::has_vulnerability_alerts(self)
+    }
+
+    fn has_automated_security_fixes(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::has_automated_security_fixes(self)
+    }
+
+    fn has_dependabot_security_updates(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::has_dependabot_security_updates(self)
+    }
+
+    fn get_secret_scanning(&self) -> Result<SecretScanningSettings, RepoLensError> {
+        GitHubProvider::get_secret_scanning(self)
+    }
+
+    fn get_actions_permissions(&self) -> Result<ActionsPermissions, RepoLensError> {
+        GitHubProvider::get_actions_permissions(self)
+    }
+
+    fn get_actions_workflow_permissions(&self) -> Result<ActionsPermissions, RepoLensError> {
+        GitHubProvider::get_actions_workflow_permissions(self)
+    }
+
+    fn get_fork_pr_workflows_policy(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::get_fork_pr_workflows_policy(self)
+    }
+}
+
 /// Secret scanning settings from GitHub API
 #[derive(Debug, Clone, Deserialize)]
 pub struct SecretScanningSettings {
@@ -969,160 +852,6 @@ pub struct AllowForcePushes {
 pub struct AllowDeletions {
     #[allow(dead_code)]
     pub enabled: bool,
-}
-
-// ===== Access Control Structures =====
-
-/// Repository collaborator from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Collaborator {
-    pub login: String,
-    #[serde(default)]
-    pub permissions: CollaboratorPermissions,
-    #[serde(rename = "type", default)]
-    pub user_type: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct CollaboratorPermissions {
-    #[serde(default)]
-    pub admin: bool,
-    #[serde(default)]
-    pub push: bool,
-    #[serde(default)]
-    pub pull: bool,
-}
-
-/// Repository team from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Team {
-    pub name: String,
-    pub slug: String,
-    #[serde(default)]
-    pub permission: String,
-}
-
-/// Deploy key from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct DeployKey {
-    pub id: u64,
-    pub title: String,
-    #[serde(default)]
-    pub read_only: bool,
-    pub created_at: Option<String>,
-}
-
-/// GitHub App installation from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Installation {
-    pub id: u64,
-    pub app_slug: Option<String>,
-    #[serde(default)]
-    pub permissions: InstallationPermissions,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct InstallationPermissions {
-    #[serde(default)]
-    pub contents: Option<String>,
-    #[serde(default)]
-    pub metadata: Option<String>,
-    #[serde(default)]
-    pub pull_requests: Option<String>,
-    #[serde(default)]
-    pub issues: Option<String>,
-    #[serde(default)]
-    pub actions: Option<String>,
-    #[serde(default)]
-    pub administration: Option<String>,
-}
-
-// ===== Infrastructure Structures =====
-
-/// Webhook from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Webhook {
-    pub id: u64,
-    pub name: String,
-    #[serde(default)]
-    pub active: bool,
-    pub config: WebhookConfig,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct WebhookConfig {
-    #[serde(default)]
-    pub url: Option<String>,
-    #[serde(default)]
-    pub content_type: Option<String>,
-    #[serde(default)]
-    pub insecure_ssl: Option<String>,
-    #[serde(default)]
-    pub secret: Option<String>,
-}
-
-/// Environment from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Environment {
-    pub id: u64,
-    pub name: String,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-}
-
-/// Environment protection rules from GitHub API
-#[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct EnvironmentProtection {
-    #[serde(default)]
-    pub protection_rules: Vec<ProtectionRule>,
-    #[serde(default)]
-    pub deployment_branch_policy: Option<DeploymentBranchPolicy>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct ProtectionRule {
-    #[serde(rename = "type")]
-    pub rule_type: String,
-    #[serde(default)]
-    pub wait_timer: Option<u32>,
-    #[serde(default)]
-    pub reviewers: Option<Vec<Reviewer>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Reviewer {
-    #[serde(rename = "type")]
-    pub reviewer_type: String,
-    #[serde(default)]
-    pub reviewer: Option<ReviewerDetails>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct ReviewerDetails {
-    pub login: Option<String>,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct DeploymentBranchPolicy {
-    #[serde(default)]
-    pub protected_branches: bool,
-    #[serde(default)]
-    pub custom_branch_policies: bool,
 }
 
 #[cfg(test)]
@@ -1444,303 +1173,5 @@ mod tests {
         let perms: ActionsPermissions = serde_json::from_str(json).unwrap();
         assert!(perms.enabled);
         assert_eq!(perms.allowed_actions, Some("local_only".to_string()));
-    }
-
-    // ===== Access Control Tests =====
-
-    #[test]
-    fn test_collaborator_deserialization() {
-        let json = r#"{
-            "login": "octocat",
-            "permissions": {
-                "admin": true,
-                "push": true,
-                "pull": true
-            },
-            "type": "User"
-        }"#;
-
-        let collab: Collaborator = serde_json::from_str(json).unwrap();
-        assert_eq!(collab.login, "octocat");
-        assert!(collab.permissions.admin);
-        assert!(collab.permissions.push);
-        assert!(collab.permissions.pull);
-        assert_eq!(collab.user_type, "User");
-    }
-
-    #[test]
-    fn test_collaborator_minimal() {
-        let json = r#"{"login": "testuser"}"#;
-
-        let collab: Collaborator = serde_json::from_str(json).unwrap();
-        assert_eq!(collab.login, "testuser");
-        assert!(!collab.permissions.admin);
-        assert!(!collab.permissions.push);
-        assert!(!collab.permissions.pull);
-    }
-
-    #[test]
-    fn test_team_deserialization() {
-        let json = r#"{
-            "name": "Developers",
-            "slug": "developers",
-            "permission": "push"
-        }"#;
-
-        let team: Team = serde_json::from_str(json).unwrap();
-        assert_eq!(team.name, "Developers");
-        assert_eq!(team.slug, "developers");
-        assert_eq!(team.permission, "push");
-    }
-
-    #[test]
-    fn test_team_admin_permission() {
-        let json = r#"{
-            "name": "Admins",
-            "slug": "admins",
-            "permission": "admin"
-        }"#;
-
-        let team: Team = serde_json::from_str(json).unwrap();
-        assert_eq!(team.permission, "admin");
-    }
-
-    #[test]
-    fn test_deploy_key_deserialization() {
-        let json = r#"{
-            "id": 12345,
-            "title": "Production Deploy Key",
-            "read_only": false,
-            "created_at": "2023-01-15T10:30:00Z"
-        }"#;
-
-        let key: DeployKey = serde_json::from_str(json).unwrap();
-        assert_eq!(key.id, 12345);
-        assert_eq!(key.title, "Production Deploy Key");
-        assert!(!key.read_only);
-        assert_eq!(key.created_at, Some("2023-01-15T10:30:00Z".to_string()));
-    }
-
-    #[test]
-    fn test_deploy_key_read_only() {
-        let json = r#"{
-            "id": 67890,
-            "title": "CI Deploy Key",
-            "read_only": true
-        }"#;
-
-        let key: DeployKey = serde_json::from_str(json).unwrap();
-        assert!(key.read_only);
-        assert!(key.created_at.is_none());
-    }
-
-    #[test]
-    fn test_installation_deserialization() {
-        let json = r#"{
-            "id": 999,
-            "app_slug": "my-github-app",
-            "permissions": {
-                "contents": "write",
-                "metadata": "read",
-                "pull_requests": "write",
-                "issues": "write",
-                "actions": "read",
-                "administration": "read"
-            }
-        }"#;
-
-        let inst: Installation = serde_json::from_str(json).unwrap();
-        assert_eq!(inst.id, 999);
-        assert_eq!(inst.app_slug, Some("my-github-app".to_string()));
-        assert_eq!(inst.permissions.contents, Some("write".to_string()));
-        assert_eq!(inst.permissions.administration, Some("read".to_string()));
-    }
-
-    #[test]
-    fn test_installation_minimal() {
-        let json = r#"{"id": 123}"#;
-
-        let inst: Installation = serde_json::from_str(json).unwrap();
-        assert_eq!(inst.id, 123);
-        assert!(inst.app_slug.is_none());
-        assert!(inst.permissions.contents.is_none());
-    }
-
-    // ===== Infrastructure Tests =====
-
-    #[test]
-    fn test_webhook_deserialization() {
-        let json = r#"{
-            "id": 111,
-            "name": "web",
-            "active": true,
-            "config": {
-                "url": "https://example.com/webhook",
-                "content_type": "json",
-                "insecure_ssl": "0",
-                "secret": "********"
-            }
-        }"#;
-
-        let hook: Webhook = serde_json::from_str(json).unwrap();
-        assert_eq!(hook.id, 111);
-        assert_eq!(hook.name, "web");
-        assert!(hook.active);
-        assert_eq!(
-            hook.config.url,
-            Some("https://example.com/webhook".to_string())
-        );
-        assert_eq!(hook.config.content_type, Some("json".to_string()));
-    }
-
-    #[test]
-    fn test_webhook_non_https() {
-        let json = r#"{
-            "id": 222,
-            "name": "web",
-            "active": true,
-            "config": {
-                "url": "http://insecure.example.com/hook"
-            }
-        }"#;
-
-        let hook: Webhook = serde_json::from_str(json).unwrap();
-        assert!(
-            hook.config
-                .url
-                .as_ref()
-                .map(|u| u.starts_with("http://"))
-                .unwrap_or(false)
-        );
-    }
-
-    #[test]
-    fn test_webhook_inactive() {
-        let json = r#"{
-            "id": 333,
-            "name": "web",
-            "active": false,
-            "config": {}
-        }"#;
-
-        let hook: Webhook = serde_json::from_str(json).unwrap();
-        assert!(!hook.active);
-    }
-
-    #[test]
-    fn test_webhook_no_secret() {
-        let json = r#"{
-            "id": 444,
-            "name": "web",
-            "active": true,
-            "config": {
-                "url": "https://example.com/hook"
-            }
-        }"#;
-
-        let hook: Webhook = serde_json::from_str(json).unwrap();
-        assert!(hook.config.secret.is_none());
-    }
-
-    #[test]
-    fn test_environment_deserialization() {
-        let json = r#"{
-            "id": 555,
-            "name": "production",
-            "created_at": "2023-06-01T00:00:00Z",
-            "updated_at": "2023-06-15T12:00:00Z"
-        }"#;
-
-        let env: Environment = serde_json::from_str(json).unwrap();
-        assert_eq!(env.id, 555);
-        assert_eq!(env.name, "production");
-        assert!(env.created_at.is_some());
-    }
-
-    #[test]
-    fn test_environment_protection_deserialization() {
-        let json = r#"{
-            "protection_rules": [
-                {
-                    "type": "required_reviewers",
-                    "reviewers": [
-                        {
-                            "type": "User",
-                            "reviewer": {
-                                "login": "reviewer1"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "type": "wait_timer",
-                    "wait_timer": 30
-                }
-            ],
-            "deployment_branch_policy": {
-                "protected_branches": true,
-                "custom_branch_policies": false
-            }
-        }"#;
-
-        let prot: EnvironmentProtection = serde_json::from_str(json).unwrap();
-        assert_eq!(prot.protection_rules.len(), 2);
-        assert_eq!(prot.protection_rules[0].rule_type, "required_reviewers");
-        assert_eq!(prot.protection_rules[1].rule_type, "wait_timer");
-        assert_eq!(prot.protection_rules[1].wait_timer, Some(30));
-        assert!(prot.deployment_branch_policy.is_some());
-        let policy = prot.deployment_branch_policy.unwrap();
-        assert!(policy.protected_branches);
-        assert!(!policy.custom_branch_policies);
-    }
-
-    #[test]
-    fn test_environment_protection_empty() {
-        let json = r#"{}"#;
-
-        let prot: EnvironmentProtection = serde_json::from_str(json).unwrap();
-        assert!(prot.protection_rules.is_empty());
-        assert!(prot.deployment_branch_policy.is_none());
-    }
-
-    #[test]
-    fn test_environment_protection_default() {
-        let prot = EnvironmentProtection::default();
-        assert!(prot.protection_rules.is_empty());
-        assert!(prot.deployment_branch_policy.is_none());
-    }
-
-    #[test]
-    fn test_protection_rule_with_reviewers() {
-        let json = r#"{
-            "type": "required_reviewers",
-            "reviewers": [
-                {
-                    "type": "Team",
-                    "reviewer": {
-                        "name": "security-team"
-                    }
-                }
-            ]
-        }"#;
-
-        let rule: ProtectionRule = serde_json::from_str(json).unwrap();
-        assert_eq!(rule.rule_type, "required_reviewers");
-        assert!(rule.reviewers.is_some());
-        let reviewers = rule.reviewers.unwrap();
-        assert_eq!(reviewers.len(), 1);
-        assert_eq!(reviewers[0].reviewer_type, "Team");
-    }
-
-    #[test]
-    fn test_deployment_branch_policy() {
-        let json = r#"{
-            "protected_branches": false,
-            "custom_branch_policies": true
-        }"#;
-
-        let policy: DeploymentBranchPolicy = serde_json::from_str(json).unwrap();
-        assert!(!policy.protected_branches);
-        assert!(policy.custom_branch_policies);
     }
 }
