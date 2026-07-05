@@ -289,11 +289,20 @@ fn parse_remote_host(url: &str) -> Option<String> {
         }
     }
 
-    // HTTPS/scheme form: scheme://host/path
+    // HTTPS/scheme form: scheme://[user[:token]@]host[:port]/path
     if let Some(scheme) = url.find("://") {
         let after_scheme = &url[scheme + 3..];
-        let host_end = after_scheme.find(['/', ':']).unwrap_or(after_scheme.len());
-        let host = &after_scheme[..host_end];
+        // The authority ends at the first `/` (or the end of the string).
+        let authority_end = after_scheme.find('/').unwrap_or(after_scheme.len());
+        let authority = &after_scheme[..authority_end];
+        // Strip `user[:token]@` userinfo before taking the host, so credentials
+        // embedded in the URL are never mistaken for the host (review bug #7).
+        let host_and_port = match authority.rfind('@') {
+            Some(at) => &authority[at + 1..],
+            None => authority,
+        };
+        let host_end = host_and_port.find(':').unwrap_or(host_and_port.len());
+        let host = &host_and_port[..host_end];
         if !host.is_empty() {
             return Some(host.to_string());
         }
@@ -1041,6 +1050,21 @@ mod tests {
     #[test]
     fn test_parse_remote_host_invalid() {
         assert!(parse_remote_host("not-a-url").is_none());
+    }
+
+    #[test]
+    fn test_parse_remote_host_https_with_credentials() {
+        // Regression test for review bug #7: `user:token@host` credentials in
+        // an HTTPS remote must not be parsed as the host.
+        assert_eq!(
+            parse_remote_host("https://user:tok3n@gitlab.example.com/group/repo.git").as_deref(),
+            Some("gitlab.example.com")
+        );
+        // Also covers credentials without a token (`user@host`).
+        assert_eq!(
+            parse_remote_host("https://user@github.com/owner/repo.git").as_deref(),
+            Some("github.com")
+        );
     }
 
     #[test]

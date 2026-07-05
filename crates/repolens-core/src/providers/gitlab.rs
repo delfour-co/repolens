@@ -36,6 +36,9 @@ pub struct GitLabProvider {
     project: String,
 }
 
+/// A single `glab api` call to issue: `(method, path, "-f key=value" fields)`.
+type GlabApiCall = (&'static str, String, Vec<(String, String)>);
+
 /// GitLab project metadata wire format (`GET /projects/:id`).
 #[derive(Debug, Deserialize)]
 struct GitLabProject {
@@ -154,14 +157,13 @@ impl GitLabProvider {
     /// arbitrarily nested subgroups, so the namespace is everything before the
     /// final path segment.
     fn parse_gitlab_url(url: &str) -> Result<(String, String), RepoLensError> {
-        // SSH form: git@<host>:<path>.git
-        let path = if let Some(idx) = url.find('@').and_then(|at| {
-            // Only treat as SSH if there's a ':' after the host portion.
-            url[at..].find(':').map(|c| at + c + 1)
-        }) {
-            url[idx..].trim_end_matches(".git")
-        } else if let Some(idx) = url.find("://") {
-            // HTTPS form: scheme://<host>/<path>.git
+        // Any scheme-based URL (`https://`, `ssh://`, `git://`, …) is checked
+        // FIRST: the path is everything after the first `/` following the
+        // authority (`[user@]host[:port]`). Checking this before the classic
+        // SCP-like heuristic below fixes review bug #6 — `ssh://git@host:PORT/…`
+        // used to match the SCP-like branch (which just looks for a `:` after
+        // the first `@`) and fold the port into the parsed namespace.
+        let path = if let Some(idx) = url.find("://") {
             let after_scheme = &url[idx + 3..];
             let slash = after_scheme.find('/').ok_or_else(|| {
                 RepoLensError::Provider(ProviderError::InvalidRepoName {
@@ -169,6 +171,12 @@ impl GitLabProvider {
                 })
             })?;
             after_scheme[slash + 1..].trim_end_matches(".git")
+        } else if let Some(idx) = url.find('@').and_then(|at| {
+            // Classic SCP-like form (`git@host:path`, no scheme). Only reached
+            // when there is no `scheme://` prefix.
+            url[at..].find(':').map(|c| at + c + 1)
+        }) {
+            url[idx..].trim_end_matches(".git")
         } else {
             return Err(RepoLensError::Provider(ProviderError::InvalidRepoName {
                 name: url.to_string(),
@@ -226,6 +234,91 @@ impl GitLabProvider {
         }
 
         Ok(output.stdout)
+    }
+
+    /// GitLab access levels used for `push_access_level` / `merge_access_level`
+    /// on the protected-branches API. See
+    /// <https://docs.gitlab.com/ee/api/members.html#valid-access-levels>.
+    const ACCESS_LEVEL_DEVELOPER: &'static str = "30";
+    const ACCESS_LEVEL_MAINTAINER: &'static str = "40";
+
+    /// Build the `-f key=value` fields to send when creating (`creating =
+    /// true`, via `POST`) or updating (`creating = false`, via `PATCH`) a
+    /// protected branch.
+    ///
+    /// Fixes review bug #3: the previous implementation sent only `name` +
+    /// `allow_force_push`, yet returned `Ok`, silently claiming full
+    /// protection. Every field GitLab's protected-branches API genuinely
+    /// supports is now sent:
+    /// - `allow_force_push` from `block_force_push`.
+    /// - `push_access_level` fixed to Maintainer, so direct pushes require the
+    ///   same trust level GitHub's `enforce_admins` intends (changes go
+    ///   through a merge request).
+    /// - `merge_access_level` fixed to Developer, so approved merge requests
+    ///   can be merged.
+    /// - `code_owner_approval_required` from `required_approvals > 0` (the
+    ///   closest GitLab protected-branch concept to "require reviews before
+    ///   merging").
+    ///
+    /// GitHub's `require_status_checks`, `require_linear_history`,
+    /// `require_conversation_resolution`, `block_deletions`, and
+    /// `require_signed_commits` have no GitLab protected-branch equivalent
+    /// (see the module docs) and are intentionally not sent.
+    fn protection_fields(
+        branch: &str,
+        settings: &crate::actions::plan::BranchProtectionSettings,
+        creating: bool,
+    ) -> Vec<(String, String)> {
+        let mut fields = Vec::new();
+        if creating {
+            fields.push(("name".to_string(), branch.to_string()));
+        }
+        fields.push((
+            "allow_force_push".to_string(),
+            (!settings.block_force_push).to_string(),
+        ));
+        fields.push((
+            "push_access_level".to_string(),
+            Self::ACCESS_LEVEL_MAINTAINER.to_string(),
+        ));
+        fields.push((
+            "merge_access_level".to_string(),
+            Self::ACCESS_LEVEL_DEVELOPER.to_string(),
+        ));
+        fields.push((
+            "code_owner_approval_required".to_string(),
+            (settings.required_approvals > 0).to_string(),
+        ));
+        fields
+    }
+
+    /// Build the sequence of `glab api` calls needed to apply `settings` as
+    /// protected-branch settings for `branch`, given whether the branch is
+    /// already protected.
+    ///
+    /// Fixes review bug #4: the previous implementation always issued a
+    /// best-effort DELETE before the POST, leaving the branch briefly — and,
+    /// if the POST then failed, permanently — unprotected. This now issues
+    /// exactly ONE call: `PATCH` (idempotent update) when the branch is
+    /// already protected, or `POST` (create) when it is not. Nothing is ever
+    /// deleted.
+    fn protect_branch_calls(
+        branch: &str,
+        settings: &crate::actions::plan::BranchProtectionSettings,
+        encoded_id: &str,
+        already_protected: bool,
+    ) -> Vec<GlabApiCall> {
+        let fields = Self::protection_fields(branch, settings, !already_protected);
+        if already_protected {
+            let path = format!(
+                "projects/{encoded_id}/protected_branches/{}",
+                urlencode(branch)
+            );
+            vec![("PATCH", path, fields)]
+        } else {
+            let path = format!("projects/{encoded_id}/protected_branches");
+            vec![("POST", path, fields)]
+        }
     }
 
     /// Parse project metadata from raw `glab api projects/:id` JSON.
@@ -373,75 +466,117 @@ impl RepoProvider for GitLabProvider {
 
     /// Protect `branch` via GitLab's protected-branches API.
     ///
-    /// GitLab maps a subset of the GitHub branch-protection model: the
-    /// `allow_force_push` toggle and (separately) merge-request approval rules.
-    /// The remaining GitHub-shaped fields have no GitLab equivalent and are not
-    /// applied. The protected branch is (re)created via
-    /// `POST /projects/:id/protected_branches`.
+    /// GitLab maps a subset of the GitHub branch-protection model — see
+    /// [`Self::protection_fields`] for exactly which fields are sent and why.
+    /// The branch is created via `POST /projects/:id/protected_branches` when
+    /// unprotected, or updated in place via
+    /// `PATCH /projects/:id/protected_branches/:name` when already protected
+    /// (see [`Self::protect_branch_calls`]) — never deleted and recreated.
     fn set_protected_branch(
         &self,
         branch: &str,
         settings: &crate::actions::plan::BranchProtectionSettings,
     ) -> Result<(), RepoLensError> {
-        // GitLab's POST is idempotent only if the branch is not yet protected;
-        // unprotect first (best-effort) so re-applying settings succeeds.
-        let unprotect_path = format!(
-            "projects/{}/protected_branches/{}",
-            self.encoded_id(),
-            urlencode(branch)
-        );
-        let _ = Command::new("glab")
-            .args(["api", &unprotect_path, "--method", "DELETE"])
-            .output();
+        // Determine whether the branch is already protected so a single
+        // idempotent call (PATCH to update, POST to create) can be issued —
+        // see `protect_branch_calls` (review bug #4: no DELETE is ever sent).
+        let already_protected = matches!(self.get_branch_protection(branch), Ok(Some(_)));
+        let calls =
+            Self::protect_branch_calls(branch, settings, &self.encoded_id(), already_protected);
 
-        let protect_path = format!("projects/{}/protected_branches", self.encoded_id());
-        let allow_force_push = if settings.block_force_push {
-            "false"
-        } else {
-            "true"
-        };
+        for (method, path, fields) in calls {
+            let mut args: Vec<String> = vec![
+                "api".to_string(),
+                path.clone(),
+                "--method".to_string(),
+                method.to_string(),
+            ];
+            for (key, value) in &fields {
+                args.push("-f".to_string());
+                args.push(format!("{key}={value}"));
+            }
 
-        let output = Command::new("glab")
-            .args([
-                "api",
-                &protect_path,
-                "--method",
-                "POST",
-                "-f",
-                &format!("name={branch}"),
-                "-f",
-                &format!("allow_force_push={allow_force_push}"),
-            ])
-            .output()
-            .map_err(|_| {
+            let output = Command::new("glab").args(&args).output().map_err(|_| {
                 RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("glab api {protect_path}"),
+                    command: format!("glab api {path}"),
                 })
             })?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(RepoLensError::Action(
-                crate::error::ActionError::ExecutionFailed {
-                    message: format!("Failed to protect branch on GitLab: {stderr}"),
-                },
-            ));
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(RepoLensError::Action(
+                    crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to protect branch on GitLab: {stderr}"),
+                    },
+                ));
+            }
         }
 
         Ok(())
     }
 
-    /// GitLab has no faithful equivalent of the GitHub security toggles
-    /// (vulnerability alerts / automated security fixes / discussions). Return
-    /// `Err` so `apply` reports this action as failed gracefully rather than
-    /// silently doing nothing.
+    /// Apply repository settings via `PUT /projects/:id`.
+    ///
+    /// GitLab has no faithful equivalent of GitHub's `enable_discussions` /
+    /// `enable_vulnerability_alerts` / `enable_automated_security_fixes`
+    /// toggles (see the module docs) — requesting one of those returns an
+    /// honest `Err` rather than silently doing nothing (review bug #9's
+    /// counterpart to bug #10: never claim `Ok` on an unperformed request).
+    /// `enable_issues` / `enable_wiki` ARE genuinely settable and are applied.
     fn set_repo_settings(
         &self,
-        _settings: &crate::actions::plan::GitHubRepoSettings,
+        settings: &crate::actions::plan::GitHubRepoSettings,
     ) -> Result<(), RepoLensError> {
-        Err(RepoLensError::Provider(ProviderError::CommandFailed {
-            command: "repo-settings: unsupported on GitLab".to_string(),
-        }))
+        let fields = Self::repo_settings_fields(settings);
+        let unsupported_requested = Self::requests_unsupported_settings(settings);
+
+        if fields.is_empty() {
+            return if unsupported_requested {
+                Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: "repo-settings: discussions/vulnerability-alerts/automated-security-fixes are unsupported on GitLab".to_string(),
+                }))
+            } else {
+                Ok(())
+            };
+        }
+
+        let path = format!("projects/{}", self.encoded_id());
+        let mut args: Vec<String> = vec![
+            "api".to_string(),
+            path.clone(),
+            "--method".to_string(),
+            "PUT".to_string(),
+        ];
+        for (key, value) in &fields {
+            args.push("-f".to_string());
+            args.push(format!("{key}={value}"));
+        }
+
+        let output = Command::new("glab").args(&args).output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("glab api {path}"),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Action(
+                crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to update GitLab project settings: {stderr}"),
+                },
+            ));
+        }
+
+        if unsupported_requested {
+            // The supported fields (issues/wiki) were applied above, but the
+            // request also asked for a GitHub-only toggle — report that
+            // honestly instead of claiming full success.
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: "repo-settings: discussions/vulnerability-alerts/automated-security-fixes are unsupported on GitLab".to_string(),
+            }));
+        }
+
+        Ok(())
     }
 
     /// Apply project metadata (description, topics, homepage) via
@@ -497,9 +632,102 @@ impl RepoProvider for GitLabProvider {
 
         Ok(())
     }
+
+    /// Create an issue via `glab issue create`.
+    ///
+    /// Foundation for review bug #8 (`apply --create-pr` hardcoded
+    /// `GitHubProvider`, orphaning the request on GitLab).
+    fn create_issue(
+        &self,
+        title: &str,
+        body: &str,
+        labels: &[&str],
+    ) -> Result<String, RepoLensError> {
+        let args = Self::issue_create_args(title, body, labels);
+        let output = Command::new("glab").args(&args).output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("glab {}", args.join(" ")),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("Failed to create GitLab issue: {stderr}"),
+            }));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+
+    /// Open a merge request via `glab mr create`.
+    ///
+    /// Foundation for review bug #8: this is GitLab's counterpart to
+    /// `GitHubProvider::create_pull_request`.
+    fn open_change_request(
+        &self,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: Option<&str>,
+    ) -> Result<String, RepoLensError> {
+        let args = Self::mr_create_args(title, body, head, base);
+        let output = Command::new("glab").args(&args).output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("glab {}", args.join(" ")),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("Failed to open GitLab merge request: {stderr}"),
+            }));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
 }
 
 impl GitLabProvider {
+    /// Build the `glab issue create` args for `(title, body, labels)`.
+    fn issue_create_args(title: &str, body: &str, labels: &[&str]) -> Vec<String> {
+        let mut args = vec![
+            "issue".to_string(),
+            "create".to_string(),
+            "--title".to_string(),
+            title.to_string(),
+            "--description".to_string(),
+            body.to_string(),
+            "--yes".to_string(),
+        ];
+        if !labels.is_empty() {
+            args.push("--label".to_string());
+            args.push(labels.join(","));
+        }
+        args
+    }
+
+    /// Build the `glab mr create` args for `(title, body, head, base)`.
+    fn mr_create_args(title: &str, body: &str, head: &str, base: Option<&str>) -> Vec<String> {
+        let mut args = vec![
+            "mr".to_string(),
+            "create".to_string(),
+            "--title".to_string(),
+            title.to_string(),
+            "--description".to_string(),
+            body.to_string(),
+            "--source-branch".to_string(),
+            head.to_string(),
+            "--yes".to_string(),
+        ];
+        if let Some(base_branch) = base {
+            args.push("--target-branch".to_string());
+            args.push(base_branch.to_string());
+        }
+        args
+    }
+
     /// Best-effort read of the highest required-approval count from the
     /// project's approval rules. Returns `None` if the endpoint is unreachable
     /// (e.g. GitLab CE without merge-request approvals).
@@ -509,6 +737,37 @@ impl GitLabProvider {
             .ok()?;
         let rules: Vec<GitLabApprovalRule> = serde_json::from_slice(&bytes).ok()?;
         rules.iter().filter_map(|r| r.approvals_required).max()
+    }
+
+    /// Fields settable via `PUT /projects/:id` for the issues/wiki toggles.
+    ///
+    /// Fixes review bug #9: `set_repo_settings` used to return `Err`
+    /// unconditionally, even for `enable_issues`/`enable_wiki`, which GitLab
+    /// genuinely supports via the project's `issues_access_level` /
+    /// `wiki_access_level` fields.
+    fn repo_settings_fields(
+        settings: &crate::actions::plan::GitHubRepoSettings,
+    ) -> Vec<(String, String)> {
+        let mut fields = Vec::new();
+        if let Some(enable) = settings.enable_issues {
+            let level = if enable { "enabled" } else { "disabled" };
+            fields.push(("issues_access_level".to_string(), level.to_string()));
+        }
+        if let Some(enable) = settings.enable_wiki {
+            let level = if enable { "enabled" } else { "disabled" };
+            fields.push(("wiki_access_level".to_string(), level.to_string()));
+        }
+        fields
+    }
+
+    /// Whether `settings` requests a toggle GitLab has no equivalent for
+    /// (discussions, vulnerability alerts, automated security fixes — see
+    /// the module docs). `enable_issues`/`enable_wiki` are excluded: those
+    /// ARE settable (see [`Self::repo_settings_fields`]).
+    fn requests_unsupported_settings(settings: &crate::actions::plan::GitHubRepoSettings) -> bool {
+        settings.enable_discussions.is_some()
+            || settings.enable_vulnerability_alerts.is_some()
+            || settings.enable_automated_security_fixes.is_some()
     }
 }
 
@@ -596,6 +855,17 @@ mod tests {
             GitLabProvider::parse_gitlab_url("https://gitlab.internal.corp/team/svc.git").unwrap();
         assert_eq!(ns, "team");
         assert_eq!(proj, "svc");
+    }
+
+    #[test]
+    fn test_parse_gitlab_url_ssh_custom_port() {
+        // Regression test for review bug #6: an `ssh://` URL with a custom
+        // port must not have the port folded into the namespace.
+        let (ns, proj) =
+            GitLabProvider::parse_gitlab_url("ssh://git@gitlab.example.com:2222/group/repo.git")
+                .unwrap();
+        assert_eq!(ns, "group");
+        assert_eq!(proj, "repo");
     }
 
     #[test]
@@ -704,6 +974,93 @@ mod tests {
         assert!(project.wiki_on());
     }
 
+    /// Regression test for review bug #3: `set_protected_branch` sent only
+    /// `name` + `allow_force_push` (2 of the settable GitLab protected-branch
+    /// fields) yet returned `Ok`, silently claiming full protection.
+    #[test]
+    fn test_gitlab_protect_branch_sends_full_settable_field_set() {
+        let settings = crate::actions::plan::BranchProtectionSettings {
+            required_approvals: 2,
+            block_force_push: true,
+            ..Default::default()
+        };
+        let calls = GitLabProvider::protect_branch_calls("main", &settings, "group%2Frepo", false);
+        let (_, _, fields) = calls
+            .iter()
+            .find(|(method, _, _)| *method == "POST" || *method == "PATCH")
+            .expect("expected a POST or PATCH call");
+        let keys: Vec<&str> = fields.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(keys.contains(&"allow_force_push"));
+        assert!(
+            keys.contains(&"push_access_level"),
+            "expected push_access_level, got {keys:?}"
+        );
+        assert!(
+            keys.contains(&"merge_access_level"),
+            "expected merge_access_level, got {keys:?}"
+        );
+        assert!(
+            keys.contains(&"code_owner_approval_required"),
+            "expected code_owner_approval_required, got {keys:?}"
+        );
+    }
+
+    /// Regression test for review bug #4: a DELETE issued before the POST
+    /// left the branch unprotected if the POST then failed. The fixed
+    /// implementation must never construct a DELETE call — it uses PATCH
+    /// (idempotent update) when the branch is already protected, or POST
+    /// (create) when it is not.
+    #[test]
+    fn test_gitlab_protect_branch_never_issues_delete() {
+        let settings = crate::actions::plan::BranchProtectionSettings::default();
+        for already_protected in [true, false] {
+            let calls = GitLabProvider::protect_branch_calls(
+                "main",
+                &settings,
+                "group%2Frepo",
+                already_protected,
+            );
+            assert!(
+                calls.iter().all(|(method, _, _)| *method != "DELETE"),
+                "protect_branch_calls must never include a DELETE (already_protected={already_protected}): {calls:?}"
+            );
+        }
+    }
+
+    /// Regression test for review bug #9: `set_repo_settings` returned `Err`
+    /// unconditionally — even for `enable_issues`/`enable_wiki`, which GitLab
+    /// genuinely supports via `PUT /projects/:id` — yet the planner always
+    /// planned the action for GitLab, a permanent never-converges mismatch.
+    #[test]
+    fn test_gitlab_repo_settings_fields_supports_issues_and_wiki() {
+        let settings = crate::actions::plan::GitHubRepoSettings {
+            enable_issues: Some(true),
+            enable_wiki: Some(false),
+            ..Default::default()
+        };
+        let fields = GitLabProvider::repo_settings_fields(&settings);
+        assert!(fields.contains(&("issues_access_level".to_string(), "enabled".to_string())));
+        assert!(fields.contains(&("wiki_access_level".to_string(), "disabled".to_string())));
+    }
+
+    #[test]
+    fn test_gitlab_repo_settings_unsupported_excludes_issues_and_wiki() {
+        let issues_and_wiki = crate::actions::plan::GitHubRepoSettings {
+            enable_issues: Some(true),
+            enable_wiki: Some(true),
+            ..Default::default()
+        };
+        assert!(!GitLabProvider::requests_unsupported_settings(
+            &issues_and_wiki
+        ));
+
+        let discussions = crate::actions::plan::GitHubRepoSettings {
+            enable_discussions: Some(true),
+            ..Default::default()
+        };
+        assert!(GitLabProvider::requests_unsupported_settings(&discussions));
+    }
+
     #[test]
     fn test_github_only_methods_return_err_not_false() {
         // The Critical correctness rule: GitHub-specific reads must Err (skip),
@@ -721,6 +1078,51 @@ mod tests {
     #[test]
     fn test_is_available_returns_bool() {
         let _: bool = GitLabProvider::is_available();
+    }
+
+    #[test]
+    fn test_gitlab_issue_create_args_includes_title_body_and_labels() {
+        let args = GitLabProvider::issue_create_args("Bug title", "Bug body", &["bug", "audit"]);
+        assert!(args.contains(&"--title".to_string()));
+        assert!(args.contains(&"Bug title".to_string()));
+        assert!(args.contains(&"--description".to_string()));
+        assert!(args.contains(&"Bug body".to_string()));
+        assert!(args.contains(&"--label".to_string()));
+        assert!(args.contains(&"bug,audit".to_string()));
+    }
+
+    #[test]
+    fn test_gitlab_issue_create_args_omits_label_flag_when_no_labels() {
+        let args = GitLabProvider::issue_create_args("Title", "Body", &[]);
+        assert!(!args.contains(&"--label".to_string()));
+    }
+
+    #[test]
+    fn test_gitlab_mr_create_args_includes_source_and_target_branch() {
+        let args = GitLabProvider::mr_create_args("Title", "Body", "feature-x", Some("main"));
+        assert!(args.contains(&"--source-branch".to_string()));
+        assert!(args.contains(&"feature-x".to_string()));
+        assert!(args.contains(&"--target-branch".to_string()));
+        assert!(args.contains(&"main".to_string()));
+    }
+
+    #[test]
+    fn test_gitlab_mr_create_args_omits_target_branch_when_base_is_none() {
+        let args = GitLabProvider::mr_create_args("Title", "Body", "feature-x", None);
+        assert!(!args.contains(&"--target-branch".to_string()));
+    }
+
+    /// Compile-time proof that `GitLabProvider` (like `GitHubProvider`) is
+    /// object-safe with the two new trait methods and can be used behind
+    /// `&dyn RepoProvider` (foundation for review bug #8). Deliberately does
+    /// NOT invoke `create_issue`/`open_change_request` here — both shell out
+    /// to `glab`, which is not installed in this sandbox; the constructed
+    /// commands are covered by the pure `issue_create_args`/`mr_create_args`
+    /// tests above instead.
+    #[test]
+    fn test_gitlab_provider_exposes_change_request_methods_via_trait_object() {
+        let provider: Box<dyn RepoProvider> = Box::new(test_provider());
+        let _: &dyn RepoProvider = provider.as_ref();
     }
 
     #[test]

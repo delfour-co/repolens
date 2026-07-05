@@ -42,7 +42,7 @@ pub async fn execute(args: PlanArgs) -> Result<i32, RepoLensError> {
 
     // CLI --provider overrides config / auto-detection.
     if let Some(provider) = args.provider {
-        config.provider = provider.into();
+        config.provider = Some(provider.into());
     }
 
     // Handle cache directory override from CLI

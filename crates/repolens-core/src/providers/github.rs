@@ -706,6 +706,27 @@ impl GitHubProvider {
         let url = stdout.trim().to_string();
         Ok(url)
     }
+
+    /// Build the `gh repo edit` flags for the issues/wiki/discussions toggles.
+    ///
+    /// Fixes review bug #10: `enable_issues` was never read at all, and
+    /// `enable_wiki = Some(true)` was silently ignored (only `Some(false)`
+    /// produced a flag). Every explicitly-configured toggle (`Some(true)` or
+    /// `Some(false)`) now produces an explicit `--enable-X=<bool>` flag;
+    /// `None` means "leave as-is" and produces no flag.
+    fn repo_edit_flags(settings: &crate::actions::plan::GitHubRepoSettings) -> Vec<String> {
+        let mut flags = Vec::new();
+        if let Some(enable) = settings.enable_discussions {
+            flags.push(format!("--enable-discussions={enable}"));
+        }
+        if let Some(enable) = settings.enable_issues {
+            flags.push(format!("--enable-issues={enable}"));
+        }
+        if let Some(enable) = settings.enable_wiki {
+            flags.push(format!("--enable-wiki={enable}"));
+        }
+        flags
+    }
 }
 
 impl RepoProvider for GitHubProvider {
@@ -927,15 +948,8 @@ impl RepoProvider for GitHubProvider {
     ) -> Result<(), RepoLensError> {
         let repo = self.full_name();
 
-        let mut args = vec!["repo", "edit"];
-
-        if let Some(true) = settings.enable_discussions {
-            args.push("--enable-discussions");
-        }
-
-        if let Some(false) = settings.enable_wiki {
-            args.push("--enable-wiki=false");
-        }
+        let mut args: Vec<String> = vec!["repo".to_string(), "edit".to_string()];
+        args.extend(Self::repo_edit_flags(settings));
 
         if args.len() > 2 {
             let output = Command::new("gh").args(&args).output().map_err(|_| {
@@ -1093,6 +1107,27 @@ impl RepoProvider for GitHubProvider {
         }
 
         Ok(())
+    }
+
+    /// Behaviour-identical to the inherent [`GitHubProvider::create_issue`].
+    fn create_issue(
+        &self,
+        title: &str,
+        body: &str,
+        labels: &[&str],
+    ) -> Result<String, RepoLensError> {
+        GitHubProvider::create_issue(self, title, body, labels)
+    }
+
+    /// Behaviour-identical to the inherent [`GitHubProvider::create_pull_request`].
+    fn open_change_request(
+        &self,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: Option<&str>,
+    ) -> Result<String, RepoLensError> {
+        GitHubProvider::create_pull_request(self, title, body, head, base)
     }
 }
 
@@ -1530,5 +1565,44 @@ mod tests {
         let perms: ActionsPermissions = serde_json::from_str(json).unwrap();
         assert!(perms.enabled);
         assert_eq!(perms.allowed_actions, Some("local_only".to_string()));
+    }
+
+    /// Regression test for review bug #10: `enable_issues` was never read at
+    /// all, and `enable_wiki = Some(true)` was silently ignored (only
+    /// `Some(false)` produced a `gh repo edit` flag).
+    #[test]
+    fn test_repo_edit_flags_honors_enable_issues_and_wiki_true() {
+        let settings = crate::actions::plan::GitHubRepoSettings {
+            enable_issues: Some(true),
+            enable_wiki: Some(true),
+            ..Default::default()
+        };
+        let flags = GitHubProvider::repo_edit_flags(&settings);
+        assert!(
+            flags.iter().any(|f| f.starts_with("--enable-issues")),
+            "expected an --enable-issues flag, got {flags:?}"
+        );
+        assert!(
+            flags.iter().any(|f| f.starts_with("--enable-wiki")),
+            "expected an --enable-wiki flag, got {flags:?}"
+        );
+    }
+
+    #[test]
+    fn test_repo_edit_flags_honors_enable_issues_and_wiki_false() {
+        let settings = crate::actions::plan::GitHubRepoSettings {
+            enable_issues: Some(false),
+            enable_wiki: Some(false),
+            ..Default::default()
+        };
+        let flags = GitHubProvider::repo_edit_flags(&settings);
+        assert!(flags.contains(&"--enable-issues=false".to_string()));
+        assert!(flags.contains(&"--enable-wiki=false".to_string()));
+    }
+
+    #[test]
+    fn test_repo_edit_flags_none_when_all_unset() {
+        let settings = crate::actions::plan::GitHubRepoSettings::default();
+        assert!(GitHubProvider::repo_edit_flags(&settings).is_empty());
     }
 }

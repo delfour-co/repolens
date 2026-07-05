@@ -152,6 +152,30 @@ pub trait RepoProvider: Send + Sync {
         topics: &[String],
         homepage: Option<&str>,
     ) -> Result<(), RepoLensError>;
+
+    /// Create an issue in the repository, returning its URL.
+    ///
+    /// Foundation for review bug #8: `apply --create-pr`'s issue-creation path
+    /// used to hardcode `GitHubProvider`, orphaning the request on GitLab.
+    /// Exposing this on the trait lets callers go through `&dyn RepoProvider`
+    /// instead (the bin-side rewire is a separate task).
+    fn create_issue(
+        &self,
+        title: &str,
+        body: &str,
+        labels: &[&str],
+    ) -> Result<String, RepoLensError>;
+
+    /// Open a change request (a pull request on GitHub, a merge request on
+    /// GitLab) from `head` into `base` (or the repository's default branch
+    /// when `base` is `None`), returning its URL.
+    fn open_change_request(
+        &self,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: Option<&str>,
+    ) -> Result<String, RepoLensError>;
 }
 
 /// Construct the [`RepoProvider`] for the current configuration.
@@ -159,15 +183,7 @@ pub trait RepoProvider: Send + Sync {
 /// Returns `None` when no provider is available/authenticated, preserving the
 /// previous graceful-skip behaviour (callers emit no findings in that case).
 pub fn for_config(config: &crate::config::Config) -> Option<Box<dyn RepoProvider>> {
-    // Resolve the effective provider. `config.provider` (set from `.repolens.toml`
-    // or the `--provider` CLI flag) takes precedence. When it is still the default
-    // `GitHub`, fall back to auto-detecting from the `origin` remote host so a
-    // GitLab remote selects GitLab without any explicit configuration.
-    let provider = if config.provider == Provider::GitHub {
-        detect_provider_from_remote().unwrap_or(Provider::GitHub)
-    } else {
-        config.provider
-    };
+    let provider = resolve_provider(config.provider, detect_provider_from_remote());
 
     match provider {
         Provider::GitHub => {
@@ -197,6 +213,19 @@ pub fn for_config(config: &crate::config::Config) -> Option<Box<dyn RepoProvider
 /// default.
 pub fn detect_provider_from_remote() -> Option<Provider> {
     crate::utils::prerequisites::detect_remote_host().and_then(|host| provider_for_host(&host))
+}
+
+/// Resolve the effective provider from an explicit configuration choice and an
+/// auto-detected fallback.
+///
+/// An explicit `configured` choice (from `.repolens.toml`'s `provider` key or
+/// the `--provider` CLI flag, carried as `Some(_)`) always wins — including an
+/// explicit `Provider::GitHub`, which used to be indistinguishable from
+/// "unset" (review bug #5). Auto-detection from the `origin` remote host only
+/// applies when `configured` is `None`; absent both, [`Provider::GitHub`] is
+/// the default.
+fn resolve_provider(configured: Option<Provider>, detected: Option<Provider>) -> Provider {
+    configured.unwrap_or_else(|| detected.unwrap_or(Provider::GitHub))
 }
 
 /// Map a remote host string to a [`Provider`].
@@ -239,5 +268,33 @@ mod tests {
     #[test]
     fn test_detect_provider_from_remote_does_not_panic() {
         let _ = detect_provider_from_remote();
+    }
+
+    /// Regression test for review bug #5: an explicit `--provider github`
+    /// selection (or `provider = "github"` in `.repolens.toml`) must win even
+    /// when the git remote auto-detects as GitLab.
+    #[test]
+    fn test_explicit_provider_github_not_overridden_by_autodetect() {
+        assert_eq!(
+            resolve_provider(Some(Provider::GitHub), Some(Provider::GitLab)),
+            Provider::GitHub
+        );
+    }
+
+    #[test]
+    fn test_explicit_provider_gitlab_not_overridden_by_autodetect() {
+        assert_eq!(
+            resolve_provider(Some(Provider::GitLab), Some(Provider::GitHub)),
+            Provider::GitLab
+        );
+    }
+
+    #[test]
+    fn test_unset_provider_falls_back_to_autodetect_then_github() {
+        assert_eq!(
+            resolve_provider(None, Some(Provider::GitLab)),
+            Provider::GitLab
+        );
+        assert_eq!(resolve_provider(None, None), Provider::GitHub);
     }
 }

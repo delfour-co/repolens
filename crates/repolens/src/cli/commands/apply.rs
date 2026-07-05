@@ -380,7 +380,7 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
 
     // CLI --provider overrides config / auto-detection.
     if let Some(provider) = args.provider {
-        config.provider = provider.into();
+        config.provider = Some(provider.into());
     }
 
     // Initialize scanner

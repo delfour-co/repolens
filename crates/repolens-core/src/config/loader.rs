@@ -62,9 +62,14 @@ pub struct Config {
     #[serde(default = "default_preset")]
     pub preset: String,
 
-    /// Repository hosting provider (github | gitlab). Defaults to GitHub.
+    /// Repository hosting provider (github | gitlab).
+    ///
+    /// `None` means "not explicitly configured" — [`crate::providers::for_config`]
+    /// auto-detects from the git remote in that case, falling back to GitHub.
+    /// An explicit `Some(_)` (from this key or the `--provider` CLI flag) always
+    /// wins over auto-detection (review bug #5).
     #[serde(default)]
-    pub provider: Provider,
+    pub provider: Option<Provider>,
 
     /// Rule overrides
     #[serde(default)]
@@ -100,7 +105,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             preset: "opensource".to_string(),
-            provider: Provider::default(),
+            provider: None,
             rules: HashMap::new(),
             urls: UrlConfig::default(),
             actions: ActionsConfig::default(),
@@ -378,23 +383,25 @@ mod tests {
     }
 
     #[test]
-    fn test_default_provider_is_github() {
+    fn test_default_provider_is_unset() {
+        // Unset (`None`) means "auto-detect" — see review bug #5. It is NOT
+        // the same as an explicit `Some(Provider::GitHub)`.
         let config = Config::default();
-        assert_eq!(config.provider, Provider::GitHub);
+        assert_eq!(config.provider, None);
     }
 
     #[test]
     fn test_provider_deserialization() {
-        // Absent -> defaults to GitHub
+        // Absent -> unset (auto-detect), not an implicit GitHub choice.
         let config: Config = toml::from_str("preset = \"opensource\"\n").unwrap();
-        assert_eq!(config.provider, Provider::GitHub);
+        assert_eq!(config.provider, None);
 
-        // Explicit lowercase values deserialize.
+        // Explicit lowercase values deserialize to an explicit choice.
         let config: Config = toml::from_str("provider = \"github\"\n").unwrap();
-        assert_eq!(config.provider, Provider::GitHub);
+        assert_eq!(config.provider, Some(Provider::GitHub));
 
         let config: Config = toml::from_str("provider = \"gitlab\"\n").unwrap();
-        assert_eq!(config.provider, Provider::GitLab);
+        assert_eq!(config.provider, Some(Provider::GitLab));
     }
 
     #[test]
