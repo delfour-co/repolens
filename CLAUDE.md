@@ -4,47 +4,52 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-**v2.0.2.** RepoLens is recentered on GitHub repository auditing: single provider (GitHub), 15 rule
-categories, 5 output formats. Rust edition 2024, MSRV 1.85, dual license MIT OR Apache-2.0. Two CI
+**v3.0.0.** RepoLens is recentered as an **auto-configurator for git repositories**: every kept check
+exists to drive a reviewable, applicable `Action`. Two providers (**GitHub** + **GitLab**), **6 rule
+categories**, 5 output formats. The detection-only "scanner" surface (dependency CVEs, secrets,
+dependency licenses, history, stale issues, docker linting, CI workflow linting) was removed — it is
+not deterministically auto-fixable and overlaps dedicated tools (Dependabot/osv-scanner, gitleaks,
+cargo-deny, hadolint, actionlint). Rust edition 2024, MSRV 1.85, dual license MIT OR Apache-2.0. Two CI
 workflows: `ci.yml` (test matrix + clippy + fmt + coverage + security audit + packaging dry-run) and
 `release.yml` (multi-platform binary build + crates.io publish + Docker image push to
 `ghcr.io/systm-d/repolens` — `linux/amd64` only since v2.0.2 due to QEMU multi-arch build cost).
-Canonical recentering decision:
-`docs/superpowers/specs/2026-05-13-repolens-recentering-design.md`.
+Canonical decisions:
+`docs/superpowers/specs/2026-06-26-repolens-autoconfigurator-multiprovider-design.md` (v3 recentering +
+multi-provider) and `docs/superpowers/plans/2026-06-26-plan-b-provider-abstraction-gitlab.md`.
 
 The repository is a **2-crate Cargo workspace** (`crates/repolens-core` + `crates/repolens`); see
 `docs/superpowers/specs/2026-07-02-workspace-skeleton-migration-design.md` and
 `docs/superpowers/plans/2026-07-02-workspace-skeleton-migration.md` for the migration decision and
-plan. The split is structural only — behavior, versioning, and the facts below are unchanged.
+plan, and `docs/superpowers/plans/2026-07-04-repolens-v3-recentering-reapply.md` for the re-application
+of the v3 recentering onto that workspace. The workspace split is structural only; the v3 recentering
+is the behavioral change.
 
 What's in the codebase right now:
 
-- **CLI surface:** `repolens { init | plan | apply | report | compare | install-hooks | schema | completions | generate-man }`
-- **15 rule categories** (all registered in `crates/repolens-core/src/rules/engine.rs`):
-  - `secrets` — detect hardcoded secrets, API keys, and credentials in source files
-  - `files` — large files, `.gitignore` configuration and recommended entries
-  - `docs` — README, LICENSE, and documentation quality checks
-  - `security` — security best practices: CODEOWNERS, dependency lock files
-  - `workflows` — GitHub Actions: hardcoded secrets, explicit permission declarations
-  - `quality` — test directories, linting configuration presence
-  - `dependencies` — dependency vulnerability checks via OSV API
-  - `licenses` — license presence, SPDX compliance, and dependency license analysis
-  - `docker` — Dockerfile presence, `.dockerignore`, pinned base image tags
-  - `git` — large binary files, `.gitattributes` presence
-  - `custom` — user-defined rules via regex patterns or shell commands in config
-  - `codeowners` — CODEOWNERS file presence, validity, and GitHub release tags
-  - `history` — conventional commit compliance, giant commit detection
-  - `issues` — stale issues and stale pull requests hygiene
-  - `metadata` — repository description, topics/tags configuration
+- **CLI surface:** `repolens { init | plan | apply | report | compare | install-hooks | schema | completions | generate-man }`,
+  with `--provider {github|gitlab}` on `plan`/`report`/`apply` (auto-detected from the `origin` remote
+  otherwise).
+- **6 rule categories** (all registered in `crates/repolens-core/src/rules/engine.rs`):
+  - `files` — `.gitignore` presence and recommended entries
+  - `docs` — README, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG presence/quality
+  - `security` — repo security **settings**: `.github/settings.yml`, branch protection, vulnerability
+    alerts, secret scanning, Actions/workflow permissions, fork-PR approval (the auto-fixable half of
+    the former `security` category; the access-posture audit was dropped)
+  - `git` — `.gitattributes` presence, sensitive files that should be gitignored
+  - `codeowners` — CODEOWNERS file presence and syntax
+  - `metadata` — repository description, topics/tags, homepage
 - **5 output formats:** terminal (colored), JSON, Markdown, SARIF, HTML
-- **Edition 2024, MSRV 1.85**, 1033 unit tests passing
+- **Edition 2024, MSRV 1.85**, 726 unit tests passing (154 bin + 572 core)
 - **2 CI workflows:** `ci.yml` and `release.yml`
 
 ## Product in one line
 
-RepoLens audits GitHub repositories for open-source and enterprise compliance; the differentiator is
-the **plan/apply split** — every audit produces a typed `ActionPlan` that an operator can review and
-selectively apply, rather than executing fixes immediately.
+RepoLens audits a GitHub or GitLab repository and **configures it as well as possible,
+automatically**; the differentiator is the **plan/apply split** — every audit produces a typed
+`ActionPlan` that an operator can review and selectively apply, rather than executing fixes
+immediately. Every kept rule maps to an applicable `Action` (enforced by the
+`test_no_kept_rule_is_report_only` contract test in `crates/repolens-core/src/actions/planner.rs`) or
+sits on a documented detection-only allowlist.
 
 ## Architecture
 
@@ -61,13 +66,13 @@ crates/repolens-core/src/    — domain library (no clap, no IO framework deps b
 ├── rules/              — rules engine
 │   ├── engine.rs        — parallel rule execution, category dispatch
 │   ├── constants.rs     — VALID_CATEGORIES
-│   ├── categories/      — 15 category modules
-│   ├── patterns/        — shared regex and pattern helpers
+│   ├── categories/      — 6 category modules
 │   └── results.rs       — Finding + AuditResults types
-├── actions/            — ActionPlan + per-action executors
+├── actions/            — ActionPlan + per-action executors (CreateFile, UpdateGitignore,
+│                          ConfigureProtectedBranch, UpdateRepoSettings, UpdateRepoMetadata)
 ├── cache/              — incremental audit result caching
 ├── compare/            — diff two audit reports
-├── providers/          — GitHub API (octocrab + gh CLI fallback)
+├── providers/          — RepoProvider trait + GitHub (octocrab + gh) and GitLab (glab) impls
 ├── scanner/            — filesystem + git tree iteration
 └── utils/              — prerequisites checks
 crates/repolens-core/benches/ — Criterion benchmarks (parse, rules, scanner)
@@ -93,8 +98,10 @@ output and emits `Vec<Finding>`. New rules must not import from `providers/` or 
 network calls, no file writes happen inside this module. Execution is the job of each action's
 executor, invoked by the `apply` command.
 
-`repolens-core/src/providers/` is the sole boundary with GitHub. All GitHub API calls originate
-here. No other module reaches for `octocrab` or shells out to `gh`.
+`repolens-core/src/providers/` is the sole boundary with any forge. All GitHub/GitLab access
+originates here, behind the `RepoProvider` trait. No other module reaches for `octocrab`, `gh`, or
+`glab`; rules and actions obtain a provider via `providers::for_config(config)` and depend only on the
+trait, never on a concrete `GitHubProvider`/`GitLabProvider`.
 
 `repolens/src/cli/output/` is presentation only: it renders an `AuditResults` or `ActionPlan` to a
 string. No side effects. Each format (terminal, json, markdown, sarif, html) is an independent file.
@@ -114,19 +121,30 @@ These are load-bearing rules — violating them changes what the product is:
   definitions themselves are baked in under `crates/repolens-core/src/config/presets/`. Do not
   accept arbitrary preset names from config — an unknown name is an error, not an implicit rule
   list.
-- **Provider is GitHub-only.** `crates/repolens-core/src/providers/` has exactly one trait
-  implementation. Multi-provider work is explicitly out of scope until a new design doc lands (see
-  the recentering spec).
+- **Provider access goes through the `RepoProvider` trait.** `crates/repolens-core/src/providers/`
+  holds the trait plus two implementations (`github.rs`, `gitlab.rs`); no other module references a
+  concrete provider. Adding a forge means a new trait impl, not provider-specific branches scattered
+  across `rules/`/`actions/`. Capabilities with no faithful counterpart on a provider (e.g. GitHub-only
+  Dependabot/Actions settings on GitLab) must return `Err` so the caller skips — never a fabricated
+  `Ok` value, which would emit a false finding.
 - **No `Co-authored-by` in commits or PRs.** Single primary author per commit. Mentioning
   contributors in the commit body without the `Co-authored-by:` trailer is allowed.
 - **No `feat!:` or similar `!` Conventional Commit shorthand.** The commit-msg hook rejects it.
   Use `feat: ...` + `BREAKING CHANGE: ...` in the body instead.
-- **GitHub authentication is dual-mode.** `GITHUB_TOKEN` env var is preferred (no `gh` CLI
-  required); fallback is `gh auth token`. Both code paths must be tested and exercised in CI.
+- **GitHub auth is dual-mode; GitLab uses `glab`.** GitHub prefers the `GITHUB_TOKEN` env var (no
+  `gh` CLI required), falling back to `gh auth token`. GitLab goes through the `glab` CLI (which reads
+  `GITLAB_TOKEN` itself); known gap — GitLab currently requires `glab` installed even with a token. A
+  missing CLI is a graceful skip, never a hard audit failure; both providers' paths must be exercised
+  in CI.
+- **Every kept rule maps to an `Action` or is on the detection-only allowlist.** The
+  `test_no_kept_rule_is_report_only` contract test in `crates/repolens-core/src/actions/planner.rs`
+  asserts every emitted rule_id is either remediable (an action) or on the explicit allowlist, with
+  the two sets disjoint and exhaustive. A new rule with no remediation breaks the build until it is
+  mapped or allowlisted.
 - **`VALID_CATEGORIES` in `crates/repolens-core/src/rules/constants.rs` must mirror the categories
-  registered in `crates/repolens-core/src/rules/engine.rs`.** Adding a category requires updating
-  both files; the unit test in `constants.rs` asserts the count. The CLI `--only` / `--skip` flags
-  rely on this constant.
+  registered in `crates/repolens-core/src/rules/engine.rs`** (currently 6). Adding a category requires
+  updating both files; the unit test in `constants.rs` asserts the count. The CLI `--only` / `--skip`
+  flags rely on this constant.
 - **Workspace lint deviation: `unsafe_code = "deny"`, not `forbid`.** The template convention is
   `forbid`; the workspace uses `deny` deliberately so the two documented `#[allow(unsafe_code)]`
   env-var sites in `repolens-core` can compile. See `CONVENTIONS.md` and
@@ -171,13 +189,20 @@ cargo deny check                                    # license + advisory audit
 
 ## Reference
 
-- `docs/superpowers/specs/2026-05-13-repolens-recentering-design.md` — v2.0.0 recentering decision.
+- `docs/superpowers/specs/2026-06-26-repolens-autoconfigurator-multiprovider-design.md` — v3.0.0
+  recentering (auto-configurator) + multi-provider decision (current).
+- `docs/superpowers/plans/2026-06-26-plan-b-provider-abstraction-gitlab.md` — provider-abstraction +
+  GitLab implementation plan.
+- `docs/superpowers/plans/2026-07-04-repolens-v3-recentering-reapply.md` — re-application of the v3
+  recentering onto the 2-crate workspace (this branch).
+- `docs/superpowers/specs/2026-05-13-repolens-recentering-design.md` — v2.0.0 recentering decision
+  (historical).
 - `docs/superpowers/specs/2026-07-02-workspace-skeleton-migration-design.md` — 2-crate workspace
   split decision (`repolens-core` + `repolens`).
 - `docs/superpowers/plans/2026-07-02-workspace-skeleton-migration.md` — workspace migration
   implementation plan.
 - `docs/superpowers/specs/` — per-version design specs.
-- `docs/superpowers/plans/` — implementation plans (Plans A, B, C).
+- `docs/superpowers/plans/` — implementation plans.
 - `../../system/guardians/` — sibling Rust project. Edition, MSRV, license, and CI workflow
   structure are deliberately aligned with guardians; when in doubt about engineering conventions,
   check there first.

@@ -158,45 +158,6 @@ edition = "2021"
         .ok();
 }
 
-/// Create a minimal Node.js project for testing
-fn create_node_project(dir: &Path) {
-    // package.json
-    fs::write(
-        dir.join("package.json"),
-        r#"{
-  "name": "test-project",
-  "version": "1.0.0",
-  "description": "Test project",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  }
-}
-"#,
-    )
-    .unwrap();
-
-    // index.js
-    fs::write(dir.join("index.js"), "console.log('Hello');\n").unwrap();
-
-    // Initialize git
-    StdCommand::new("git")
-        .args(["init"])
-        .current_dir(dir)
-        .output()
-        .ok();
-    StdCommand::new("git")
-        .args(["config", "user.email", "test@test.com"])
-        .current_dir(dir)
-        .output()
-        .ok();
-    StdCommand::new("git")
-        .args(["config", "user.name", "Test"])
-        .current_dir(dir)
-        .output()
-        .ok();
-}
-
 /// Create a minimal Python project for testing
 fn create_python_project(dir: &Path) {
     // pyproject.toml
@@ -305,105 +266,6 @@ async fn e2e_rust_project_missing_license() {
 }
 
 #[tokio::test]
-async fn e2e_rust_project_missing_lock_file() {
-    let temp_dir = TempDir::new().unwrap();
-    create_rust_project(temp_dir.path());
-
-    // Initialize repolens config
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "opensource",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    // Run plan with JSON output
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::eq(1));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    // Check that DEP003 (missing lock file) is detected
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array());
-    assert!(findings.is_some(), "Plan should have findings array");
-
-    let has_lock_file_finding = findings.unwrap().iter().any(|f| {
-        f.get("rule_id")
-            .and_then(|r| r.as_str())
-            .map(|r| r == "DEP003")
-            .unwrap_or(false)
-    });
-    assert!(
-        has_lock_file_finding,
-        "Should detect missing Cargo.lock (DEP003)"
-    );
-}
-
-#[tokio::test]
-async fn e2e_node_project_missing_lock_file() {
-    let temp_dir = TempDir::new().unwrap();
-    create_node_project(temp_dir.path());
-
-    // Initialize repolens config
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "opensource",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    // Run plan with JSON output
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::eq(1));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array());
-    assert!(findings.is_some(), "Plan should have findings array");
-
-    let has_lock_file_finding = findings.unwrap().iter().any(|f| {
-        f.get("rule_id")
-            .and_then(|r| r.as_str())
-            .map(|r| r == "DEP003")
-            .unwrap_or(false)
-    });
-    assert!(
-        has_lock_file_finding,
-        "Should detect missing package-lock.json (DEP003)"
-    );
-}
-
-#[tokio::test]
 async fn e2e_python_project_audit() {
     let temp_dir = TempDir::new().unwrap();
     create_python_project(temp_dir.path());
@@ -428,65 +290,6 @@ async fn e2e_python_project_audit() {
         .args(["plan"])
         .assert()
         .code(predicate::in_iter([0, 1]));
-}
-
-#[tokio::test]
-async fn e2e_project_with_secrets_detected() {
-    let temp_dir = TempDir::new().unwrap();
-    create_rust_project(temp_dir.path());
-
-    // Add a file with a secret pattern (using realistic patterns that will be detected)
-    // Note: These are fake secrets used only for testing detection
-    fs::write(
-        temp_dir.path().join("config.rs"),
-        r#"
-// Test file for secret detection
-const AWS_ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
-const AWS_SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
-"#,
-    )
-    .unwrap();
-
-    // Initialize repolens config
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "strict",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    // Run plan with JSON output
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::eq(1));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array())
-        .unwrap();
-
-    // Should detect secrets (AWS keys are commonly detected)
-    let has_secret_finding = findings.iter().any(|f| {
-        f.get("category")
-            .and_then(|c| c.as_str())
-            .map(|c| c == "secrets")
-            .unwrap_or(false)
-    });
-    assert!(has_secret_finding, "Should detect hardcoded secrets");
 }
 
 #[tokio::test]
@@ -544,80 +347,6 @@ async fn e2e_project_with_env_file() {
         "Should detect .env as sensitive file. Findings: {:?}",
         findings
     );
-}
-
-#[tokio::test]
-async fn e2e_project_with_dockerfile() {
-    let temp_dir = TempDir::new().unwrap();
-    create_rust_project(temp_dir.path());
-
-    // Add Dockerfile without best practices
-    fs::write(
-        temp_dir.path().join("Dockerfile"),
-        r#"FROM rust:latest
-COPY . .
-RUN cargo build --release
-CMD ["./target/release/test-project"]
-"#,
-    )
-    .unwrap();
-
-    // Initialize repolens config
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "strict",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    // Run plan with JSON output
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::eq(1));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array())
-        .unwrap();
-
-    // Should detect Docker issues
-    let docker_findings: Vec<_> = findings
-        .iter()
-        .filter(|f| {
-            f.get("category")
-                .and_then(|c| c.as_str())
-                .map(|c| c == "docker")
-                .unwrap_or(false)
-        })
-        .collect();
-
-    assert!(
-        !docker_findings.is_empty(),
-        "Should detect Docker best practice issues"
-    );
-
-    // Specifically check for :latest tag (DOCKER003)
-    let has_latest_tag = findings.iter().any(|f| {
-        f.get("rule_id")
-            .and_then(|r| r.as_str())
-            .map(|r| r == "DOCKER003")
-            .unwrap_or(false)
-    });
-    assert!(has_latest_tag, "Should detect unpinned :latest tag");
 }
 
 #[tokio::test]
@@ -1066,17 +795,9 @@ async fn e2e_apply_command_creates_readme() {
     assert!(!temp_dir.path().join("README.md").exists());
 
     // Run apply with auto-confirm and disable PR/issue creation (need network).
-    // Skip workflows because Actions checks need GitHub API.
     get_cmd()
         .current_dir(temp_dir.path())
-        .args([
-            "apply",
-            "--yes",
-            "--no-issues",
-            "--no-pr",
-            "--skip",
-            "workflows",
-        ])
+        .args(["apply", "--yes", "--no-issues", "--no-pr"])
         .assert()
         .code(predicate::in_iter([0, 1, 2]));
 
@@ -1512,51 +1233,6 @@ async fn e2e_go_project_audit() {
 }
 
 #[tokio::test]
-async fn e2e_go_project_missing_go_sum() {
-    let temp_dir = TempDir::new().unwrap();
-    create_go_project(temp_dir.path());
-
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "opensource",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::in_iter([0, 1, 2]));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array());
-
-    if let Some(findings) = findings {
-        let has_dep003 = findings.iter().any(|f| {
-            f.get("rule_id")
-                .and_then(|r| r.as_str())
-                .map(|r| r == "DEP003")
-                .unwrap_or(false)
-        });
-        assert!(has_dep003, "Should detect missing go.sum (DEP003)");
-    }
-}
-
-#[tokio::test]
 async fn e2e_php_project_audit() {
     let temp_dir = TempDir::new().unwrap();
     create_php_project(temp_dir.path());
@@ -1604,124 +1280,6 @@ async fn e2e_ruby_project_audit() {
         .args(["plan"])
         .assert()
         .code(predicate::in_iter([0, 1, 2]));
-}
-
-#[tokio::test]
-async fn e2e_ruby_project_missing_gemfile_lock() {
-    let temp_dir = TempDir::new().unwrap();
-    create_ruby_project(temp_dir.path());
-
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "opensource",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::in_iter([0, 1, 2]));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array());
-
-    if let Some(findings) = findings {
-        let has_dep003 = findings.iter().any(|f| {
-            f.get("rule_id")
-                .and_then(|r| r.as_str())
-                .map(|r| r == "DEP003")
-                .unwrap_or(false)
-        });
-        assert!(has_dep003, "Should detect missing Gemfile.lock (DEP003)");
-    }
-}
-
-// ============================================================================
-// E2E Tests for workflow rules
-// ============================================================================
-
-#[tokio::test]
-async fn e2e_workflow_rules_detected() {
-    let temp_dir = TempDir::new().unwrap();
-    create_rust_project(temp_dir.path());
-
-    // Create a GitHub workflow without best practices
-    fs::create_dir_all(temp_dir.path().join(".github/workflows")).unwrap();
-    fs::write(
-        temp_dir.path().join(".github/workflows/ci.yml"),
-        r#"
-name: CI
-on: push
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: cargo build
-"#,
-    )
-    .unwrap();
-
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "strict",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    let output_path = temp_dir.path().join("plan.json");
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan", "--format", "json", "--output"])
-        .arg(&output_path)
-        .assert()
-        .code(predicate::in_iter([0, 1, 2]));
-
-    let content = fs::read_to_string(&output_path).unwrap();
-    let plan: serde_json::Value = serde_json::from_str(&content).unwrap();
-
-    let findings = plan
-        .get("audit")
-        .and_then(|a| a.get("findings"))
-        .and_then(|f| f.as_array())
-        .unwrap();
-
-    // Should detect workflow issues (WF004 - missing timeout)
-    let workflow_findings: Vec<_> = findings
-        .iter()
-        .filter(|f| {
-            f.get("category")
-                .and_then(|c| c.as_str())
-                .map(|c| c == "workflows")
-                .unwrap_or(false)
-        })
-        .collect();
-
-    assert!(
-        !workflow_findings.is_empty(),
-        "Should detect workflow issues"
-    );
 }
 
 // ============================================================================

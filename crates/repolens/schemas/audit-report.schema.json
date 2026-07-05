@@ -46,7 +46,7 @@
         "category": {
           "type": "string",
           "description": "Category of the finding",
-          "enum": ["secrets", "files", "docs", "security", "workflows", "quality", "dependencies", "custom"]
+          "enum": ["files", "docs", "security", "git", "codeowners", "metadata"]
         },
         "severity": {
           "$ref": "#/definitions/Severity"

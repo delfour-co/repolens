@@ -12,7 +12,7 @@
     },
     "category": {
       "type": "string",
-      "description": "Rule category (e.g. secrets, files, docs, security, workflows, quality)"
+      "description": "Rule category (e.g. files, docs, security, git, codeowners, metadata)"
     },
     "severity": {
       "type": "string",
