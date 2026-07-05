@@ -301,6 +301,45 @@ fn preview_action_diff(action: &Action) {
 
             display_diff(&old_content, &new_content, "Repository metadata");
         }
+        ActionOperation::UpdateSettingsFile {
+            path,
+            branch,
+            required_approvals,
+            ensure_branches_block,
+            ensure_pr_reviews,
+            ensure_status_checks,
+        } => {
+            let file_path = Path::new(path);
+            let old_content = if file_path.exists() {
+                fs::read_to_string(file_path).unwrap_or_default()
+            } else {
+                "(file does not exist)".to_string()
+            };
+
+            let mut changes = Vec::new();
+            if *ensure_branches_block {
+                changes.push(format!("Add 'branches:' section for '{}'", branch));
+            }
+            if *ensure_pr_reviews {
+                changes.push(format!(
+                    "Add required_pull_request_reviews (required_approving_review_count: {})",
+                    required_approvals
+                ));
+            }
+            if *ensure_status_checks {
+                changes.push("Add required_status_checks".to_string());
+            }
+            let new_content = if changes.is_empty() {
+                "(No changes)".to_string()
+            } else {
+                format!(
+                    "{}\n\n(Merged into existing content -- other keys are preserved)",
+                    changes.join("\n")
+                )
+            };
+
+            display_diff(&old_content, &new_content, path);
+        }
     }
 }
 
@@ -732,7 +771,9 @@ async fn handle_git_operations(
     let has_file_changes = action_plan.actions().iter().any(|action| {
         matches!(
             action.operation(),
-            ActionOperation::CreateFile { .. } | ActionOperation::UpdateGitignore { .. }
+            ActionOperation::CreateFile { .. }
+                | ActionOperation::UpdateGitignore { .. }
+                | ActionOperation::UpdateSettingsFile { .. }
         )
     });
 
@@ -768,6 +809,7 @@ async fn handle_git_operations(
         .filter_map(|action| match action.operation() {
             ActionOperation::CreateFile { path, .. } => Some(path.clone()),
             ActionOperation::UpdateGitignore { .. } => Some(".gitignore".to_string()),
+            ActionOperation::UpdateSettingsFile { path, .. } => Some(path.clone()),
             _ => None,
         })
         .collect();
@@ -1019,6 +1061,25 @@ mod tests {
                 description: Some("A test repo".to_string()),
                 topics: vec!["rust".to_string(), "cli".to_string()],
                 homepage: Some("https://example.com".to_string()),
+            },
+        );
+
+        preview_action_diff(&action);
+    }
+
+    #[test]
+    fn test_preview_action_diff_settings_file_update() {
+        let action = Action::new(
+            "settings-file-update",
+            "security",
+            "Update .github/settings.yml",
+            ActionOperation::UpdateSettingsFile {
+                path: ".github/settings.yml".to_string(),
+                branch: "main".to_string(),
+                required_approvals: 1,
+                ensure_branches_block: true,
+                ensure_pr_reviews: true,
+                ensure_status_checks: true,
             },
         );
 

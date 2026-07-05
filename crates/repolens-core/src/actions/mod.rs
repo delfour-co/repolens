@@ -68,4 +68,5 @@ mod gitignore;
 mod metadata;
 pub mod plan;
 pub mod planner;
+mod settings_file;
 mod templates;

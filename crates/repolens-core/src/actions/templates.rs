@@ -62,6 +62,7 @@ fn get_template(name: &str) -> Result<String, RepoLensError> {
         ".gitattributes" => Ok(GITATTRIBUTES_TEMPLATE.to_string()),
         "CODEOWNERS" => Ok(CODEOWNERS_TEMPLATE.to_string()),
         ".github/settings.yml" => Ok(SETTINGS_YML_TEMPLATE.to_string()),
+        ".gitignore" => Ok(GITIGNORE_TEMPLATE.to_string()),
         _ => Err(RepoLensError::Action(ActionError::UnknownTemplate {
             name: name.to_string(),
         })),
@@ -432,19 +433,38 @@ const CODEOWNERS_TEMPLATE: &str = r#"# CODEOWNERS
 const SETTINGS_YML_TEMPLATE: &str = r#"# Repository settings managed as code via the probot/settings app.
 # See https://probot.github.io/apps/settings/ for the full reference.
 #
-# Uncomment and adjust the branch protection block below to enforce reviews
-# and status checks on your default branch.
+# Branch protection below enforces reviews and status checks on the default
+# branch; adjust the branch name and contexts to match your project.
 
-# branches:
-#   - name: main
-#     protection:
-#       required_pull_request_reviews:
-#         required_approving_review_count: 1
-#       required_status_checks:
-#         strict: true
-#         contexts: []
-#       enforce_admins: true
-#       restrictions: null
+branches:
+  - name: main
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+      required_status_checks:
+        strict: true
+        contexts: []
+      enforce_admins: true
+      restrictions: null
+"#;
+
+const GITIGNORE_TEMPLATE: &str = r#"# Environment and secrets
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Dependency directories
+node_modules/
 "#;
 
 #[cfg(test)]
@@ -551,6 +571,58 @@ mod tests {
         let template = get_template(".github/settings.yml").unwrap();
         assert!(template.contains("probot/settings"));
         assert!(template.contains("required_pull_request_reviews"));
+    }
+
+    #[test]
+    fn test_get_template_gitignore() {
+        let template = get_template(".gitignore").unwrap();
+        assert!(template.contains(".env"));
+        assert!(template.contains("node_modules/"));
+    }
+
+    /// Regression test for review bug #15: applying SEC007's "create
+    /// .github/settings.yml" action must NOT immediately trigger SEC008
+    /// (missing `branches:`), SEC009 (missing
+    /// `required_pull_request_reviews`) or SEC010 (missing
+    /// `required_status_checks`). Before the fix the template's `branches:`
+    /// block was entirely commented out, so creating the file from scratch
+    /// left it just as bare as no file at all -- minus the SEC007 finding.
+    #[tokio::test]
+    async fn test_settings_yml_template_satisfies_branch_protection_checks() {
+        use crate::config::Config;
+        use crate::rules::categories::security::SecurityRules;
+        use crate::rules::engine::RuleCategory;
+        use crate::scanner::Scanner;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        create_file_from_template(
+            root.join(".github/settings.yml").to_str().unwrap(),
+            ".github/settings.yml",
+            &HashMap::new(),
+        )
+        .unwrap();
+
+        let scanner = Scanner::new(root.to_path_buf());
+        let config = Config::default();
+        let findings = SecurityRules.run(&scanner, &config).await.unwrap();
+
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "SEC008"),
+            "freshly-created settings.yml must not trigger SEC008: {:?}",
+            findings
+        );
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "SEC009"),
+            "freshly-created settings.yml must not trigger SEC009: {:?}",
+            findings
+        );
+        assert!(
+            !findings.iter().any(|f| f.rule_id == "SEC010"),
+            "freshly-created settings.yml must not trigger SEC010: {:?}",
+            findings
+        );
     }
 
     #[test]
@@ -694,6 +766,18 @@ mod tests {
 
         let content = fs::read_to_string(&file_path).unwrap();
         assert!(content.contains("Security Policy"));
+    }
+
+    #[test]
+    fn test_create_file_from_template_gitignore() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join(".gitignore");
+
+        let variables = HashMap::new();
+        create_file_from_template(file_path.to_str().unwrap(), ".gitignore", &variables).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains(".env"));
     }
 
     #[test]

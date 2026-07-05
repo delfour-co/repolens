@@ -10,7 +10,8 @@ use tracing::{debug, info};
 use crate::config::Config;
 
 use super::plan::{Action, ActionOperation, ActionPlan};
-use super::{branch_protection, github_settings, gitignore, metadata, templates};
+use super::settings_file::SettingsFileUpdate;
+use super::{branch_protection, github_settings, gitignore, metadata, settings_file, templates};
 
 /// Result of executing a single action
 ///
@@ -142,6 +143,30 @@ impl ActionExecutor {
                     homepage.as_deref(),
                 )
                 .await?;
+            }
+
+            ActionOperation::UpdateSettingsFile {
+                path,
+                branch,
+                required_approvals,
+                ensure_branches_block,
+                ensure_pr_reviews,
+                ensure_status_checks,
+            } => {
+                debug!("Merging branch-protection sections into {}", path);
+                let current_dir = std::env::current_dir().map_err(|e| {
+                    RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to get current directory: {}", e),
+                    })
+                })?;
+                let update = SettingsFileUpdate {
+                    branch: branch.clone(),
+                    required_approvals: *required_approvals,
+                    ensure_branches_block: *ensure_branches_block,
+                    ensure_pr_reviews: *ensure_pr_reviews,
+                    ensure_status_checks: *ensure_status_checks,
+                };
+                settings_file::update_settings_file_at(&current_dir, path, &update)?;
             }
         }
 
@@ -292,6 +317,64 @@ mod tests {
 
         // Restore directory (ignore errors if directory no longer exists)
         let _ = std::env::set_current_dir(&original_dir);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_execute_dispatches_update_settings_file() {
+        // Bug #12 regression: executing an UpdateSettingsFile action must
+        // actually merge the missing sections into an EXISTING
+        // .github/settings.yml on disk (a local file edit, no provider
+        // needed -- unlike branch-protection/github-settings actions).
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+        if std::env::current_dir().is_err() {
+            let _ = std::env::set_current_dir("/tmp");
+        }
+        std::env::set_current_dir(root).expect("Failed to change to temp directory");
+
+        std::fs::create_dir_all(root.join(".github")).unwrap();
+        std::fs::write(
+            root.join(".github/settings.yml"),
+            "repository:\n  name: my-repo\n",
+        )
+        .unwrap();
+
+        let config = Config::default();
+        let executor = ActionExecutor::new(config);
+
+        let mut plan = ActionPlan::new();
+        plan.add(Action::new(
+            "settings-file-update",
+            "security",
+            "Update .github/settings.yml",
+            ActionOperation::UpdateSettingsFile {
+                path: ".github/settings.yml".to_string(),
+                branch: "main".to_string(),
+                required_approvals: 1,
+                ensure_branches_block: true,
+                ensure_pr_reviews: true,
+                ensure_status_checks: true,
+            },
+        ));
+
+        let results = executor.execute(&plan).await.unwrap();
+
+        let merged = std::fs::read_to_string(root.join(".github/settings.yml")).unwrap();
+
+        // Restore directory before asserting so a failed assertion doesn't
+        // leave the process in the (about to be dropped) temp directory.
+        let _ = std::env::set_current_dir(&original_dir);
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success, "{:?}", results[0].error);
+        assert!(merged.contains("my-repo"), "original content must survive");
+        assert!(merged.contains("branches"));
+        assert!(merged.contains("required_pull_request_reviews"));
+        assert!(merged.contains("required_status_checks"));
     }
 
     #[tokio::test]

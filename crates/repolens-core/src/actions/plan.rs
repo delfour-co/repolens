@@ -100,6 +100,28 @@ pub enum ActionOperation {
         topics: Vec<String>,
         homepage: Option<String>,
     },
+
+    /// Merge missing branch-protection sections into an EXISTING
+    /// `.github/settings.yml` (review bug #12). This is a local file edit —
+    /// not a forge call — so it applies regardless of which `RepoProvider` is
+    /// configured. The executor parses the existing YAML and adds only the
+    /// missing pieces, preserving any content the user already has.
+    UpdateSettingsFile {
+        /// Path to the settings file, relative to the repository root.
+        path: String,
+        /// Branch the protection block should target (falls back to the
+        /// first existing entry if no entry named `branch` is found).
+        branch: String,
+        /// Required approving review count when adding
+        /// `required_pull_request_reviews`.
+        required_approvals: u32,
+        /// Whether the `branches:` key itself is missing and must be added.
+        ensure_branches_block: bool,
+        /// Whether `required_pull_request_reviews` must be added (SEC009).
+        ensure_pr_reviews: bool,
+        /// Whether `required_status_checks` must be added (SEC010).
+        ensure_status_checks: bool,
+    },
 }
 
 /// Branch protection settings
@@ -455,6 +477,39 @@ mod tests {
                 assert_eq!(settings.enable_wiki, Some(false));
             }
             _ => panic!("Expected UpdateRepoSettings operation"),
+        }
+    }
+
+    #[test]
+    fn test_action_operation_update_settings_file() {
+        let action = Action::new(
+            "settings-file-update",
+            "security",
+            "Update .github/settings.yml",
+            ActionOperation::UpdateSettingsFile {
+                path: ".github/settings.yml".to_string(),
+                branch: "main".to_string(),
+                required_approvals: 1,
+                ensure_branches_block: false,
+                ensure_pr_reviews: true,
+                ensure_status_checks: false,
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateSettingsFile {
+                path,
+                branch,
+                ensure_pr_reviews,
+                ensure_status_checks,
+                ..
+            } => {
+                assert_eq!(path, ".github/settings.yml");
+                assert_eq!(branch, "main");
+                assert!(ensure_pr_reviews);
+                assert!(!ensure_status_checks);
+            }
+            _ => panic!("Expected UpdateSettingsFile operation"),
         }
     }
 

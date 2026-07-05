@@ -5,7 +5,8 @@
 
 use std::collections::HashMap;
 
-use crate::config::Config;
+use crate::config::{Config, GitHubSettingsConfig};
+use crate::providers::Provider;
 use crate::rules::results::AuditResults;
 
 use super::plan::{
@@ -70,6 +71,13 @@ impl ActionPlanner {
 
         // Plan gitignore updates
         if self.config.actions.gitignore {
+            // FILE002 (.gitignore entirely absent) and FILE003 (missing
+            // recommended entries) are mutually exclusive per audit run --
+            // check_gitignore returns early after FILE002 -- but both plan
+            // paths are kept independent for clarity and defensiveness.
+            if let Some(action) = self.plan_gitignore_creation(results) {
+                plan.add(action);
+            }
             if let Some(action) = self.plan_gitignore_update(results) {
                 plan.add(action);
             }
@@ -138,6 +146,15 @@ impl ActionPlanner {
             }
         }
 
+        // Plan .github/settings.yml UPDATES for a file that already exists
+        // but is missing branch-protection sections (SEC008/009/010 -- see
+        // review bug #12). Distinct from the CREATE path above (SEC007).
+        if self.config.actions.settings_file {
+            if let Some(action) = self.plan_settings_file_update_if_needed(results) {
+                plan.add(action);
+            }
+        }
+
         // Plan branch protection (only if not already configured)
         if self.config.actions.branch_protection.enabled {
             if let Some(action) = self.plan_branch_protection_if_needed().await? {
@@ -158,6 +175,37 @@ impl ActionPlanner {
         }
 
         Ok(plan)
+    }
+
+    /// Plan .gitignore creation when the file is entirely absent (FILE002).
+    ///
+    /// Review bug #13: `plan_gitignore_update` only reads FILE003 findings
+    /// (missing recommended entries in an EXISTING .gitignore), so a repo
+    /// with NO .gitignore at all (FILE002 -- `check_gitignore` returns early
+    /// after emitting it, so no FILE003 findings accompany it) previously got
+    /// no remediation whatsoever. This creates a baseline .gitignore from a
+    /// generic template so `apply` has something to act on.
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - The audit results
+    ///
+    /// # Returns
+    ///
+    /// An `Action` to create .gitignore, or `None` if it already exists
+    fn plan_gitignore_creation(&self, results: &AuditResults) -> Option<Action> {
+        self.plan_file_creation(
+            results,
+            FileCreationParams {
+                rule_id: "FILE002",
+                category: "files",
+                file_path: ".gitignore",
+                template: ".gitignore",
+                action_id: "gitignore-create",
+                action_description: "Create .gitignore",
+                detail: None,
+            },
+        )
     }
 
     /// Plan .gitignore updates based on findings
@@ -419,6 +467,75 @@ impl ActionPlanner {
         )
     }
 
+    /// Plan a real remediation for SEC008/009/010 on an EXISTING
+    /// `.github/settings.yml` (review bug #12).
+    ///
+    /// `plan_settings_file_creation` (SEC007) only fires when the file is
+    /// entirely absent; before this fix, a file that already existed but was
+    /// missing branch-protection sections had NO remediation path at all,
+    /// even though the zero-report-only contract test claimed SEC008-010
+    /// were remediable via `ConfigureProtectedBranch` (which actually
+    /// configures live branch protection via the provider API, not the
+    /// `.github/settings.yml` content the rule itself parses). This plans an
+    /// `UpdateSettingsFile` action that merges in only the missing sections.
+    ///
+    /// # Arguments
+    ///
+    /// * `results` - The audit results
+    ///
+    /// # Returns
+    ///
+    /// An `Action` to update `.github/settings.yml`, or `None` if none of
+    /// SEC008/009/010 fired.
+    fn plan_settings_file_update_if_needed(&self, results: &AuditResults) -> Option<Action> {
+        let mut has_sec008 = false;
+        let mut has_sec009 = false;
+        let mut has_sec010 = false;
+
+        for finding in results.findings_by_category("security") {
+            match finding.rule_id.as_str() {
+                "SEC008" => has_sec008 = true,
+                "SEC009" => has_sec009 = true,
+                "SEC010" => has_sec010 = true,
+                _ => {}
+            }
+        }
+
+        if !has_sec008 && !has_sec009 && !has_sec010 {
+            return None;
+        }
+
+        let bp = &self.config.actions.branch_protection;
+
+        let mut details = Vec::new();
+        if has_sec008 {
+            details.push("Add 'branches:' section to .github/settings.yml".to_string());
+        }
+        if has_sec009 || has_sec008 {
+            details.push("Add required_pull_request_reviews".to_string());
+        }
+        if has_sec010 || has_sec008 {
+            details.push("Add required_status_checks".to_string());
+        }
+
+        Some(
+            Action::new(
+                "settings-file-update",
+                "security",
+                "Update .github/settings.yml with missing branch-protection sections",
+                ActionOperation::UpdateSettingsFile {
+                    path: ".github/settings.yml".to_string(),
+                    branch: bp.branch.clone(),
+                    required_approvals: bp.required_approvals,
+                    ensure_branches_block: has_sec008,
+                    ensure_pr_reviews: has_sec009,
+                    ensure_status_checks: has_sec010,
+                },
+            )
+            .with_details(details),
+        )
+    }
+
     /// Plan branch protection configuration if needed
     ///
     /// Checks the current branch protection status and creates an action only if
@@ -527,6 +644,86 @@ impl ActionPlanner {
         .with_details(details)
     }
 
+    /// The effective provider for this run: an explicit `provider` in config
+    /// (`.repolens.toml`'s `provider` key / `--provider` CLI flag) always
+    /// wins; otherwise fall back to auto-detecting from the git remote, and
+    /// finally to [`Provider::GitHub`]. Mirrors `providers::for_config`'s own
+    /// resolution so the two never disagree about which provider is active.
+    fn effective_provider(&self) -> Provider {
+        self.config
+            .provider
+            .unwrap_or_else(|| crate::providers::detect_provider_from_remote().unwrap_or_default())
+    }
+
+    /// Whether the effective provider supports the GitHub-only repository
+    /// settings toggles (discussions / vulnerability alerts / automated
+    /// security fixes).
+    ///
+    /// Review bug #9 coordination: `GitLabProvider::set_repo_settings`
+    /// returns `Err` when any of these three fields are requested (GitLab has
+    /// no equivalent), so planning them for a GitLab repository would create
+    /// an action that can never succeed. `enable_issues`/`enable_wiki` ARE
+    /// settable on GitLab and are not gated by this.
+    fn supports_github_only_settings(&self) -> bool {
+        self.effective_provider() == Provider::GitHub
+    }
+
+    /// Pure computation of which repository-settings fields need to change,
+    /// given already-fetched provider state.
+    ///
+    /// Extracted out of `plan_github_settings_if_needed` so the two review-bug
+    /// fixes it encodes -- #14 (fail-safe error fallback) and #9 (don't plan
+    /// GitHub-only toggles for GitLab) -- can be pinned with a plain unit test
+    /// that doesn't require a live, authenticated provider.
+    ///
+    /// Returns `(needs_discussions, needs_issues, needs_wiki,
+    /// needs_vuln_alerts, needs_auto_fixes)`.
+    fn compute_settings_needs(
+        gs: &GitHubSettingsConfig,
+        current_issues_enabled: bool,
+        current_wiki_enabled: bool,
+        current_discussions_enabled: bool,
+        vuln_alerts: Result<bool, crate::error::RepoLensError>,
+        auto_fixes: Result<bool, crate::error::RepoLensError>,
+        github_only_toggles_supported: bool,
+    ) -> (bool, bool, bool, bool, bool) {
+        let needs_vuln_alerts = github_only_toggles_supported && {
+            let current = vuln_alerts.unwrap_or_else(|e| {
+                tracing::debug!("Could not check vulnerability alerts status: {:?}", e);
+                // Bug #14: fail SAFE. An error means we don't know the
+                // current state; assuming it's already enabled makes
+                // `needs = current != desired` silently `false` when desired
+                // is `true`, under-protecting the repo. Assume NOT protected
+                // instead, so the fix gets planned.
+                false
+            });
+            current != gs.vulnerability_alerts
+        };
+
+        let needs_auto_fixes = github_only_toggles_supported && {
+            let current = auto_fixes.unwrap_or_else(|e| {
+                tracing::debug!("Could not check automated security fixes status: {:?}", e);
+                false
+            });
+            current != gs.automated_security_fixes
+        };
+
+        let needs_discussions =
+            github_only_toggles_supported && current_discussions_enabled != gs.discussions;
+
+        // Issues/wiki ARE settable on every provider -- never gated.
+        let needs_issues = current_issues_enabled != gs.issues;
+        let needs_wiki = current_wiki_enabled != gs.wiki;
+
+        (
+            needs_discussions,
+            needs_issues,
+            needs_wiki,
+            needs_vuln_alerts,
+            needs_auto_fixes,
+        )
+    }
+
     /// Plan GitHub repository settings updates if needed
     ///
     /// Checks the current repository settings and creates an action only if
@@ -539,66 +736,60 @@ impl ActionPlanner {
         &self,
     ) -> Result<Option<Action>, crate::error::RepoLensError> {
         let gs = &self.config.actions.github_settings;
+        let github_only_toggles_supported = self.supports_github_only_settings();
 
         // Try to get current repository settings
         let provider = match crate::providers::for_config(&self.config) {
             Some(p) => p,
             None => {
-                // If no provider is available, still plan the action
-                // (it will fail gracefully during apply)
-                return Ok(Some(self.create_github_settings_action()));
+                // If no provider is available, still plan the action (it
+                // will fail gracefully during apply), but never for
+                // GitHub-only toggles when the effective provider is GitLab
+                // (review bug #9).
+                return Ok(Some(self.create_github_settings_action_filtered(
+                    github_only_toggles_supported,
+                    true,
+                    true,
+                    github_only_toggles_supported,
+                    github_only_toggles_supported,
+                )));
             }
         };
 
         let current_settings = match provider.get_repo_settings() {
             Ok(settings) => settings,
             Err(_) => {
-                // Error fetching settings, plan the action to be safe
-                return Ok(Some(self.create_github_settings_action()));
+                // Error fetching settings, plan the action to be safe (same
+                // GitHub-only gating as above).
+                return Ok(Some(self.create_github_settings_action_filtered(
+                    github_only_toggles_supported,
+                    true,
+                    true,
+                    github_only_toggles_supported,
+                    github_only_toggles_supported,
+                )));
             }
         };
 
-        // Check vulnerability alerts
-        let current_vuln_alerts = match provider.has_vulnerability_alerts() {
-            Ok(enabled) => enabled,
-            Err(e) => {
-                tracing::debug!("Could not check vulnerability alerts status: {:?}", e);
-                // If we can't check, assume it needs to be set (safer)
-                true
-            }
-        };
-        let needs_vuln_alerts = current_vuln_alerts != gs.vulnerability_alerts;
-
-        // Check automated security fixes
-        let current_auto_fixes = match provider.has_automated_security_fixes() {
-            Ok(enabled) => enabled,
-            Err(e) => {
-                tracing::debug!("Could not check automated security fixes status: {:?}", e);
-                // If we can't check, assume it needs to be set (safer)
-                true
-            }
-        };
-        let needs_auto_fixes = current_auto_fixes != gs.automated_security_fixes;
-
-        // Check discussions
-        let needs_discussions = current_settings.has_discussions_enabled != gs.discussions;
-
-        // Check issues (if configured)
-        let needs_issues = current_settings.has_issues_enabled != gs.issues;
-
-        // Check wiki (if configured)
-        let needs_wiki = current_settings.has_wiki_enabled != gs.wiki;
+        let (needs_discussions, needs_issues, needs_wiki, needs_vuln_alerts, needs_auto_fixes) =
+            Self::compute_settings_needs(
+                gs,
+                current_settings.has_issues_enabled,
+                current_settings.has_wiki_enabled,
+                current_settings.has_discussions_enabled,
+                provider.has_vulnerability_alerts(),
+                provider.has_automated_security_fixes(),
+                github_only_toggles_supported,
+            );
 
         tracing::debug!(
-            "GitHub settings check: discussions={} (current={}, desired={}), vuln_alerts={} (current={}, desired={}), auto_fixes={} (current={}, desired={})",
+            "GitHub settings check: discussions={} (current={}, desired={}), vuln_alerts={} (desired={}), auto_fixes={} (desired={})",
             needs_discussions,
             current_settings.has_discussions_enabled,
             gs.discussions,
             needs_vuln_alerts,
-            current_vuln_alerts,
             gs.vulnerability_alerts,
             needs_auto_fixes,
-            current_auto_fixes,
             gs.automated_security_fixes
         );
 
@@ -615,39 +806,6 @@ impl ActionPlanner {
         } else {
             Ok(None)
         }
-    }
-
-    /// Create a GitHub settings action with all settings
-    fn create_github_settings_action(&self) -> Action {
-        let gs = &self.config.actions.github_settings;
-
-        let settings = GitHubRepoSettings {
-            enable_discussions: Some(gs.discussions),
-            enable_issues: Some(gs.issues),
-            enable_wiki: Some(gs.wiki),
-            enable_vulnerability_alerts: Some(gs.vulnerability_alerts),
-            enable_automated_security_fixes: Some(gs.automated_security_fixes),
-        };
-
-        let mut details = Vec::new();
-
-        if gs.discussions {
-            details.push("Enable discussions".to_string());
-        }
-        if gs.vulnerability_alerts {
-            details.push("Enable vulnerability alerts".to_string());
-        }
-        if gs.automated_security_fixes {
-            details.push("Enable automated security fixes".to_string());
-        }
-
-        Action::new(
-            "github-settings",
-            "github",
-            "Update repository settings",
-            ActionOperation::UpdateRepoSettings { settings },
-        )
-        .with_details(details)
     }
 
     /// Create a GitHub settings action with only settings that need to be changed
@@ -1133,7 +1291,11 @@ mod tests {
         config.actions.github_settings.automated_security_fixes = true;
 
         let planner = ActionPlanner::new(config);
-        let action = planner.create_github_settings_action();
+        // All fields flagged as "needing" a change is equivalent to the
+        // old unconditional `create_github_settings_action` helper (removed
+        // as dead code once every call site started routing through the
+        // filtered variant for the #9/#14 fixes).
+        let action = planner.create_github_settings_action_filtered(true, true, true, true, true);
 
         assert_eq!(action.id(), "github-settings");
 
@@ -1461,6 +1623,387 @@ mod tests {
         );
     }
 
+    // ===== T10b regression tests: bugs #9, #12, #13, #14 =====
+
+    /// Regression test for review bug #13: FILE002 (.gitignore entirely
+    /// absent) was never wired to any remediation -- `plan_gitignore_update`
+    /// only reads FILE003 (missing recommended entries in an EXISTING file).
+    /// Fails before the fix (no "gitignore-create" action exists at all),
+    /// passes after `plan_gitignore_creation` is wired in.
+    #[tokio::test]
+    async fn test_file002_missing_gitignore_plans_creation() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "FILE002",
+            "files",
+            Severity::Warning,
+            ".gitignore file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        assert!(
+            plan.actions().iter().any(|a| a.id() == "gitignore-create"),
+            "FILE002 (.gitignore entirely absent) must plan a remediation"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_file002_gitignore_create_disabled_by_config() {
+        let mut config = Config::default();
+        config.actions.gitignore = false;
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "FILE002",
+            "files",
+            Severity::Warning,
+            ".gitignore file is missing",
+        ));
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        assert!(!plan.actions().iter().any(|a| a.id() == "gitignore-create"));
+    }
+
+    /// Regression test for review bug #14: on a provider error, the OLD
+    /// fallback assumed the setting was ALREADY enabled (`Err(_) => true`),
+    /// which under-protects when `desired == true` (needs = current != desired
+    /// silently becomes `false`). Fails before the fix (needs_vuln_alerts is
+    /// `false` despite the error), passes after the fail-safe fallback
+    /// (`Err(_) => false`) is applied.
+    #[test]
+    fn test_vulnerability_alerts_error_fails_safe_plans_fix() {
+        let gs = GitHubSettingsConfig {
+            vulnerability_alerts: true,
+            ..GitHubSettingsConfig::default()
+        };
+        let err =
+            crate::error::RepoLensError::Provider(crate::error::ProviderError::CommandFailed {
+                command: "gh api ...".to_string(),
+            });
+
+        let (_, _, _, needs_vuln_alerts, _) = ActionPlanner::compute_settings_needs(
+            &gs,
+            gs.issues,
+            gs.wiki,
+            gs.discussions,
+            Err(err),
+            Ok(gs.automated_security_fixes),
+            true,
+        );
+
+        assert!(
+            needs_vuln_alerts,
+            "a provider error must fail SAFE: plan the fix rather than assume it's already enabled"
+        );
+    }
+
+    /// Same fail-safe requirement for automated security fixes.
+    #[test]
+    fn test_automated_security_fixes_error_fails_safe_plans_fix() {
+        let gs = GitHubSettingsConfig {
+            automated_security_fixes: true,
+            ..GitHubSettingsConfig::default()
+        };
+        let err =
+            crate::error::RepoLensError::Provider(crate::error::ProviderError::CommandFailed {
+                command: "gh api ...".to_string(),
+            });
+
+        let (_, _, _, _, needs_auto_fixes) = ActionPlanner::compute_settings_needs(
+            &gs,
+            gs.issues,
+            gs.wiki,
+            gs.discussions,
+            Ok(gs.vulnerability_alerts),
+            Err(err),
+            true,
+        );
+
+        assert!(
+            needs_auto_fixes,
+            "a provider error must fail SAFE: plan the fix rather than assume it's already enabled"
+        );
+    }
+
+    #[test]
+    fn test_settings_needs_ignores_github_only_toggles_when_unsupported() {
+        // When the effective provider doesn't support the GitHub-only
+        // toggles (github_only_toggles_supported = false), none of
+        // discussions/vuln-alerts/auto-fixes should ever be flagged as
+        // "needing" a change, even when their current/desired values
+        // clearly differ.
+        let gs = GitHubSettingsConfig {
+            discussions: true,
+            vulnerability_alerts: true,
+            automated_security_fixes: true,
+            ..GitHubSettingsConfig::default()
+        };
+
+        let (needs_discussions, _, _, needs_vuln_alerts, needs_auto_fixes) =
+            ActionPlanner::compute_settings_needs(
+                &gs,
+                gs.issues,
+                gs.wiki,
+                false, // current discussions disabled, desired true -> would need update if supported
+                Ok(false),
+                Ok(false),
+                false,
+            );
+
+        assert!(!needs_discussions);
+        assert!(!needs_vuln_alerts);
+        assert!(!needs_auto_fixes);
+    }
+
+    #[test]
+    fn test_settings_needs_flags_github_only_toggles_when_supported() {
+        // Mirror of the test above with `github_only_toggles_supported =
+        // true` (e.g. the effective provider is GitHub): the same current/
+        // desired mismatch DOES need an update.
+        let gs = GitHubSettingsConfig {
+            discussions: true,
+            vulnerability_alerts: true,
+            automated_security_fixes: true,
+            ..GitHubSettingsConfig::default()
+        };
+
+        let (needs_discussions, _, _, needs_vuln_alerts, needs_auto_fixes) =
+            ActionPlanner::compute_settings_needs(
+                &gs,
+                gs.issues,
+                gs.wiki,
+                false,
+                Ok(false),
+                Ok(false),
+                true,
+            );
+
+        assert!(needs_discussions);
+        assert!(needs_vuln_alerts);
+        assert!(needs_auto_fixes);
+    }
+
+    /// Regression test for review bug #9 (planner-side coordination with
+    /// T10a): `GitLabProvider::set_repo_settings` returns `Err` when
+    /// discussions/vulnerability-alerts/automated-security-fixes are
+    /// requested (GitLab has no equivalent). The planner must never emit an
+    /// action that sets those fields for a GitLab repository -- otherwise
+    /// `apply` plans an action that can never succeed ("never converges").
+    /// Fails before the fix (the no-provider fallback unconditionally set all
+    /// five fields via `create_github_settings_action`), passes after the
+    /// GitHub-only gating is applied to both fallback branches.
+    #[tokio::test]
+    async fn test_gitlab_provider_does_not_plan_github_only_settings_fields() {
+        let config = Config {
+            provider: Some(crate::providers::Provider::GitLab),
+            ..Config::default()
+        };
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        let plan = planner.create_plan(&results).await.unwrap();
+
+        let action = plan
+            .actions()
+            .iter()
+            .find(|a| a.id() == "github-settings")
+            .expect("issues/wiki are still settable on GitLab, so the action is still planned");
+
+        match action.operation() {
+            ActionOperation::UpdateRepoSettings { settings } => {
+                assert!(
+                    settings.enable_discussions.is_none(),
+                    "discussions has no GitLab equivalent -- must not be planned"
+                );
+                assert!(
+                    settings.enable_vulnerability_alerts.is_none(),
+                    "vulnerability alerts have no GitLab equivalent -- must not be planned"
+                );
+                assert!(
+                    settings.enable_automated_security_fixes.is_none(),
+                    "automated security fixes have no GitLab equivalent -- must not be planned"
+                );
+            }
+            _ => panic!("Expected UpdateRepoSettings operation"),
+        }
+    }
+
+    // Note: no "GitHub provider still plans all fields" control test here --
+    // this environment has an authenticated `gh` CLI with access to a real
+    // repository, so `for_config`/`get_repo_settings` reach the LIVE
+    // GitHub API and the "needs" outcome legitimately depends on that
+    // repository's actual current settings (not a fixed expectation). The
+    // pure-function tests above (`test_settings_needs_ignores_github_only_toggles_when_unsupported`
+    // and its sibling with `github_only_toggles_supported: true`, implied by
+    // `test_vulnerability_alerts_error_fails_safe_plans_fix`) already cover
+    // the GitHub-only-toggles-supported branch deterministically.
+
+    // ===== Review bug #12: real remediation for SEC008/009/010 =====
+
+    #[tokio::test]
+    async fn test_plan_settings_file_update_for_sec008() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "SEC008",
+            "security",
+            Severity::Warning,
+            "No branch protection rules defined in settings.yml",
+        ));
+
+        let action = planner
+            .plan_settings_file_update_if_needed(&results)
+            .expect("SEC008 must plan an UpdateSettingsFile action");
+
+        assert_eq!(action.id(), "settings-file-update");
+        match action.operation() {
+            ActionOperation::UpdateSettingsFile {
+                ensure_branches_block,
+                ensure_pr_reviews,
+                ensure_status_checks,
+                ..
+            } => {
+                assert!(*ensure_branches_block);
+                // SEC009/SEC010 findings weren't present, but the merge
+                // widens both when the branches block itself is missing.
+                assert!(!*ensure_pr_reviews);
+                assert!(!*ensure_status_checks);
+            }
+            _ => panic!("Expected UpdateSettingsFile operation"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_settings_file_update_for_sec009_and_sec010() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "SEC009",
+            "security",
+            Severity::Warning,
+            "required_pull_request_reviews not configured in branch protection",
+        ));
+        results.add_finding(Finding::new(
+            "SEC010",
+            "security",
+            Severity::Warning,
+            "required_status_checks not configured in branch protection",
+        ));
+
+        let action = planner
+            .plan_settings_file_update_if_needed(&results)
+            .expect("SEC009/SEC010 must plan an UpdateSettingsFile action");
+
+        match action.operation() {
+            ActionOperation::UpdateSettingsFile {
+                ensure_branches_block,
+                ensure_pr_reviews,
+                ensure_status_checks,
+                ..
+            } => {
+                assert!(!*ensure_branches_block);
+                assert!(*ensure_pr_reviews);
+                assert!(*ensure_status_checks);
+            }
+            _ => panic!("Expected UpdateSettingsFile operation"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_plan_settings_file_update_none_when_no_findings() {
+        let config = Config::default();
+        let planner = ActionPlanner::new(config);
+        let results = AuditResults::new("test-repo", "opensource");
+
+        assert!(
+            planner
+                .plan_settings_file_update_if_needed(&results)
+                .is_none()
+        );
+    }
+
+    /// End-to-end regression test for review bug #12: an EXISTING
+    /// `.github/settings.yml` missing the `branches:` block gets a REAL
+    /// remediation planned and, once executed, the security rules stop
+    /// reporting SEC008/009/010 -- and the user's original content survives
+    /// the merge (no clobbering). Fails before the fix (no "settings-file-
+    /// update" action/`UpdateSettingsFile` operation existed at all).
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn test_sec008_existing_settings_file_gets_real_remediation() {
+        use crate::rules::categories::security::SecurityRules;
+        use crate::rules::engine::RuleCategory;
+        use crate::scanner::Scanner;
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path();
+        let github_dir = root.join(".github");
+        fs::create_dir_all(&github_dir).unwrap();
+        fs::write(
+            github_dir.join("settings.yml"),
+            "repository:\n  name: my-repo\n  description: A test repo\n",
+        )
+        .unwrap();
+
+        let original_dir =
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+        std::env::set_current_dir(root).expect("failed to switch to temp dir");
+
+        let config = Config::default();
+        let planner = ActionPlanner::new(config.clone());
+
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "SEC008",
+            "security",
+            Severity::Warning,
+            "No branch protection rules defined in settings.yml",
+        ));
+
+        let action = planner
+            .plan_settings_file_update_if_needed(&results)
+            .expect("SEC008 on an EXISTING settings.yml must plan a real edit action");
+
+        let mut plan = ActionPlan::new();
+        plan.add(action);
+
+        let executor = super::super::executor::ActionExecutor::new(config);
+        let exec_results = executor.execute(&plan).await.unwrap();
+
+        // Re-run the security rules against the now-merged file.
+        let scanner = Scanner::new(root.to_path_buf());
+        let rule_config = Config::default();
+        let findings = SecurityRules.run(&scanner, &rule_config).await.unwrap();
+        let merged = fs::read_to_string(github_dir.join("settings.yml")).unwrap();
+
+        std::env::set_current_dir(&original_dir).ok();
+
+        assert!(
+            exec_results.iter().all(|r| r.success),
+            "settings-file-update action must succeed: {:?}",
+            exec_results
+        );
+        assert!(!findings.iter().any(|f| f.rule_id == "SEC008"));
+        assert!(!findings.iter().any(|f| f.rule_id == "SEC009"));
+        assert!(!findings.iter().any(|f| f.rule_id == "SEC010"));
+        assert!(
+            merged.contains("my-repo"),
+            "original user content must survive the merge"
+        );
+    }
+
     /// Contract test: every rule_id the six kept categories (docs, files, git,
     /// codeowners, security, metadata) can emit must either have a remediation
     /// path (an `Action` operation that addresses it) or appear on an explicit,
@@ -1528,12 +2071,15 @@ mod tests {
             "DOC008",  // CHANGELOG.md
             "GIT002",  // .gitattributes
             "CODE001", // CODEOWNERS
-            "SEC007",  // .github/settings.yml
+            "SEC007",  // .github/settings.yml (freshly created, already satisfies SEC008-010)
+            "FILE002", // .gitignore missing entirely -> create it (review bug #13)
             // UpdateGitignore (executor creates or appends to .gitignore)
-            "FILE002", // .gitignore missing -> create it
             "FILE003", // .gitignore missing recommended entry -> append
             "GIT003",  // sensitive file untracked -> add to .gitignore
-            // ConfigureProtectedBranch (settings.yml branch-protection gaps)
+            // UpdateSettingsFile (merges missing sections into an EXISTING
+            // .github/settings.yml -- review bug #12; NOT
+            // ConfigureProtectedBranch, which configures live branch
+            // protection via the provider API and does not touch this file)
             "SEC008", "SEC009", "SEC010",
             // UpdateRepoSettings (GitHub security/analysis toggles)
             "SEC011", "SEC012", "SEC013", "SEC014", "SEC015", "SEC016", "SEC017",
