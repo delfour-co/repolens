@@ -154,7 +154,7 @@ fn select_preset() -> Result<Preset, RepoLensError> {
 
     let selection = Select::new()
         .with_prompt("Select a preset")
-        .items(&presets.iter().map(|(_, desc)| *desc).collect::<Vec<_>>())
+        .items(presets.iter().map(|(_, desc)| *desc).collect::<Vec<_>>())
         .default(0)
         .interact()
         .map_err(|e| {
