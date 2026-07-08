@@ -38,7 +38,7 @@ octocrab = "0.41"
 which = "6"
 
 # Templating
-tera = "1"
+tera = "2"
 minijinja = "2"
 
 # Validation
