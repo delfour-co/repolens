@@ -31,7 +31,7 @@ sha2 = "0.10"
 similar = "2"
 
 # Paths
-dirs = "5"
+dirs = "6"
 
 # GitHub / HTTP
 octocrab = "0.41"
