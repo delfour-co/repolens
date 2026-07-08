@@ -39,7 +39,10 @@ What's in the codebase right now:
   - `codeowners` — CODEOWNERS file presence and syntax
   - `metadata` — repository description, topics/tags, homepage
 - **5 output formats:** terminal (colored), JSON, Markdown, SARIF, HTML
-- **Edition 2024, MSRV 1.85**, 726 unit tests passing (154 bin + 572 core)
+- **Edition 2024, MSRV 1.85**, 916 tests passing, 0 failed, 5 ignored (251 in the `repolens` bin
+  crate — 170 unit + 81 integration across `e2e_test`/`integration_test`/`providers_test`/
+  `security_test`/`utils_test`, 4 ignored; 665 in `repolens-core` — 638 unit + 27 doctests, 1
+  ignored)
 - **2 CI workflows:** `ci.yml` and `release.yml`
 
 ## Product in one line

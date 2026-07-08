@@ -9,7 +9,7 @@ Ce guide vous explique comment utiliser RepoLens pour auditer vos dépôts GitHu
 
 ## Commandes principales
 
-RepoLens propose sept commandes :
+RepoLens propose neuf commandes :
 
 - `init` : Initialiser la configuration
 - `plan` : Générer un plan d'audit
@@ -18,6 +18,13 @@ RepoLens propose sept commandes :
 - `schema` : Afficher ou exporter le JSON Schema des rapports d'audit
 - `compare` : Comparer deux rapports d'audit JSON
 - `install-hooks` : Installer ou supprimer les Git hooks
+- `completions` : Générer les complétions shell
+- `generate-man` : Générer les pages de manuel
+
+`plan`, `report`, et `apply` acceptent un flag `--provider {github|gitlab}` pour choisir
+explicitement la plateforme d'hébergement à auditer ; sans ce flag, le provider est auto-détecté
+depuis le remote `origin` du dépôt (voir [Multi-provider](#multi-provider-github--gitlab)
+ci-dessous).
 
 ## Initialisation
 
@@ -51,6 +58,28 @@ repolens plan
 ```
 
 Affiche les résultats de l'audit dans le terminal avec un formatage coloré.
+
+### Multi-provider (GitHub / GitLab)
+
+RepoLens audite deux plateformes d'hébergement : **GitHub** (via `gh`/`GITHUB_TOKEN`) et
+**GitLab** (via `glab`/`GITLAB_TOKEN`). Le provider est déterminé, par ordre de priorité :
+
+1. Le flag `--provider {github|gitlab}` passé à `plan`, `report` ou `apply` ;
+2. La clé `provider = "github"` (ou `"gitlab"`) dans `.repolens.toml` ;
+3. À défaut, auto-détection depuis l'URL du remote `origin` (GitHub par défaut si la détection
+   échoue).
+
+```bash
+# Forcer l'audit d'un dépôt GitLab, même si le remote n'est pas hébergé sur gitlab.com
+repolens plan --provider gitlab
+
+# Auditer un dépôt GitHub explicitement
+repolens plan --provider github
+```
+
+Les vérifications qui n'ont pas d'équivalent faisant autorité sur l'autre plateforme (par exemple
+SEC013-017, qui reposent sur des API spécifiques à GitHub) sont simplement ignorées pour ce
+provider plutôt que de générer un faux résultat.
 
 ### Auditer un autre répertoire
 
@@ -94,8 +123,8 @@ repolens plan -v
 # Mode très verbeux (-vv) : affiche le timing par catégorie
 repolens plan -vv
 # Sortie:
-# [secrets] 245ms
 # [files] 12ms
+# [docs] 45ms
 # [security] 890ms
 # Total: 1.23s
 
@@ -107,15 +136,27 @@ Le niveau de verbosité peut aussi être configuré via la variable d'environnem
 
 ### Filtrer par catégories
 
+Les 6 catégories valides sont : `files`, `docs`, `security`, `git`, `codeowners`, `metadata`.
+
 ```bash
 # Auditer uniquement certaines catégories
-repolens plan --only secrets,files
+repolens plan --only files,docs
 
-# Auditer les dépendances et la sécurité
-repolens plan --only dependencies,security
+# Auditer uniquement la sécurité
+repolens plan --only security
 
 # Exclure certaines catégories
-repolens plan --exclude quality
+repolens plan --skip metadata
+```
+
+Fournir une catégorie inconnue ou retirée (par exemple `secrets` ou `dependencies`, supprimées en
+v3.0.0) fait échouer la commande avec une erreur — `--only`/`--skip` ne l'ignorent plus
+silencieusement :
+
+```bash
+repolens plan --only secrets
+# error: invalid value 'secrets' for '--only <ONLY>'
+#   [possible values: files, docs, security, git, codeowners, metadata]
 ```
 
 ## Application des correctifs
@@ -278,7 +319,11 @@ repolens install-hooks --remove
 ```
 
 **Comportement des hooks** :
-- **pre-commit** : Scanne les fichiers staged pour détecter les secrets. Si des secrets sont détectés, le commit est annulé.
+- **pre-commit** : Scanne d'abord le diff staged à la recherche de secrets à haute confiance
+  (clés privées, tokens AWS/GitHub/GitLab/Slack/Google, etc. — un scan dédié, auto-contenu dans le
+  hook, indépendant de la catégorie de règles `security`), puis lance un audit rapide
+  `files`/`git` (hygiène `.gitignore`, fichiers sensibles trackés). Si un secret ou un problème
+  d'hygiène est détecté, le commit est annulé.
 - **pre-push** : Lance un audit complet avant le push. Si des problèmes sont trouvés, le push est annulé.
 
 Les hooks peuvent être contournés avec `--no-verify` (ex: `git commit --no-verify`).
@@ -330,27 +375,23 @@ repolens plan --format sarif --output repolens-results.sarif
 # Publier les résultats dans GitHub Security
 ```
 
-### Exemple 3 : Audit ciblé sur les secrets
+### Exemple 3 : Audit ciblé sur la sécurité des paramètres du dépôt
 
 ```bash
-# Vérifier uniquement les secrets exposés
-repolens plan --only secrets -vv
+# Vérifier uniquement la configuration de sécurité (protection de branche,
+# secret scanning GitHub, permissions Actions, etc.)
+repolens plan --only security -vv
 
-# Si des secrets sont trouvés, les corriger manuellement
-# puis relancer l'audit
+# Appliquer les correctifs disponibles (settings.yml, réglages GitHub/GitLab)
+repolens apply --only security
 ```
 
-### Exemple 4 : Vérification de la sécurité des dépendances
+> **Note** : RepoLens n'est pas un scanner de secrets ni de dépendances. Pour ces besoins, utilisez
+> un outil dédié (gitleaks, Dependabot, `cargo audit`/`cargo deny`, osv-scanner, etc.) ; le
+> hook `pre-commit` installé par `repolens install-hooks` embarque toutefois un scan de secrets à
+> haute confiance sur le diff staged (voir [Git Hooks](#git-hooks)).
 
-```bash
-# Vérifier les vulnérabilités dans les dépendances
-repolens plan --only dependencies
-
-# Vérifier la sécurité globale (code + dépendances)
-repolens plan --only security,dependencies -v
-```
-
-### Exemple 5 : Utilisation via Docker
+### Exemple 4 : Utilisation via Docker
 
 ```bash
 # Audit rapide du répertoire courant
@@ -366,7 +407,7 @@ docker run --rm \
   ghcr.io/systm-d/repolens plan
 ```
 
-### Exemple 6 : Configuration via variables d'environnement
+### Exemple 5 : Configuration via variables d'environnement
 
 ```bash
 # Configurer le preset et le niveau de verbosité
@@ -378,19 +419,6 @@ repolens plan
 
 # Les options CLI surchargent les variables d'environnement
 repolens plan --preset strict  # Utilise strict malgré REPOLENS_PRESET=enterprise
-```
-
-### Exemple 5 : Utilisation des règles personnalisées
-
-```bash
-# Définir des règles personnalisées dans .repolens.toml
-# Voir la page [Règles personnalisées](custom-rules.md) pour plus de détails
-
-# Lancer l'audit avec les règles personnalisées
-repolens plan --only custom
-
-# Ou inclure les règles personnalisées dans un audit complet
-repolens plan
 ```
 
 ## Configuration avancée
@@ -458,15 +486,15 @@ Le mode verbose affiche maintenant le temps d'exécution par catégorie :
 
 ```bash
 repolens plan -vv
-# [secrets] 245ms
 # [files] 12ms
+# [git] 8ms
+# [security] 890ms
 # Total: 1.23s
 ```
 
 ### Hygiène Git
 
-Nouvelles règles pour l'hygiène du dépôt Git :
-- **GIT001** : Fichiers binaires volumineux (devrait utiliser Git LFS)
+Règles pour l'hygiène du dépôt Git :
 - **GIT002** : Fichier `.gitattributes` absent
 - **GIT003** : Fichiers sensibles trackés
 
@@ -474,13 +502,6 @@ Nouvelles règles pour l'hygiène du dépôt Git :
 
 Vérification de la configuration de protection des branches :
 - **SEC007-010** : Validation de `.github/settings.yml`
-
-### Nouveaux écosystèmes
-
-9 écosystèmes supportés pour le scan de vulnérabilités :
-- Rust, Node.js, Python, Go (existants)
-- .NET (NuGet), Ruby (Bundler), Dart/Flutter (Pub)
-- Swift (SPM), iOS (CocoaPods) - sans support OSV
 
 ### Distribution Docker
 
@@ -500,7 +521,9 @@ Installation facilitée via :
 
 ### Intégration CI/CD
 
-Templates prêts à l'emploi pour GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps.
+RepoLens s'intègre en CI/CD via l'image Docker (`ghcr.io/systm-d/repolens`), le binaire installé
+directement dans le job, ou l'action GitHub composite officielle du dépôt (`systm-d/repolens@main`
+— voir [Intégration CI/CD](ci-cd-integration.md)).
 
 ### Codes de sortie standardisés
 
@@ -509,10 +532,10 @@ RepoLens utilise des codes de sortie standardisés pour l'intégration CI/CD :
 | Code | Signification | Exemple |
 |------|--------------|---------|
 | 0 | Succès | Audit terminé, pas de problèmes critiques |
-| 1 | Problèmes critiques | Secrets exposés, vulnérabilités critiques |
+| 1 | Problèmes critiques | Licence absente (DOC004) |
 | 2 | Avertissements | Fichiers manquants, findings non critiques |
 | 3 | Erreur d'exécution | Fichier non trouvé, erreur réseau |
-| 4 | Arguments invalides | Catégorie inconnue, preset invalide |
+| 4 | Arguments invalides | Catégorie inconnue ou retirée, preset invalide |
 
 ```bash
 # Exemple d'utilisation en CI/CD
@@ -532,29 +555,19 @@ Le fichier de configuration `.repolens.toml` est automatiquement protégé avec 
 
 ### Validation des catégories
 
-Les catégories fournies via `--only` et `--skip` sont maintenant validées. Les catégories invalides génèrent un avertissement et sont ignorées.
+Les catégories fournies via `--only` et `--skip` sont validées par la CLI. Une catégorie inconnue
+ou retirée (par exemple une des 9 catégories supprimées en v3.0.0 : `secrets`, `dependencies`,
+`licenses`, `history`, `issues`, `docker`, `workflows`, `quality`, `custom`) fait échouer la
+commande — elle n'est plus silencieusement ignorée.
 
 ```bash
 # Les catégories valides sont :
-# secrets, files, docs, security, workflows, quality,
-# dependencies, licenses, docker, git, custom
+# files, docs, security, git, codeowners, metadata
 
-repolens plan --only secrets,invalid
-# Warning: Unknown category 'invalid' ignored. Valid categories: secrets, files, ...
+repolens plan --only invalid
+# error: invalid value 'invalid' for '--only <ONLY>'
+#   [possible values: files, docs, security, git, codeowners, metadata]
 ```
-
-### Vérification de la sécurité des dépendances
-
-RepoLens vérifie automatiquement les vulnérabilités dans vos dépendances via l'API OSV et GitHub Security Advisories.
-
-```bash
-# Vérifier les dépendances
-repolens plan --only dependencies
-```
-
-### Règles personnalisées
-
-Créez vos propres règles d'audit via des patterns regex ou des commandes shell. Voir la page [Règles personnalisées](custom-rules.md) pour plus de détails.
 
 ### Couverture de tests
 
@@ -569,5 +582,4 @@ Le changelog est généré automatiquement lors des releases. Voir la page [Chan
 - Consultez la [Configuration](configuration.md) pour personnaliser RepoLens
 - Découvrez les [Presets](presets.md) disponibles
 - Explorez les [Catégories de règles](rule-categories.md)
-- Apprenez à créer des [Règles personnalisées](custom-rules.md)
 - Découvrez le [Changelog Automatique](automatic-changelog.md)

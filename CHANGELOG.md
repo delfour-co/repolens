@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - Unreleased
+## [3.0.0] - 2026-07-08
 
 This release recenters RepoLens as an auto-configurator for GitHub and GitLab
 repositories. Every kept check drives a reviewable, applicable action (the
@@ -26,6 +26,14 @@ concerns overlap with dedicated tooling.
 - Provider-agnostic action catalog: `CreateFile`, `UpdateGitignore`,
   `ConfigureProtectedBranch`, `UpdateRepoSettings`, and the new
   `UpdateRepoMetadata` (repository description and topics/tags).
+- `UpdateSettingsFile` action: merges missing branch-protection sections into
+  an *existing* `.github/settings.yml` (SEC008-010) instead of only being able
+  to create the file from scratch, preserving any content already present.
+- `UpdateActionsSecuritySettings` action (GitHub-only): real remediation for
+  secret scanning, push protection, Actions allowed-actions policy, default
+  workflow permissions, and fork-PR-workflow approval (SEC013-017). GitLab has
+  no equivalent API, so this action is never planned for a GitLab-provider
+  audit.
 - The generated pre-commit hook now runs a dedicated, self-contained
   staged-diff secret scan (private keys, AWS/GitHub/GitLab/Slack/Google/generic
   API tokens) in addition to the `files`/`git` hygiene check, restoring the
@@ -63,6 +71,43 @@ concerns overlap with dedicated tooling.
 - The audit-report JSON Schema's `Metadata` definition now requires a
   `provider` property; reports validated against the schema before this change
   will need to add it (or re-generate with `repolens report`).
+
+### Fixed
+
+Fifteen bugs found during the v3.0.0 recentering's own code review, all with
+regression tests:
+
+- The generated pre-commit hook now restores a dedicated content-secret scan
+  (was silently dropped when the hook was rewritten off the removed `secrets`
+  category).
+- `--only`/`--skip` with a removed or unknown category now returns a CLI error
+  instead of silently falling back to running every category.
+- GitLab `ConfigureProtectedBranch` now sends the full protection payload (was
+  sending 1 of 8 fields) and no longer leaves a branch unprotected when the
+  required delete-then-recreate sequence fails partway through.
+- An explicit `--provider github`/`--provider gitlab` flag is no longer
+  silently overridden by remote-URL auto-detection.
+- GitLab remote URLs with a custom SSH port, and GitHub HTTPS remote URLs with
+  embedded credentials, are now parsed correctly instead of producing a wrong
+  host/404.
+- `apply --create-pr` now opens a GitHub pull request or a GitLab merge
+  request depending on the selected provider, instead of always assuming
+  GitHub (which left an orphan branch with no merge request on GitLab).
+- GitLab `set_repo_settings` no longer plans a settings action it can never
+  apply; GitHub `set_repo_settings` now honors `enable_issues` and
+  `enable_wiki`.
+- SEC008-010 and SEC013-017 are now genuinely remediable (`UpdateSettingsFile`,
+  `UpdateActionsSecuritySettings`, see Added) instead of being claimed
+  remediable by the zero-report-only contract test while having no actual
+  action wired up.
+- FILE002 (`.gitignore` entirely absent) now plans a real `.gitignore`
+  creation instead of silently having no remediation.
+- Provider-read error fallbacks now fail safe (assume protection is *not*
+  already in place) instead of assuming the safer/stricter state and
+  under-protecting the repository.
+- The `.github/settings.yml` produced by the SEC007 auto-fix now includes the
+  branch-protection sections up front, so applying it no longer immediately
+  triggers a fresh SEC008 finding.
 
 ### Migration
 

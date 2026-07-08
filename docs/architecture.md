@@ -52,11 +52,10 @@ crates/
 │       ├── compare/           # Comparaison de rapports (score diff, régressions, améliorations)
 │       ├── config/            # Chargement de configuration et presets
 │       ├── rules/             # Moteur d'audit et règles
-│       │   ├── categories/    # secrets, files, docs, security, workflows, quality, licenses, dependencies, custom
-│       │   ├── patterns/      # Patterns de détection (secrets)
+│       │   ├── categories/    # files, docs, security, git, codeowners, metadata (6 catégories)
 │       │   └── engine.rs      # Moteur d'exécution
 │       ├── actions/           # Planification et exécution des correctifs
-│       ├── providers/         # Intégration APIs externes (GitHub via gh CLI)
+│       ├── providers/         # RepoProvider trait + GitHub (gh CLI) + GitLab (glab CLI)
 │       ├── scanner/           # Scan du système de fichiers et Git
 │       └── utils/             # Utilitaires (vérification des prérequis)
 └── repolens/                 # Binaire CLI (dépend de repolens-core)
@@ -126,18 +125,13 @@ Moteur d'exécution des règles d'audit.
 
 **Structure** :
 - `engine.rs` : Moteur principal
-- `categories/` : Catégories de règles
-  - `secrets.rs` : Détection de secrets
-  - `files.rs` : Vérification des fichiers
-  - `docs.rs` : Qualité de la documentation
-  - `security.rs` : Bonnes pratiques de sécurité
-  - `workflows.rs` : Validation des workflows
-  - `quality.rs` : Standards de qualité
-  - `licenses.rs` : Conformité des licences (LIC001-LIC004)
-  - `dependencies.rs` : Vulnérabilités des dépendances via OSV API (DEP001-DEP002)
-  - `custom.rs` : Règles personnalisées (regex/shell)
-- `patterns/` : Patterns de détection
-  - `secrets.rs` : Patterns de secrets
+- `categories/` : Catégories de règles (6 au total)
+  - `files.rs` : Fichiers du dépôt (.gitignore)
+  - `docs.rs` : Qualité de la documentation (README, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG)
+  - `security.rs` : Paramètres de sécurité du dépôt (protection de branche via `.github/settings.yml`, alertes de vulnérabilité, secret scanning, permissions Actions)
+  - `git.rs` : Bonnes pratiques Git (.gitattributes, fichiers sensibles)
+  - `codeowners.rs` : Présence et syntaxe du fichier CODEOWNERS
+  - `metadata.rs` : Métadonnées du dépôt (description, topics, site web)
 
 ### Actions (`crates/repolens-core/src/actions/`)
 
@@ -194,14 +188,19 @@ Gestion des Git hooks pour l'intégration dans le workflow de développement.
 
 ### Providers (`crates/repolens-core/src/providers/`)
 
-Intégration avec les APIs externes.
+Intégration avec les APIs externes, derrière le trait `RepoProvider` (seul point d'entrée vers un
+forge ; `rules/` et `actions/` ne dépendent jamais d'un provider concret).
 
 **Responsabilités** :
-- Communication avec GitHub API
-- Abstraction des APIs externes
+- Communication avec l'API GitHub ou GitLab
+- Sélection du provider (`--provider`, `.repolens.toml`, ou auto-détection depuis le remote
+  `origin`)
+- Abstraction des APIs externes derrière un trait unique
 
 **Modules** :
-- `github.rs` : Provider GitHub (via `gh` CLI)
+- `mod.rs` : Trait `RepoProvider`, énum `Provider`, sélection (`for_config`)
+- `github.rs` : Provider GitHub (`GITHUB_TOKEN` ou `gh` CLI)
+- `gitlab.rs` : Provider GitLab (`GITLAB_TOKEN` via `glab` CLI)
 
 ### Output (`crates/repolens/src/cli/output/`)
 

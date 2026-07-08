@@ -19,11 +19,15 @@ This guide provides comprehensive documentation for integrating RepoLens into yo
 
 RepoLens can be integrated into any CI/CD platform to automatically audit your repository for:
 
-- Security vulnerabilities and exposed secrets
-- Required files and documentation
-- Best practices compliance
-- License compatibility
-- Code quality standards
+- Required files and documentation (README, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG)
+- Repository security settings (branch protection, vulnerability alerts, secret scanning, Actions permissions)
+- Git hygiene (.gitattributes, sensitive files that should be gitignored)
+- CODEOWNERS presence and syntax
+- Repository metadata (description, topics, homepage)
+
+RepoLens is not a dependency, secret, or license scanner — it audits repository structure and
+hosting-platform configuration, not code content. Pair it with dedicated tools (Dependabot,
+`osv-scanner`, `gitleaks`) for those concerns.
 
 ### Key Features
 

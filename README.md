@@ -631,6 +631,8 @@ Every kept check produces actions from a small, provider-agnostic catalog that
 | `ConfigureProtectedBranch` | Configure branch protection on the hosting platform |
 | `UpdateRepoSettings` | Update repository settings via the provider |
 | `UpdateRepoMetadata` | Update repository description and topics/tags |
+| `UpdateSettingsFile` | Merge missing branch-protection sections into an existing `.github/settings.yml` (SEC008-010) |
+| `UpdateActionsSecuritySettings` | Configure GitHub secret scanning, push protection, Actions permissions, and fork-PR approval (SEC013-017, GitHub-only) |
 
 ## GitHub Action
 

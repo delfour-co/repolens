@@ -195,7 +195,9 @@ shasum -a 256 -c checksums.sha256 --ignore-missing
 
 ## Using as a GitHub Action
 
-RepoLens is available as an official GitHub Action to integrate auditing directly into your CI/CD workflows.
+RepoLens ships a composite GitHub Action directly from this repository (`action.yml` at the
+repository root) — reference it as `systm-d/repolens@main`, no separate action repository
+needed.
 
 ### Basic Usage
 
@@ -208,7 +210,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: systm-d/repolens-action@v1
+      - uses: systm-d/repolens@main
         with:
           preset: opensource
 ```
@@ -217,21 +219,21 @@ jobs:
 
 | Input | Description | Default |
 |---|---|---|
-| `preset` | Configuration preset (`opensource`, `enterprise`, `strict`) | `opensource` |
+| `preset` | Audit preset (`opensource`, `enterprise`, `strict`) | `opensource` |
 | `format` | Output format (`terminal`, `json`, `sarif`, `markdown`, `html`) | `terminal` |
-| `output` | Output file path | - |
-| `categories` | Categories to audit (comma-separated) | all |
-| `exclude` | Categories to exclude (comma-separated) | - |
-| `verbose` | Verbosity level (`0`-`3`) | `0` |
-| `fail-on-error` | Fail the workflow if issues are detected | `false` |
+| `fail-on` | Fail on severity (`critical`, `high`, `medium`, `low`, `none`) | `critical` |
+| `config` | Path to a custom `.repolens.toml` | - |
+| `version` | RepoLens version to install (or `latest`) | `latest` |
+| `upload-artifact` | Upload the report as a GitHub Actions artifact | `true` |
+| `artifact-name` | Name of the uploaded artifact | `repolens-report` |
 
 ### Available Outputs
 
 | Output | Description |
 |---|---|
-| `score` | Overall audit score |
-| `report-path` | Path to the generated report |
-| `issues-count` | Number of issues detected |
+| `report-path` | Path to the generated report file |
+| `findings-count` | Total number of findings detected |
+| `exit-code` | Exit code from the audit (`0`=success, `1`=critical findings, `2`=warnings only) |
 
 ### Advanced Example with SARIF Upload
 
@@ -244,17 +246,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: systm-d/repolens-action@v1
+      - uses: systm-d/repolens@main
         id: audit
         with:
           preset: strict
           format: sarif
-          output: repolens-results.sarif
-          fail-on-error: true
+          fail-on: critical
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: repolens-results.sarif
+          sarif_file: ${{ steps.audit.outputs.report-path }}
 ```
 
 ### Multi-Preset Audit Example
@@ -271,11 +272,10 @@ jobs:
         preset: [opensource, enterprise, strict]
     steps:
       - uses: actions/checkout@v4
-      - uses: systm-d/repolens-action@v1
+      - uses: systm-d/repolens@main
         with:
           preset: ${{ matrix.preset }}
           format: markdown
-          output: report-${{ matrix.preset }}.md
 ```
 
 See [ci-cd-integration.md](ci-cd-integration.md) for more CI/CD integration examples.

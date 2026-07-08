@@ -558,38 +558,39 @@ Votre PR sera acceptee si :
 
 ### Exemple 1 : Corriger un bug (bugfix)
 
-**Scenario** : La detection de secrets genere un faux positif pour les cles de test.
+**Scenario** : La regle GIT003 (fichiers sensibles trackes) genere un faux positif pour un fichier de fixture de test.
 
 ```bash
 # 1. Creer la branche
-git checkout -b fix/secret-detection-test-keys
+git checkout -b fix/git003-test-fixture-false-positive
 
 # 2. Localiser le code concerne
-# src/rules/patterns/secrets.rs
+# crates/repolens-core/src/rules/categories/git.rs
 
 # 3. Ajouter un test qui reproduit le bug
 ```
 
 ```rust
-// tests/regression_test.rs
-#[test]
-fn test_no_false_positive_for_test_keys() {
-    let content = r#"api_key = "test_key_for_unit_tests""#;
-    let findings = detect_secrets(content);
-    assert!(findings.is_empty(), "Test keys should not be flagged");
+// crates/repolens-core/src/rules/categories/git.rs (tests)
+#[tokio::test]
+async fn test_no_false_positive_for_test_fixtures() {
+    // "tests/fixtures/secrets_example.json" matche le pattern "secrets*"
+    // mais est une fixture de test inoffensive, pas un vrai secret.
+    let findings = check_sensitive_files(&scanner_with_file("tests/fixtures/secrets_example.json")).await.unwrap();
+    assert!(findings.is_empty(), "Les fixtures de test ne doivent pas etre signalees");
 }
 ```
 
 ```bash
 # 4. Verifier que le test echoue (reproduit le bug)
-cargo test test_no_false_positive_for_test_keys
+cargo test test_no_false_positive_for_test_fixtures
 # Expected: FAILED
 
 # 5. Corriger le code
-# Modifier src/rules/patterns/secrets.rs pour ignorer les test keys
+# Modifier crates/repolens-core/src/rules/categories/git.rs pour ignorer les fichiers sous tests/fixtures/
 
 # 6. Verifier que le test passe maintenant
-cargo test test_no_false_positive_for_test_keys
+cargo test test_no_false_positive_for_test_fixtures
 # Expected: PASSED
 
 # 7. Verification complete
@@ -597,15 +598,15 @@ cargo check && cargo fmt --all -- --check && cargo clippy -- -D warnings && carg
 
 # 8. Commit
 git add .
-git commit -m "fix(secrets): ignore test keys in secret detection
+git commit -m "fix(git): ignore tests/fixtures/ files in sensitive-file detection
 
-Test keys like 'test_key_*' are now excluded from secret detection
-to reduce false positives in test files.
+Files under tests/fixtures/ matching a sensitive pattern (e.g. secrets*)
+are now excluded from GIT003 to reduce false positives in test data.
 
 Fixes #42"
 
 # 9. Push et PR
-git push origin fix/secret-detection-test-keys
+git push origin fix/git003-test-fixture-false-positive
 ```
 
 ### Exemple 2 : Ajouter une fonctionnalite (feature)
@@ -732,7 +733,9 @@ Ideal pour une premiere contribution :
 - **Optimisations de performance** : Profiling et optimisation
 - **Nouveaux providers** : Support d'autres plateformes (GitLab, Bitbucket)
 - **Module de comparaison** : Enrichir `src/compare/`
-- **Nouvelles categories** : Licenses, dependencies, custom rules
+- **Nouvelle categorie de regles** : chaque regle gardee doit produire une `Action` applicable
+  (ou figurer sur la liste des exceptions "detection-only") et `VALID_CATEGORIES` doit rester
+  synchronise avec `rules/engine.rs`
 - **Architecture** : Refactoring majeur, async improvements
 
 ---

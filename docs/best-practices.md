@@ -137,9 +137,12 @@ API_KEY=sk_test_your_key_here
 
 3. **Vérifier avant de commiter**
 
+Installez le hook pre-commit de RepoLens : il scanne les changements indexés à la recherche
+de secrets à haute confiance (clés privées, tokens AWS/GitHub/GitLab/Slack/Google) avant
+chaque commit.
+
 ```bash
-# Lancer RepoLens avant chaque commit
-repolens plan --only secrets
+repolens install-hooks --pre-commit
 ```
 
 ## Documentation
@@ -214,31 +217,16 @@ require_signed_commits = true
 
 ## Gestion des dépendances
 
-### Vérification de la sécurité des dépendances
+RepoLens n'est pas un scanner de dépendances : il ne détecte pas les CVE dans vos
+dépendances. Utilisez un outil dédié pour cela (Dependabot, `osv-scanner`, `cargo audit`...).
 
-RepoLens vérifie automatiquement les vulnérabilités dans vos dépendances via :
-
-- **OSV API** : Base de données open-source des vulnérabilités
-- **GitHub Security Advisories** : Base de données GitHub
-
-#### Support multi-écosystèmes
-
-- **Rust** : Analyse de `Cargo.lock`
-- **Node.js** : Analyse de `package-lock.json`
-- **Python** : Analyse de `requirements.txt`
-- **Go** : Analyse de `go.sum`
-
-### Vérifications régulières
+Ce que RepoLens fait en revanche, via la catégorie `security` : activer automatiquement les
+paramètres GitHub qui pilotent ces outils sur votre dépôt (alertes de vulnérabilité,
+mises à jour de sécurité Dependabot).
 
 ```bash
-# Vérifier les vulnérabilités dans les dépendances
-repolens plan --only dependencies
-
-# Vérifier la sécurité globale
-repolens plan --only security,dependencies
-
-# Utiliser Dependabot (GitHub)
-# Activer dans les paramètres du dépôt
+# Vérifier les paramètres de sécurité du dépôt (dont les alertes de vulnérabilité/Dependabot)
+repolens plan --only security
 ```
 
 ### Mises à jour
@@ -321,15 +309,20 @@ La couverture est vérifiée automatiquement dans les workflows GitHub Actions :
 
 ## Sécurité
 
-### Audit de sécurité du code
+### Audit de sécurité du dépôt
 
-RepoLens effectue un audit complet de sécurité incluant :
+La catégorie `security` de RepoLens audite la configuration de sécurité de votre dépôt
+GitHub/GitLab, pas le contenu du code :
 
-- **Détection de code unsafe** : Recherche de blocs `unsafe` dans le code de production
-- **Vérification des patterns dangereux** : Détection de patterns pouvant causer des vulnérabilités
-- **Analyse avec Semgrep** : Intégration avec Semgrep pour détecter les vulnérabilités OWASP
-- **Vérification des secrets** : Détection des secrets exposés
-- **Vérification des dépendances** : Scan des vulnérabilités dans les dépendances
+- **Protection de branche** : approbations requises, checks de statut, force push bloqué
+- **Alertes de vulnérabilité et Dependabot** : activation des paramètres GitHub correspondants
+- **Secret scanning / push protection** : activation des paramètres GitHub correspondants
+- **Permissions Actions/workflows et approbation des PR de forks**
+- **CODEOWNERS** : présence et validité
+
+RepoLens ne scanne pas le code lui-même à la recherche de blocs `unsafe`, de vulnérabilités
+OWASP ou de CVE dans les dépendances — utilisez des outils dédiés (Semgrep, CodeQL,
+`cargo audit`/Dependabot) pour cela.
 
 ### Checklist de sécurité
 
@@ -395,21 +388,6 @@ repolens plan
 repolens plan --no-cache
 ```
 
-## Conformité des licences
-
-### Configurer la vérification des licences
-
-```toml
-["rules.licenses"]
-enabled = true
-allowed_licenses = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
-denied_licenses = ["GPL-3.0", "AGPL-3.0"]
-```
-
-- Définir une liste blanche de licences autorisées pour vos dépendances
-- Bloquer les licences incompatibles avec votre projet
-- Surveiller les dépendances sans licence
-
 ## Performance
 
 ### Optimisations
@@ -462,7 +440,7 @@ repolens plan -vvv
 
 ```bash
 # Filtrer par catégories
-repolens plan --only secrets,files
+repolens plan --only files,docs
 ```
 
 ## Ressources

@@ -84,11 +84,11 @@ repolens completions nushell | save -f ~/.config/nushell/completions/repolens.nu
 
 - Subcommand names (`init`, `plan`, `apply`, `report`, `compare`, ...).
 - Global flags `-c/--config` (file paths) and `-C/--directory` (directory paths).
-- `--only` and `--skip` cycle through the 11 valid rule categories:
-  `secrets`, `files`, `docs`, `security`, `workflows`, `quality`,
-  `dependencies`, `licenses`, `docker`, `git`, `custom`.
-- `--preset` (`opensource`, `enterprise`, `strict`) and per-command
-  `--format` enums are derived automatically from the CLI definition.
+- `--only` and `--skip` cycle through the 6 valid rule categories:
+  `files`, `docs`, `security`, `git`, `codeowners`, `metadata`.
+- `--provider` (`github`, `gitlab`), `--preset` (`opensource`,
+  `enterprise`, `strict`) and per-command `--format` enums are derived
+  automatically from the CLI definition.
 
 ## Regenerating after upgrades
 
