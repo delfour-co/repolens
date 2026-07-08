@@ -10,6 +10,7 @@ pub struct FileInfo {
     /// Relative path from repository root
     pub path: String,
     /// File size in bytes
+    #[allow(dead_code)]
     pub size: u64,
     /// Whether the file is a directory
     #[allow(dead_code)]

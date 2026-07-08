@@ -7,9 +7,8 @@
 //! The rules system is organized as follows:
 //!
 //! - [`engine`] - The main rules evaluation engine that orchestrates rule execution
-//! - [`categories`] - Individual rule category implementations (secrets, files, docs, etc.)
+//! - [`categories`] - Individual rule category implementations (files, docs, security, etc.)
 //! - [`results`] - Finding and severity types for audit results
-//! - [`patterns`] - Secret detection patterns and matching utilities
 //! - [`constants`] - Rule category constants and filtering
 //!
 //! ## Rule Categories
@@ -18,16 +17,12 @@
 //!
 //! | Category | Description |
 //! |----------|-------------|
-//! | `secrets` | Detect exposed secrets and credentials |
-//! | `files` | Check for required files (README, LICENSE, etc.) |
-//! | `docs` | Documentation quality checks |
-//! | `security` | Security best practices |
-//! | `workflows` | CI/CD and GitHub Actions checks |
-//! | `quality` | Code quality standards |
-//! | `dependencies` | Dependency security and licensing |
-//! | `docker` | Docker configuration checks |
-//! | `git` | Git configuration and history checks |
-//! | `custom` | User-defined custom rules |
+//! | `files` | `.gitignore` presence and recommended entries |
+//! | `docs` | Required docs (README, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CHANGELOG) |
+//! | `security` | Repo security settings: branch protection, vulnerability alerts, secret scanning, Actions permissions |
+//! | `git` | `.gitattributes` presence, sensitive files that should be gitignored |
+//! | `codeowners` | CODEOWNERS file presence and syntax |
+//! | `metadata` | Repository description, topics/tags, homepage |
 //!
 //! ## Examples
 //!
@@ -62,8 +57,8 @@
 //! let scanner = Scanner::new(PathBuf::from("."));
 //! let mut engine = RulesEngine::new(config);
 //!
-//! // Only run secrets detection
-//! engine.set_only_categories(vec!["secrets".to_string()]);
+//! // Only run specific categories
+//! engine.set_only_categories(vec!["files".to_string()]);
 //!
 //! let results = engine.run(&scanner).await?;
 //! # Ok(())
@@ -75,10 +70,10 @@
 //! ```rust
 //! use repolens_core::rules::{Finding, Severity};
 //!
-//! let finding = Finding::new("SEC001", "secrets", Severity::Critical, "API key detected")
-//!     .with_location("src/config.rs:42")
-//!     .with_description("A hardcoded API key was found in the source code")
-//!     .with_remediation("Move the API key to environment variables");
+//! let finding = Finding::new("SEC001", "security", Severity::Critical, "Branch protection missing")
+//!     .with_location(".github")
+//!     .with_description("The default branch has no protection rules configured")
+//!     .with_remediation("Enable branch protection in the repository settings");
 //!
 //! assert_eq!(finding.severity, Severity::Critical);
 //! ```
@@ -86,7 +81,6 @@
 pub mod categories;
 pub mod constants;
 pub mod engine;
-pub mod patterns;
 pub mod results;
 
 pub use constants::filter_valid_categories;

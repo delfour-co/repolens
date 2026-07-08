@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "2.0.2"
+version = "3.0.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Kevin Delfour"]
@@ -36,7 +36,6 @@ dirs = "5"
 # GitHub / HTTP
 octocrab = "0.41"
 which = "6"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 # Templating
 tera = "1"

@@ -60,11 +60,14 @@
 //! # }
 //! ```
 
+mod actions_security;
 mod branch_protection;
 pub mod executor;
 pub mod git;
 mod github_settings;
 mod gitignore;
+mod metadata;
 pub mod plan;
 pub mod planner;
+mod settings_file;
 mod templates;

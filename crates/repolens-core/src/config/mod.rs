@@ -32,16 +32,6 @@
 //! [actions.branch_protection]
 //! enabled = true
 //! required_approvals = 1
-//!
-//! ["rules.secrets"]
-//! ignore_patterns = ["test_*"]
-//! ignore_files = ["*.test.ts"]
-//!
-//! ["rules.custom"."no-todo"]
-//! pattern = "TODO"
-//! severity = "warning"
-//! files = ["**/*.rs"]
-//! message = "TODO comment found"
 //! ```
 //!
 //! ## Environment Variables
@@ -99,7 +89,6 @@ pub use loader::get_env_verbosity;
 pub use presets::Preset;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // Re-export CacheConfig from cache module for convenience
 pub use crate::cache::CacheConfig;
@@ -140,37 +129,6 @@ pub struct RuleConfig {
 
 fn default_true() -> bool {
     true
-}
-
-/// Configuration for secrets detection.
-///
-/// Controls which patterns and files are scanned for secrets,
-/// and allows defining custom secret patterns.
-///
-/// # Examples
-///
-/// ```toml
-/// ["rules.secrets"]
-/// ignore_patterns = ["test_*", "*_mock"]
-/// ignore_files = ["*.test.ts", "fixtures/**"]
-/// custom_patterns = ["MY_SECRET_\\w+"]
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SecretsConfig {
-    /// Patterns to ignore when scanning for secrets.
-    /// Supports glob patterns like `test_*` or `*_mock`.
-    #[serde(default)]
-    pub ignore_patterns: Vec<String>,
-
-    /// Files to ignore when scanning for secrets.
-    /// Supports glob patterns like `*.test.ts` or `vendor/**`.
-    #[serde(default)]
-    pub ignore_files: Vec<String>,
-
-    /// Custom regex patterns to detect as secrets.
-    /// Added to the default secret detection patterns.
-    #[serde(default)]
-    pub custom_patterns: Vec<String>,
 }
 
 /// Configuration for URL validation.
@@ -236,6 +194,26 @@ pub struct ActionsConfig {
     #[serde(default = "default_true")]
     pub security_policy: bool,
 
+    /// Whether to create `README.md` if missing.
+    #[serde(default = "default_true")]
+    pub readme: bool,
+
+    /// Whether to create `CHANGELOG.md` if missing.
+    #[serde(default = "default_true")]
+    pub changelog: bool,
+
+    /// Whether to create `.gitattributes` if missing.
+    #[serde(default = "default_true")]
+    pub gitattributes: bool,
+
+    /// Whether to create `CODEOWNERS` if missing.
+    #[serde(default = "default_true")]
+    pub codeowners: bool,
+
+    /// Whether to create `.github/settings.yml` if missing.
+    #[serde(default = "default_true")]
+    pub settings_file: bool,
+
     /// GitHub branch protection rule configuration.
     #[serde(default)]
     pub branch_protection: BranchProtectionConfig,
@@ -243,6 +221,17 @@ pub struct ActionsConfig {
     /// GitHub repository settings configuration.
     #[serde(default)]
     pub github_settings: GitHubSettingsConfig,
+
+    /// Repository metadata configuration (description, topics, homepage).
+    #[serde(default)]
+    pub metadata: MetadataConfig,
+
+    /// GitHub Actions & repository security settings configuration (secret
+    /// scanning, push protection, Actions permissions, workflow
+    /// permissions, fork pull-request-workflow approval) -- review bug #11
+    /// (SEC013-017).
+    #[serde(default)]
+    pub actions_security: ActionsSecurityConfig,
 }
 
 impl Default for ActionsConfig {
@@ -253,8 +242,15 @@ impl Default for ActionsConfig {
             contributing: true,
             code_of_conduct: true,
             security_policy: true,
+            readme: true,
+            changelog: true,
+            gitattributes: true,
+            codeowners: true,
+            settings_file: true,
             branch_protection: BranchProtectionConfig::default(),
             github_settings: GitHubSettingsConfig::default(),
+            metadata: MetadataConfig::default(),
+            actions_security: ActionsSecurityConfig::default(),
         }
     }
 }
@@ -434,6 +430,129 @@ impl Default for GitHubSettingsConfig {
     }
 }
 
+/// Configuration for repository metadata (description, topics, homepage).
+///
+/// These values are applied via the provider when running `repolens apply`,
+/// but only when the audit reports a missing-metadata finding
+/// (META001/002/003) and at least one value is configured here. Metadata
+/// cannot be auto-generated from nothing, so — like branch protection and
+/// repository settings — this action only applies values the user configured.
+///
+/// # Examples
+///
+/// ```toml
+/// [actions.metadata]
+/// enabled = true
+/// description = "A short repository description"
+/// topics = ["rust", "cli"]
+/// homepage = "https://example.com"
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataConfig {
+    /// Whether to apply repository metadata when missing.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Repository description to apply, if set.
+    #[serde(default)]
+    pub description: Option<String>,
+
+    /// Topics / tags to apply, if any.
+    #[serde(default)]
+    pub topics: Vec<String>,
+
+    /// Homepage / website URL to apply, if set.
+    #[serde(default)]
+    pub homepage: Option<String>,
+}
+
+impl Default for MetadataConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            description: None,
+            topics: Vec::new(),
+            homepage: None,
+        }
+    }
+}
+
+/// Configuration for GitHub Actions & repository security settings.
+///
+/// Covers the five GitHub-only toggles behind SEC013-017 (review bug #11):
+/// secret scanning, push protection, Actions permissions (which actions are
+/// allowed to run), default workflow (`GITHUB_TOKEN`) permissions, and
+/// whether fork pull-request workflows require approval before running.
+/// These settings are applied via the GitHub API when running `repolens
+/// apply` with appropriate permissions. GitHub-only: on GitLab, `apply`
+/// skips this action gracefully (no GitLab equivalent exists for any of
+/// these five toggles -- `GitLabProvider`'s write methods all return `Err`,
+/// and the planner never plans this action for a non-GitHub provider).
+///
+/// # Examples
+///
+/// ```toml
+/// [actions.actions_security]
+/// enabled = true
+/// secret_scanning = true
+/// push_protection = true
+/// allowed_actions = "selected"
+/// default_workflow_permissions = "read"
+/// require_fork_pr_approval = true
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionsSecurityConfig {
+    /// Whether to apply these settings at all.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Whether secret scanning should be enabled (SEC013).
+    #[serde(default = "default_true")]
+    pub secret_scanning: bool,
+
+    /// Whether push protection should be enabled (SEC014). Only meaningful
+    /// once secret scanning itself is enabled.
+    #[serde(default = "default_true")]
+    pub push_protection: bool,
+
+    /// Desired Actions permissions: `"all"`, `"local_only"`, or `"selected"`
+    /// (SEC015). Defaults to `"selected"` (restrict to GitHub-owned and
+    /// verified-creator actions).
+    #[serde(default = "default_allowed_actions")]
+    pub allowed_actions: String,
+
+    /// Desired default `GITHUB_TOKEN` workflow permissions: `"read"` or
+    /// `"write"` (SEC016). Defaults to `"read"` (least privilege).
+    #[serde(default = "default_workflow_permissions")]
+    pub default_workflow_permissions: String,
+
+    /// Whether fork pull request workflows should require approval before
+    /// running (SEC017).
+    #[serde(default = "default_true")]
+    pub require_fork_pr_approval: bool,
+}
+
+impl Default for ActionsSecurityConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            secret_scanning: true,
+            push_protection: true,
+            allowed_actions: default_allowed_actions(),
+            default_workflow_permissions: default_workflow_permissions(),
+            require_fork_pr_approval: true,
+        }
+    }
+}
+
+fn default_allowed_actions() -> String {
+    "selected".to_string()
+}
+
+fn default_workflow_permissions() -> String {
+    "read".to_string()
+}
+
 /// Configuration for file template generation.
 ///
 /// These values are used when generating files like LICENSE,
@@ -466,138 +585,6 @@ pub struct TemplatesConfig {
     pub project_description: Option<String>,
 }
 
-/// Configuration for a custom audit rule.
-///
-/// Custom rules allow defining project-specific checks using either
-/// regex patterns or shell commands.
-///
-/// # Pattern-based Rules
-///
-/// ```toml
-/// ["rules.custom"."no-todo"]
-/// pattern = "TODO|FIXME"
-/// severity = "warning"
-/// files = ["**/*.rs", "**/*.py"]
-/// message = "Found TODO/FIXME comment"
-/// remediation = "Complete the task or remove the comment"
-/// ```
-///
-/// # Command-based Rules
-///
-/// ```toml
-/// ["rules.custom"."has-makefile"]
-/// command = "test -f Makefile"
-/// severity = "info"
-/// message = "Makefile not found"
-/// invert = true
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CustomRule {
-    /// Regex pattern to match in file contents.
-    /// Required if `command` is not set.
-    #[serde(default)]
-    pub pattern: Option<String>,
-
-    /// Shell command to execute for the check.
-    /// The rule triggers if the command returns exit code 0
-    /// (or non-zero if `invert` is true).
-    /// Required if `pattern` is not set.
-    #[serde(default)]
-    pub command: Option<String>,
-
-    /// Severity level: "critical", "warning", or "info".
-    /// Defaults to "warning".
-    #[serde(default = "default_custom_severity")]
-    pub severity: String,
-
-    /// File glob patterns to scan (only used with `pattern`).
-    /// If empty, all files are scanned.
-    #[serde(default)]
-    pub files: Vec<String>,
-
-    /// Custom message shown when the rule triggers.
-    pub message: Option<String>,
-
-    /// Detailed description of the issue.
-    pub description: Option<String>,
-
-    /// Suggested steps to fix the issue.
-    pub remediation: Option<String>,
-
-    /// If true, inverts the matching logic:
-    /// - For patterns: triggers when pattern is NOT found
-    /// - For commands: triggers when command returns non-zero
-    #[serde(default)]
-    pub invert: bool,
-}
-
-fn default_custom_severity() -> String {
-    "warning".to_string()
-}
-
-/// Container for custom rule definitions.
-///
-/// Custom rules are defined under the `["rules.custom"]` section
-/// in the configuration file.
-///
-/// # Examples
-///
-/// ```toml
-/// ["rules.custom"."rule-id"]
-/// pattern = "some_pattern"
-/// severity = "warning"
-/// message = "Issue found"
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CustomRulesConfig {
-    /// Map of rule ID to rule configuration.
-    /// Rule IDs should be kebab-case (e.g., "no-todo", "require-tests").
-    #[serde(flatten)]
-    pub rules: HashMap<String, CustomRule>,
-}
-
-/// Configuration for dependency license compliance checking.
-///
-/// Allows specifying which licenses are allowed or denied for
-/// project dependencies.
-///
-/// # Examples
-///
-/// ```toml
-/// ["rules.licenses"]
-/// enabled = true
-/// allowed_licenses = ["MIT", "Apache-2.0", "BSD-3-Clause"]
-/// denied_licenses = ["GPL-3.0", "AGPL-3.0"]
-/// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LicenseComplianceConfig {
-    /// Whether license compliance checking is enabled.
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-
-    /// List of allowed SPDX license identifiers.
-    /// If empty, all known licenses are allowed (unless in `denied_licenses`).
-    /// Example: `["MIT", "Apache-2.0", "BSD-3-Clause"]`
-    #[serde(default)]
-    pub allowed_licenses: Vec<String>,
-
-    /// List of denied SPDX license identifiers.
-    /// Dependencies with these licenses will be flagged.
-    /// Example: `["GPL-3.0", "AGPL-3.0"]`
-    #[serde(default)]
-    pub denied_licenses: Vec<String>,
-}
-
-impl Default for LicenseComplianceConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            allowed_licenses: Vec::new(),
-            denied_licenses: Vec::new(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -618,14 +605,6 @@ mod tests {
         let config: RuleConfig = toml::from_str(toml_str).unwrap();
         assert!(config.enabled);
         assert_eq!(config.severity, Some("critical".to_string()));
-    }
-
-    #[test]
-    fn test_secrets_config_default() {
-        let config = SecretsConfig::default();
-        assert!(config.ignore_patterns.is_empty());
-        assert!(config.ignore_files.is_empty());
-        assert!(config.custom_patterns.is_empty());
     }
 
     #[test]
@@ -674,50 +653,29 @@ mod tests {
     }
 
     #[test]
+    fn test_actions_security_config_default() {
+        let config = ActionsSecurityConfig::default();
+        assert!(config.enabled);
+        assert!(config.secret_scanning);
+        assert!(config.push_protection);
+        assert_eq!(config.allowed_actions, "selected");
+        assert_eq!(config.default_workflow_permissions, "read");
+        assert!(config.require_fork_pr_approval);
+    }
+
+    #[test]
+    fn test_actions_config_default_includes_actions_security() {
+        let config = ActionsConfig::default();
+        assert!(config.actions_security.enabled);
+    }
+
+    #[test]
     fn test_templates_config_default() {
         let config = TemplatesConfig::default();
         assert!(config.license_author.is_none());
         assert!(config.license_year.is_none());
         assert!(config.project_name.is_none());
         assert!(config.project_description.is_none());
-    }
-
-    #[test]
-    fn test_custom_rule_deserialize() {
-        let toml_str = r#"
-            pattern = "TODO|FIXME"
-            severity = "warning"
-            files = ["*.rs", "*.py"]
-            message = "Found TODO comment"
-            description = "TODO comments should be addressed"
-            remediation = "Complete the task or remove the comment"
-            invert = false
-        "#;
-        let rule: CustomRule = toml::from_str(toml_str).unwrap();
-        assert_eq!(rule.pattern, Some("TODO|FIXME".to_string()));
-        assert_eq!(rule.severity, "warning");
-        assert_eq!(rule.files.len(), 2);
-        assert!(!rule.invert);
-    }
-
-    #[test]
-    fn test_custom_rule_with_command() {
-        let toml_str = r#"
-            command = "test -f Makefile"
-            severity = "info"
-            message = "Makefile not found"
-            invert = true
-        "#;
-        let rule: CustomRule = toml::from_str(toml_str).unwrap();
-        assert!(rule.pattern.is_none());
-        assert_eq!(rule.command, Some("test -f Makefile".to_string()));
-        assert!(rule.invert);
-    }
-
-    #[test]
-    fn test_custom_rules_config_default() {
-        let config = CustomRulesConfig::default();
-        assert!(config.rules.is_empty());
     }
 
     #[test]
@@ -741,39 +699,12 @@ mod tests {
     }
 
     #[test]
-    fn test_default_custom_severity_function() {
-        assert_eq!(default_custom_severity(), "warning");
+    fn test_default_allowed_actions_function() {
+        assert_eq!(default_allowed_actions(), "selected");
     }
 
     #[test]
-    fn test_license_compliance_config_default() {
-        let config = LicenseComplianceConfig::default();
-        assert!(config.enabled);
-        assert!(config.allowed_licenses.is_empty());
-        assert!(config.denied_licenses.is_empty());
-    }
-
-    #[test]
-    fn test_license_compliance_config_deserialize() {
-        let toml_str = r#"
-            enabled = true
-            allowed_licenses = ["MIT", "Apache-2.0"]
-            denied_licenses = ["GPL-3.0"]
-        "#;
-        let config: LicenseComplianceConfig = toml::from_str(toml_str).unwrap();
-        assert!(config.enabled);
-        assert_eq!(config.allowed_licenses.len(), 2);
-        assert_eq!(config.denied_licenses.len(), 1);
-        assert_eq!(config.allowed_licenses[0], "MIT");
-        assert_eq!(config.denied_licenses[0], "GPL-3.0");
-    }
-
-    #[test]
-    fn test_license_compliance_config_deserialize_defaults() {
-        let toml_str = r#""#;
-        let config: LicenseComplianceConfig = toml::from_str(toml_str).unwrap();
-        assert!(config.enabled);
-        assert!(config.allowed_licenses.is_empty());
-        assert!(config.denied_licenses.is_empty());
+    fn test_default_workflow_permissions_function() {
+        assert_eq!(default_workflow_permissions(), "read");
     }
 }

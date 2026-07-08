@@ -138,20 +138,6 @@ impl Scanner {
         self.root.join(path).exists()
     }
 
-    /// Check if a directory exists in the repository
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - Relative path to the directory from repository root
-    ///
-    /// # Returns
-    ///
-    /// `true` if the directory exists, `false` otherwise
-    pub fn directory_exists(&self, path: &str) -> bool {
-        let full_path = self.root.join(path);
-        full_path.exists() && full_path.is_dir()
-    }
-
     /// Read file content as a string
     ///
     /// # Arguments
@@ -222,30 +208,9 @@ impl Scanner {
     /// # Returns
     ///
     /// A vector of references to `FileInfo` for files larger than the specified size
+    #[allow(dead_code)]
     pub fn files_larger_than(&self, size: u64) -> Vec<&FileInfo> {
         self.file_cache.iter().filter(|f| f.size > size).collect()
-    }
-
-    /// Get files in a specific directory
-    ///
-    /// # Arguments
-    ///
-    /// * `dir` - Directory path (with or without trailing slash)
-    ///
-    /// # Returns
-    ///
-    /// A vector of references to `FileInfo` for files in the specified directory
-    pub fn files_in_directory(&self, dir: &str) -> Vec<&FileInfo> {
-        let dir_path = if dir.ends_with('/') {
-            dir.to_string()
-        } else {
-            format!("{}/", dir)
-        };
-
-        self.file_cache
-            .iter()
-            .filter(|f| f.path.starts_with(&dir_path) || f.path.starts_with(dir))
-            .collect()
     }
 
     /// Get all files in the repository
@@ -256,15 +221,6 @@ impl Scanner {
     #[allow(dead_code)]
     pub fn all_files(&self) -> &[FileInfo] {
         &self.file_cache
-    }
-
-    /// Get the root directory of the repository
-    ///
-    /// # Returns
-    ///
-    /// A reference to the root path
-    pub fn root(&self) -> &std::path::Path {
-        &self.root
     }
 }
 
@@ -355,16 +311,6 @@ mod tests {
     }
 
     #[test]
-    fn test_directory_exists() {
-        let temp_dir = create_test_repo();
-        let scanner = Scanner::new(temp_dir.path().to_path_buf());
-
-        assert!(scanner.directory_exists("src"));
-        assert!(scanner.directory_exists(".github/workflows"));
-        assert!(!scanner.directory_exists("nonexistent"));
-    }
-
-    #[test]
     fn test_read_file() {
         let temp_dir = create_test_repo();
         let scanner = Scanner::new(temp_dir.path().to_path_buf());
@@ -413,18 +359,6 @@ mod tests {
 
         let very_large = scanner.files_larger_than(1_000_000);
         assert!(very_large.is_empty());
-    }
-
-    #[test]
-    fn test_files_in_directory() {
-        let temp_dir = create_test_repo();
-        let scanner = Scanner::new(temp_dir.path().to_path_buf());
-
-        let src_files = scanner.files_in_directory("src");
-        assert!(src_files.len() >= 2);
-
-        let github_files = scanner.files_in_directory(".github");
-        assert!(!github_files.is_empty());
     }
 
     #[test]
@@ -481,16 +415,6 @@ mod tests {
     }
 
     #[test]
-    fn test_files_in_directory_consistency() {
-        let temp_dir = create_test_repo();
-        let scanner = Scanner::new(temp_dir.path().to_path_buf());
-
-        let files = scanner.files_in_directory("src");
-        // Should have at least main.rs and lib.rs
-        assert!(files.len() >= 2);
-    }
-
-    #[test]
     fn test_files_larger_than_zero() {
         let temp_dir = create_test_repo();
         let scanner = Scanner::new(temp_dir.path().to_path_buf());
@@ -544,15 +468,6 @@ mod tests {
 
         let md_files = scanner.files_matching_pattern("*.md");
         assert!(!md_files.is_empty()); // README.md
-    }
-
-    #[test]
-    fn test_files_in_directory_with_trailing_slash() {
-        let temp_dir = create_test_repo();
-        let scanner = Scanner::new(temp_dir.path().to_path_buf());
-
-        let files = scanner.files_in_directory("src/");
-        assert!(files.len() >= 2);
     }
 
     #[test]

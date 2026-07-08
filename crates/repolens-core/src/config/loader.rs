@@ -12,12 +12,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{ConfigError, RepoLensError};
+use crate::providers::Provider;
 
 use super::presets::Preset;
-use super::{
-    ActionsConfig, CacheConfig, CustomRulesConfig, HooksConfig, LicenseComplianceConfig,
-    RuleConfig, SecretsConfig, TemplatesConfig, UrlConfig,
-};
+use super::{ActionsConfig, CacheConfig, HooksConfig, RuleConfig, TemplatesConfig, UrlConfig};
 
 const CONFIG_FILENAME: &str = ".repolens.toml";
 
@@ -64,14 +62,18 @@ pub struct Config {
     #[serde(default = "default_preset")]
     pub preset: String,
 
+    /// Repository hosting provider (github | gitlab).
+    ///
+    /// `None` means "not explicitly configured" — [`crate::providers::for_config`]
+    /// auto-detects from the git remote in that case, falling back to GitHub.
+    /// An explicit `Some(_)` (from this key or the `--provider` CLI flag) always
+    /// wins over auto-detection (review bug #5).
+    #[serde(default)]
+    pub provider: Option<Provider>,
+
     /// Rule overrides
     #[serde(default)]
     pub rules: HashMap<String, RuleConfig>,
-
-    /// Secrets detection configuration
-    #[serde(default)]
-    #[serde(rename = "rules.secrets")]
-    pub secrets: SecretsConfig,
 
     /// URL detection configuration
     #[serde(default)]
@@ -85,16 +87,6 @@ pub struct Config {
     /// Template configuration
     #[serde(default)]
     pub templates: TemplatesConfig,
-
-    /// Custom rules configuration
-    #[serde(default)]
-    #[serde(rename = "rules.custom")]
-    pub custom_rules: CustomRulesConfig,
-
-    /// License compliance configuration
-    #[serde(default)]
-    #[serde(rename = "rules.licenses")]
-    pub license_compliance: LicenseComplianceConfig,
 
     /// Cache configuration
     #[serde(default)]
@@ -113,13 +105,11 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             preset: "opensource".to_string(),
+            provider: None,
             rules: HashMap::new(),
-            secrets: SecretsConfig::default(),
             urls: UrlConfig::default(),
             actions: ActionsConfig::default(),
             templates: TemplatesConfig::default(),
-            custom_rules: CustomRulesConfig::default(),
-            license_compliance: LicenseComplianceConfig::default(),
             cache: CacheConfig::default(),
             hooks: HooksConfig::default(),
         }
@@ -253,22 +243,6 @@ impl Config {
     #[allow(dead_code)]
     pub fn get_rule_severity(&self, rule_id: &str) -> Option<&str> {
         self.rules.get(rule_id).and_then(|r| r.severity.as_deref())
-    }
-
-    /// Check if a file should be ignored for secrets scanning
-    pub fn should_ignore_file(&self, file_path: &str) -> bool {
-        self.secrets
-            .ignore_files
-            .iter()
-            .any(|pattern| glob_match(pattern, file_path))
-    }
-
-    /// Check if a pattern should be ignored for secrets scanning
-    pub fn should_ignore_pattern(&self, path: &str) -> bool {
-        self.secrets
-            .ignore_patterns
-            .iter()
-            .any(|pattern| glob_match(pattern, path))
     }
 
     /// Check if a URL is allowed (for enterprise mode).
@@ -409,29 +383,33 @@ mod tests {
     }
 
     #[test]
+    fn test_default_provider_is_unset() {
+        // Unset (`None`) means "auto-detect" — see review bug #5. It is NOT
+        // the same as an explicit `Some(Provider::GitHub)`.
+        let config = Config::default();
+        assert_eq!(config.provider, None);
+    }
+
+    #[test]
+    fn test_provider_deserialization() {
+        // Absent -> unset (auto-detect), not an implicit GitHub choice.
+        let config: Config = toml::from_str("preset = \"opensource\"\n").unwrap();
+        assert_eq!(config.provider, None);
+
+        // Explicit lowercase values deserialize to an explicit choice.
+        let config: Config = toml::from_str("provider = \"github\"\n").unwrap();
+        assert_eq!(config.provider, Some(Provider::GitHub));
+
+        let config: Config = toml::from_str("provider = \"gitlab\"\n").unwrap();
+        assert_eq!(config.provider, Some(Provider::GitLab));
+    }
+
+    #[test]
     fn test_from_preset() {
         let config = Config::from_preset(Preset::Enterprise);
         assert_eq!(config.preset, "enterprise");
         assert!(!config.actions.license.enabled);
         assert_eq!(config.actions.branch_protection.required_approvals, 2);
-    }
-
-    #[test]
-    fn test_custom_rules_config_parsing() {
-        let toml_content = r#"
-preset = "opensource"
-
-["rules.custom"."no-todo"]
-pattern = "TODO"
-severity = "warning"
-files = ["**/*.rs"]
-message = "TODO comment found"
-"#;
-        let config: Config = toml::from_str(toml_content).unwrap();
-        assert!(config.custom_rules.rules.contains_key("no-todo"));
-        let rule = config.custom_rules.rules.get("no-todo").unwrap();
-        assert_eq!(rule.pattern, Some("TODO".to_string()));
-        assert_eq!(rule.severity, "warning");
     }
 
     #[test]
@@ -514,26 +492,6 @@ message = "TODO comment found"
         );
         assert_eq!(config.get_rule_severity("test_rule"), Some("critical"));
         assert_eq!(config.get_rule_severity("nonexistent"), None);
-    }
-
-    #[test]
-    fn test_should_ignore_file() {
-        let mut config = Config::default();
-        config.secrets.ignore_files = vec!["*.min.js".to_string(), "vendor/**".to_string()];
-
-        assert!(config.should_ignore_file("bundle.min.js"));
-        assert!(config.should_ignore_file("vendor/lib.js"));
-        assert!(!config.should_ignore_file("main.js"));
-    }
-
-    #[test]
-    fn test_should_ignore_pattern() {
-        let mut config = Config::default();
-        config.secrets.ignore_patterns = vec!["test_*".to_string(), "*_mock".to_string()];
-
-        assert!(config.should_ignore_pattern("test_secret"));
-        assert!(config.should_ignore_pattern("api_mock"));
-        assert!(!config.should_ignore_pattern("real_secret"));
     }
 
     #[test]
@@ -684,11 +642,6 @@ preset = "strict"
 enabled = false
 severity = "warning"
 
-["rules.secrets"]
-ignore_patterns = ["test_*"]
-ignore_files = ["*.test.ts"]
-custom_patterns = ["MY_SECRET_\\w+"]
-
 ["rules.urls"]
 allowed_internal = ["https://internal.example.com/*"]
 
@@ -733,8 +686,6 @@ ttl_seconds = 3600
         assert_eq!(config.preset, "strict");
         assert!(!config.is_rule_enabled("SEC001"));
         assert_eq!(config.get_rule_severity("SEC001"), Some("warning"));
-        assert!(config.should_ignore_pattern("test_secret"));
-        assert!(config.should_ignore_file("file.test.ts"));
         assert!(config.is_url_allowed("https://internal.example.com/api"));
         assert_eq!(config.actions.license.license_type, "Apache-2.0");
         assert_eq!(config.actions.branch_protection.required_approvals, 2);
@@ -742,32 +693,6 @@ ttl_seconds = 3600
             config.templates.project_name,
             Some("My Project".to_string())
         );
-    }
-
-    #[test]
-    fn test_config_with_license_compliance() {
-        let toml_content = r#"
-preset = "opensource"
-
-["rules.licenses"]
-enabled = true
-allowed_licenses = ["MIT", "Apache-2.0", "BSD-3-Clause"]
-denied_licenses = ["GPL-3.0", "AGPL-3.0"]
-"#;
-        let config: Config = toml::from_str(toml_content).unwrap();
-        assert!(config.license_compliance.enabled);
-        assert_eq!(config.license_compliance.allowed_licenses.len(), 3);
-        assert_eq!(config.license_compliance.denied_licenses.len(), 2);
-        assert_eq!(config.license_compliance.allowed_licenses[0], "MIT");
-        assert_eq!(config.license_compliance.denied_licenses[0], "GPL-3.0");
-    }
-
-    #[test]
-    fn test_config_default_license_compliance() {
-        let config = Config::default();
-        assert!(config.license_compliance.enabled);
-        assert!(config.license_compliance.allowed_licenses.is_empty());
-        assert!(config.license_compliance.denied_licenses.is_empty());
     }
 
     #[test]

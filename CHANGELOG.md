@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-07-08
+
+This release recenters RepoLens as an auto-configurator for GitHub and GitLab
+repositories. Every kept check drives a reviewable, applicable action (the
+plan/apply split). RepoLens is no longer a dependency or secret scanner — those
+concerns overlap with dedicated tooling.
+
+### Added
+
+- **GitLab provider** alongside GitHub, driven by the `glab` CLI. The relevant
+  CLI (`gh` for GitHub, `glab` for GitLab) is only needed for platform checks and
+  actions; if it is absent, those checks are skipped gracefully.
+- New `--provider {github|gitlab}` flag on `plan`, `report`, and `apply`. When
+  omitted, the provider is auto-detected from the `origin` remote.
+- New top-level `provider` key in `.repolens.toml` (`provider = "github"` or
+  `provider = "gitlab"`; defaults to GitHub).
+- Provider-agnostic action catalog: `CreateFile`, `UpdateGitignore`,
+  `ConfigureProtectedBranch`, `UpdateRepoSettings`, and the new
+  `UpdateRepoMetadata` (repository description and topics/tags).
+- `UpdateSettingsFile` action: merges missing branch-protection sections into
+  an *existing* `.github/settings.yml` (SEC008-010) instead of only being able
+  to create the file from scratch, preserving any content already present.
+- `UpdateActionsSecuritySettings` action (GitHub-only): real remediation for
+  secret scanning, push protection, Actions allowed-actions policy, default
+  workflow permissions, and fork-PR-workflow approval (SEC013-017). GitLab has
+  no equivalent API, so this action is never planned for a GitLab-provider
+  audit.
+- The generated pre-commit hook now runs a dedicated, self-contained
+  staged-diff secret scan (private keys, AWS/GitHub/GitLab/Slack/Google/generic
+  API tokens) in addition to the `files`/`git` hygiene check, restoring the
+  content-secret detection that moving the hook off the removed `secrets`
+  category would otherwise have silently dropped.
+- The JSON audit report's `metadata` object now includes a `provider` field
+  (`"github"` or `"gitlab"`) recording which hosting provider the audit ran
+  against.
+
+### Changed
+
+- Trimmed the `security` and `codeowners` categories to the checks that map to an
+  applicable repository-configuration action.
+- Migrated the repository to a 2-crate Cargo workspace (`repolens-core` +
+  `repolens`); the split is structural only and does not change behavior.
+- `apply`'s automatic issue creation and `--create-pr` change-request creation
+  now go through the selected provider: GitHub issues/pull requests, or GitLab
+  issues/merge requests via `glab`. Previously these always assumed GitHub,
+  so applying fixes on a GitLab repository could push a branch with no merge
+  request opened.
+
+### Removed (BREAKING CHANGES)
+
+- **Reduced to 6 rule categories** (`files`, `docs`, `security`, `git`,
+  `codeowners`, `metadata`), down from 15. Removed the `secrets`, `workflows`,
+  `quality`, `dependencies`, `licenses`, `docker`, `history`, `issues`, and
+  `custom` categories.
+- Removed the residual detection-only rules that did not drive an action,
+  including access-posture checks, the large-file (Git LFS) rule, and the
+  social-preview metadata rule.
+- Dropped the `[rules.secrets]`, `[rules.custom]`, and `[rules.licenses]`
+  configuration sections. They are ignored if still present in `.repolens.toml`.
+- The audit-report `category` enum is now
+  `["files", "docs", "security", "git", "codeowners", "metadata"]`.
+- The audit-report JSON Schema's `Metadata` definition now requires a
+  `provider` property; reports validated against the schema before this change
+  will need to add it (or re-generate with `repolens report`).
+
+### Fixed
+
+Fifteen bugs found during the v3.0.0 recentering's own code review, all with
+regression tests:
+
+- The generated pre-commit hook now restores a dedicated content-secret scan
+  (was silently dropped when the hook was rewritten off the removed `secrets`
+  category).
+- `--only`/`--skip` with a removed or unknown category now returns a CLI error
+  instead of silently falling back to running every category.
+- GitLab `ConfigureProtectedBranch` now sends the full protection payload (was
+  sending 1 of 8 fields) and no longer leaves a branch unprotected when the
+  required delete-then-recreate sequence fails partway through.
+- An explicit `--provider github`/`--provider gitlab` flag is no longer
+  silently overridden by remote-URL auto-detection.
+- GitLab remote URLs with a custom SSH port, and GitHub HTTPS remote URLs with
+  embedded credentials, are now parsed correctly instead of producing a wrong
+  host/404.
+- `apply --create-pr` now opens a GitHub pull request or a GitLab merge
+  request depending on the selected provider, instead of always assuming
+  GitHub (which left an orphan branch with no merge request on GitLab).
+- GitLab `set_repo_settings` no longer plans a settings action it can never
+  apply; GitHub `set_repo_settings` now honors `enable_issues` and
+  `enable_wiki`.
+- SEC008-010 and SEC013-017 are now genuinely remediable (`UpdateSettingsFile`,
+  `UpdateActionsSecuritySettings`, see Added) instead of being claimed
+  remediable by the zero-report-only contract test while having no actual
+  action wired up.
+- FILE002 (`.gitignore` entirely absent) now plans a real `.gitignore`
+  creation instead of silently having no remediation.
+- Provider-read error fallbacks now fail safe (assume protection is *not*
+  already in place) instead of assuming the safer/stricter state and
+  under-protecting the repository.
+- The `.github/settings.yml` produced by the SEC007 auto-fix now includes the
+  branch-protection sections up front, so applying it no longer immediately
+  triggers a fresh SEC008 finding.
+
+### Migration
+
+- If you relied on secret, dependency, or license scanning, use a dedicated tool
+  for those concerns. RepoLens now focuses on repository structure, documentation,
+  and hosting-platform configuration.
+- Remove any `[rules.secrets]`, `[rules.custom]`, or `[rules.licenses]` sections
+  and any `--only`/`--skip` references to removed categories from your config and
+  CI pipelines.
+- Set `provider = "gitlab"` (or pass `--provider gitlab`) to audit GitLab
+  repositories; GitHub remains the default.
+- Reinstall Git hooks (`repolens install-hooks --force`) to pick up the updated
+  pre-commit hook: it now runs a dedicated content-secret scan (replacing the
+  detection lost when the `secrets` category was removed) in addition to the
+  `files`/`git` hygiene check.
+
 ## [2.0.2] - 2026-05-13
 
 ### Security

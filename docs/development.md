@@ -52,15 +52,15 @@ crates/
 │       ├── config/                # Chargement et gestion de la configuration
 │       │   └── presets/           # Presets de configuration (opensource, enterprise, strict)
 │       ├── rules/                 # Moteur d'audit et règles
-│       │   ├── categories/        # Catégories de règles (secrets, files, docs, security, workflows, quality, licenses, dependencies, custom)
-│       │   ├── patterns/          # Patterns de détection (secrets, etc.)
+│       │   ├── categories/        # Catégories de règles (files, docs, security, git, codeowners, metadata — 6 au total)
 │       │   └── engine.rs          # Moteur d'exécution des règles
 │       ├── actions/               # Planification et exécution des actions
 │       │   ├── planner.rs         # Planification des actions à partir des résultats
 │       │   ├── executor.rs        # Exécution des actions (mode interactif supporté)
 │       │   └── templates.rs       # Génération de fichiers à partir de templates
-│       ├── providers/             # Intégration avec les APIs externes
-│       │   └── github.rs          # Provider GitHub (via gh CLI)
+│       ├── providers/             # RepoProvider trait + implémentations par forge
+│       │   ├── github.rs          # Provider GitHub (GITHUB_TOKEN ou gh CLI)
+│       │   └── gitlab.rs          # Provider GitLab (GITLAB_TOKEN via glab CLI)
 │       ├── scanner/               # Scan du système de fichiers et Git
 │       │   ├── filesystem.rs      # Scan du système de fichiers
 │       │   └── git.rs             # Informations Git
@@ -273,21 +273,6 @@ gdb target/debug/repolens
 lldb target/debug/repolens
 ```
 
-### Tests de Détection de Secrets
-
-Les patterns de secrets sont dans `crates/repolens-core/src/rules/patterns/secrets.rs`. Pour tester :
-
-```bash
-# Créer un fichier de test avec un faux secret
-echo "api_key = sk_test_1234567890abcdef" > test_secret.txt
-
-# Lancer l'audit
-cargo run -- plan
-
-# Nettoyer
-rm test_secret.txt
-```
-
 ## Configuration de Développement
 
 ### Fichier `.repolens.toml`
@@ -299,12 +284,12 @@ Créer un fichier `.repolens.toml` à la racine pour tester :
 preset = "opensource"
 
 [rules]
-secrets = true
 files = true
 docs = true
 security = true
-workflows = true
-quality = true
+git = true
+codeowners = true
+metadata = true
 ```
 
 ### Presets

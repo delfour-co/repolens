@@ -21,7 +21,7 @@ workspace = true
 
 [dependencies]
 # Core auditing library
-repolens-core = { path = "../repolens-core", version = "2.0.2" }
+repolens-core = { path = "../repolens-core", version = "3.0.0" }
 
 # CLI framework
 clap = { workspace = true, features = ["env", "color"] }

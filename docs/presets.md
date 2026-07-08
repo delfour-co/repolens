@@ -14,7 +14,6 @@ RepoLens propose trois presets de configuration prédéfinis pour différents ca
 ### Caractéristiques
 
 - ✅ Toutes les règles activées
-- ✅ Détection stricte des secrets
 - ✅ Tous les fichiers requis (README, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY)
 - ✅ Protection de branche avec 1 approbation requise
 - ✅ Discussions GitHub activées
@@ -50,7 +49,6 @@ repolens init --preset opensource
 ### Caractéristiques
 
 - ✅ Règles de sécurité strictes
-- ✅ Détection de secrets avec patterns d'ignorance pour tests
 - ✅ Pas de LICENSE (projets internes)
 - ✅ Pas de CONTRIBUTING (processus internes)
 - ✅ Protection de branche avec 2 approbations
@@ -92,7 +90,6 @@ repolens init --preset enterprise
 ### Caractéristiques
 
 - ✅ Toutes les règles activées au maximum
-- ✅ Détection de secrets sans exceptions
 - ✅ Tous les fichiers requis
 - ✅ Protection de branche stricte (2 approbations)
 - ✅ Commits signés requis
@@ -123,7 +120,6 @@ repolens init --preset strict
 
 ### Différences avec `opensource`
 
-- ✅ Détection de secrets sans patterns d'ignorance
 - ✅ Commits signés requis
 - ✅ Plus d'approbations requises
 - ❌ Aucune URL interne autorisée
@@ -132,31 +128,22 @@ repolens init --preset strict
 
 | Fonctionnalité | opensource | enterprise | strict |
 |----------------|------------|------------|--------|
-| Détection de secrets | ✅ Stricte | ✅ Avec ignores | ✅ Maximum |
 | LICENSE | ✅ | ❌ | ✅ |
 | CONTRIBUTING | ✅ | ❌ | ✅ |
 | CODE_OF_CONDUCT | ✅ | ❌ | ✅ |
 | SECURITY | ✅ | ✅ | ✅ |
-| Conformité licences | ✅ | ✅ | ✅ |
-| Scan dépendances | ✅ | ✅ | ✅ |
 | Approbations requises | 1 | 2 | 2 |
 | Commits signés | ❌ | ✅ | ✅ |
 | URLs internes | ❌ | ✅ | ❌ |
 | Discussions GitHub | ✅ | ❌ | ✅ |
 
-### Règles v1.3.0 par preset
+### Règles par preset
 
 | Règle | opensource | enterprise | strict |
 |-------|------------|------------|--------|
 | SEC011-014 (Security features) | ✅ | ✅ | ✅ |
 | SEC015-017 (Actions permissions) | ✅ | ✅ | ✅ |
-| TEAM001-004 (Collaborators) | Info | Warning | Critical |
-| KEY001-002 (Deploy keys) | Info | Warning | Critical |
-| APP001 (Installed apps) | Info | Warning | Warning |
-| HOOK001-003 (Webhooks) | Info | Warning | Critical |
-| ENV001-003 (Environments) | Info | Warning | Critical |
-| CODE001-003 (CODEOWNERS) | Info | ✅ Requis | ✅ Requis |
-| REL001-003 (Releases) | Info | Warning | Warning |
+| CODE001-002 (CODEOWNERS) | Info | Critical si absent | Info |
 
 ## Personnalisation d'un preset
 
@@ -168,7 +155,7 @@ preset = "opensource"
 
 # Surcharger certaines options
 [rules]
-workflows = false  # Désactiver la validation des workflows
+git = false  # Désactiver les vérifications .gitattributes / fichiers sensibles
 
 [actions.branch_protection]
 required_approvals = 2  # Plus strict que le preset

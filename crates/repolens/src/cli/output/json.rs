@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use super::{OutputRenderer, ReportRenderer};
 use repolens_core::actions::plan::ActionPlan;
+use repolens_core::providers::Provider;
 use repolens_core::rules::results::{AuditResults, Severity};
 
 /// Embedded JSON Schema for the audit report.
@@ -20,6 +21,9 @@ pub struct JsonOutput {
     include_schema: bool,
     /// Whether to validate the output against the JSON Schema before emitting.
     validate: bool,
+    /// Repository hosting provider the audit ran against, recorded in the
+    /// report metadata so a reader knows which forge was queried.
+    provider: Provider,
 }
 
 impl JsonOutput {
@@ -27,6 +31,7 @@ impl JsonOutput {
         Self {
             include_schema: false,
             validate: false,
+            provider: Provider::default(),
         }
     }
 
@@ -39,6 +44,13 @@ impl JsonOutput {
     /// Enable validation of the JSON output against the embedded schema.
     pub fn with_validation(mut self, validate: bool) -> Self {
         self.validate = validate;
+        self
+    }
+
+    /// Set the provider recorded in the report metadata (defaults to
+    /// [`Provider::GitHub`] when not set explicitly).
+    pub fn with_provider(mut self, provider: Provider) -> Self {
+        self.provider = provider;
         self
     }
 }
@@ -90,6 +102,9 @@ struct ReportMetadata {
     version: String,
     timestamp: String,
     schema_version: String,
+    /// Repository hosting provider the audit ran against (`"github"` or
+    /// `"gitlab"`).
+    provider: Provider,
 }
 
 #[derive(Serialize)]
@@ -187,6 +202,7 @@ impl ReportRenderer for JsonOutput {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 schema_version: "1.0.0".to_string(),
+                provider: self.provider,
             },
             summary: ReportSummary {
                 total: results.findings().len(),
@@ -222,10 +238,10 @@ mod tests {
     fn create_test_results() -> AuditResults {
         let mut results = AuditResults::new("test-repo", "opensource");
         results.add_finding(Finding::new(
-            "SEC001",
-            "secrets",
+            "SEC011",
+            "security",
             Severity::Critical,
-            "Secret exposed",
+            "Vulnerability alerts disabled",
         ));
         results.add_finding(Finding::new(
             "DOC001",
@@ -307,6 +323,38 @@ mod tests {
         assert_eq!(json["summary"]["by_severity"]["critical"], 1);
         assert_eq!(json["summary"]["by_severity"]["warning"], 1);
         assert_eq!(json["summary"]["by_severity"]["info"], 0);
+    }
+
+    /// Regression test: the JSON report metadata must record which provider
+    /// (GitHub or GitLab) the audit ran against, defaulting to `"github"`
+    /// when not set explicitly.
+    #[test]
+    fn test_render_report_metadata_includes_default_provider() {
+        let output = JsonOutput::new();
+        let results = create_test_results();
+
+        let rendered = output.render_report(&results).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+        assert_eq!(json["metadata"]["provider"], "github");
+    }
+
+    /// Regression test: `with_provider` threads the effective provider into
+    /// the rendered report metadata, and the result still validates against
+    /// the embedded JSON Schema.
+    #[test]
+    fn test_render_report_with_gitlab_provider_validates_against_schema() {
+        let output = JsonOutput::new()
+            .with_schema(true)
+            .with_validation(true)
+            .with_provider(Provider::GitLab);
+        let results = create_test_results();
+
+        let rendered = output.render_report(&results).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+
+        assert_eq!(json["metadata"]["provider"], "gitlab");
+        assert!(validate_against_schema(&json).is_ok());
     }
 
     #[test]

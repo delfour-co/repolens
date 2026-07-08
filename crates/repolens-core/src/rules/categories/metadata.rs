@@ -4,28 +4,13 @@
 //! - Repository description (META001)
 //! - Topics/tags (META002)
 //! - Website URL (META003)
-//! - Social preview image (META004)
 
 use crate::config::Config;
 use crate::error::RepoLensError;
-use crate::providers::github::GitHubProvider;
+use crate::providers::RepoMetadata;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
-
-use serde::Deserialize;
-
-/// Metadata returned from the GitHub API
-#[derive(Debug, Deserialize)]
-struct RepoMetadata {
-    description: Option<String>,
-    #[serde(default)]
-    topics: Vec<String>,
-    homepage: Option<String>,
-    #[serde(rename = "hasPages")]
-    #[allow(dead_code)]
-    has_pages: Option<bool>,
-}
 
 /// Rules for checking repository metadata
 pub struct MetadataRules;
@@ -43,16 +28,12 @@ impl RuleCategory for MetadataRules {
     ) -> Result<Vec<Finding>, RepoLensError> {
         let mut findings = Vec::new();
 
-        if !GitHubProvider::is_available() {
-            return Ok(findings);
-        }
-
-        let provider = match GitHubProvider::new() {
-            Ok(p) => p,
-            Err(_) => return Ok(findings),
+        let provider = match crate::providers::for_config(config) {
+            Some(p) => p,
+            None => return Ok(findings),
         };
 
-        let metadata = match get_repo_metadata(&provider) {
+        let metadata = match provider.repo_metadata() {
             Ok(m) => m,
             Err(_) => return Ok(findings),
         };
@@ -69,41 +50,8 @@ impl RuleCategory for MetadataRules {
             findings.extend(check_homepage(&metadata));
         }
 
-        if config.is_rule_enabled("metadata/social-preview") {
-            findings.extend(check_social_preview(&provider));
-        }
-
         Ok(findings)
     }
-}
-
-/// Fetch repository metadata from GitHub API
-fn get_repo_metadata(provider: &GitHubProvider) -> Result<RepoMetadata, RepoLensError> {
-    let output = std::process::Command::new("gh")
-        .args([
-            "repo",
-            "view",
-            &format!("{}/{}", provider.owner(), provider.name()),
-            "--json",
-            "description,topics,homepage,hasPages",
-        ])
-        .output()
-        .map_err(|_| {
-            RepoLensError::Provider(crate::error::ProviderError::CommandFailed {
-                command: "gh repo view".to_string(),
-            })
-        })?;
-
-    if !output.status.success() {
-        return Err(RepoLensError::Provider(
-            crate::error::ProviderError::CommandFailed {
-                command: "gh repo view".to_string(),
-            },
-        ));
-    }
-
-    let metadata: RepoMetadata = serde_json::from_slice(&output.stdout)?;
-    Ok(metadata)
 }
 
 /// META001: Check for repository description
@@ -187,49 +135,6 @@ fn check_homepage(metadata: &RepoMetadata) -> Vec<Finding> {
                 "Add a website URL in your repository settings: Settings > General > Website.",
             ),
         );
-    }
-
-    findings
-}
-
-/// META004: Check for social preview image
-fn check_social_preview(provider: &GitHubProvider) -> Vec<Finding> {
-    let mut findings = Vec::new();
-
-    // Check social preview via API - the openGraphImageUrl field
-    let output = std::process::Command::new("gh")
-        .args([
-            "api",
-            &format!("repos/{}/{}", provider.owner(), provider.name()),
-            "--jq",
-            ".has_custom_open_graph_image // false",
-        ])
-        .output();
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let result = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if result != "true" {
-                findings.push(
-                    Finding::new(
-                        "META004",
-                        "metadata",
-                        Severity::Info,
-                        "Social preview image is missing",
-                    )
-                    .with_description(
-                        "A custom social preview image is displayed when your repository \
-                         is shared on social media platforms. It helps make your project \
-                         more recognizable and professional.",
-                    )
-                    .with_remediation(
-                        "Upload a social preview image in your repository settings: \
-                         Settings > General > Social preview.",
-                    ),
-                );
-            }
-        }
-        _ => {} // Skip if API call fails
     }
 
     findings

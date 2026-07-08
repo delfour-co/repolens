@@ -24,7 +24,6 @@ sha2.workspace = true
 dirs.workspace = true
 octocrab.workspace = true
 which.workspace = true
-reqwest.workspace = true
 tera.workspace = true
 minijinja.workspace = true
 jsonschema.workspace = true
@@ -52,9 +51,6 @@ insta.workspace = true
 [lints]
 workspace = true
 
-[[bench]]
-name = "parse_benchmark"
-harness = false
 [[bench]]
 name = "scanner_benchmark"
 harness = false

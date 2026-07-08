@@ -2,7 +2,7 @@
 //!
 //! This module provides functionality for installing and managing Git hooks
 //! that integrate RepoLens into the development workflow. Supported hooks:
-//! - **pre-commit**: Checks for exposed secrets before each commit
+//! - **pre-commit**: Checks for sensitive files and .gitignore hygiene before each commit
 //! - **pre-push**: Runs a full audit before pushing to a remote
 
 use std::fs;
@@ -269,9 +269,33 @@ fn write_hook_file(path: &Path, content: &str) -> Result<(), RepoLensError> {
     Ok(())
 }
 
+/// High-precision staged-diff secret-scan pattern embedded in the generated
+/// pre-commit hook.
+///
+/// Review bug #1: the `secrets` rule category was removed from RepoLens in
+/// v3 (dependency CVEs / gitleaks-style content scanning were cut as
+/// out-of-scope for an auto-configurator), so `repolens plan --only
+/// files,git` no longer inspects commit *content* at all. Without this, the
+/// pre-commit hook would silently stop catching leaked credentials. This
+/// pattern matches only unambiguous, high-confidence secret formats --
+/// private keys, AWS access keys, GitHub/GitLab/Slack/Google/generic API
+/// tokens -- so it never false-positives on ordinary code such as `git@host`
+/// SSH URLs.
+const SECRET_SCAN_PATTERN: &str = concat!(
+    "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+    "|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}",
+    "|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|ghu_[A-Za-z0-9]{36}",
+    "|ghs_[A-Za-z0-9]{36}|ghr_[A-Za-z0-9]{36}",
+    "|github_pat_[A-Za-z0-9_]{22,}|glpat-[A-Za-z0-9_-]{20}",
+    "|xox[baprs]-[A-Za-z0-9-]{10,}",
+    "|AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9]{32,}",
+);
+
 /// Generate the content of the pre-commit hook script
 ///
-/// The pre-commit hook runs a secrets scan to prevent committing exposed credentials.
+/// The pre-commit hook scans staged changes for high-confidence secrets
+/// (review bug #1), then runs a fast local hygiene check (files, git) to
+/// catch sensitive files before commit.
 pub fn generate_pre_commit_hook(config: &HooksConfig) -> String {
     let fail_on_warnings = if config.fail_on_warnings {
         " --fail-on-warnings"
@@ -283,30 +307,54 @@ pub fn generate_pre_commit_hook(config: &HooksConfig) -> String {
         r#"#!/bin/sh
 # RepoLens Git Hook - pre-commit
 # This hook was automatically installed by RepoLens.
-# It checks for exposed secrets before allowing a commit.
+# It scans staged changes for high-confidence secrets, then checks for
+# sensitive files and .gitignore hygiene, before allowing a commit.
 #
 # To skip this hook, use: git commit --no-verify
 
 set -e
 
-echo "RepoLens: Checking for exposed secrets..."
+echo "RepoLens: Scanning staged changes for secrets..."
+
+# Added lines in staged, non-deleted files only.
+added=$(git diff --cached --diff-filter=d -U0 | grep '^+' | grep -v '^+++' || true)
+
+if [ -n "$added" ]; then
+    # High-precision secret signatures (won't match user@host / ssh URLs).
+    pattern='{pattern}'
+
+    hits=$(printf '%s\n' "$added" | grep -nEi -e "$pattern" || true)
+
+    if [ -n "$hits" ]; then
+        echo ""
+        echo "RepoLens: potential secret detected in staged changes! Commit aborted."
+        echo "$hits"
+        echo ""
+        echo "Remove the secret (or, if this is a false positive, review carefully) before committing."
+        echo "To skip this check, use: git commit --no-verify"
+        exit 1
+    fi
+fi
+
+echo "RepoLens: No secrets detected. Checking for sensitive files..."
 
 if ! command -v repolens >/dev/null 2>&1; then
-    echo "Warning: repolens is not installed or not in PATH. Skipping pre-commit check."
+    echo "Warning: repolens is not installed or not in PATH. Skipping hygiene check."
     echo "Install it with: cargo install repolens"
     exit 0
 fi
 
-if ! repolens plan --only secrets --format terminal{fail_on_warnings} 2>/dev/null; then
+if ! repolens plan --only files,git --format terminal{fail_on_warnings} 2>/dev/null; then
     echo ""
-    echo "RepoLens: Secrets detected! Commit aborted."
-    echo "Please remove or ignore the detected secrets before committing."
+    echo "RepoLens: Sensitive files or hygiene issues detected! Commit aborted."
+    echo "Please remove or ignore the flagged files before committing."
     echo "To skip this check, use: git commit --no-verify"
     exit 1
 fi
 
-echo "RepoLens: No secrets detected. Proceeding with commit."
-"#
+echo "RepoLens: No issues detected. Proceeding with commit."
+"#,
+        pattern = SECRET_SCAN_PATTERN,
     )
 }
 
@@ -641,9 +689,37 @@ mod tests {
         assert!(content.starts_with("#!/bin/sh"));
         assert!(content.contains("# RepoLens Git Hook"));
         assert!(content.contains("pre-commit"));
-        assert!(content.contains("repolens plan --only secrets"));
+        assert!(content.contains("repolens plan --only files,git"));
         assert!(content.contains("--no-verify"));
         assert!(!content.contains("--fail-on-warnings"));
+    }
+
+    /// Regression test for review bug #1: the `secrets` rule category was
+    /// removed in v3, so `repolens plan --only files,git` no longer scans
+    /// commit content for secrets. The generated pre-commit hook must embed
+    /// its own self-contained, high-precision staged-diff secret scan so this
+    /// security property isn't silently lost.
+    #[test]
+    fn test_generate_pre_commit_hook_contains_secret_scan() {
+        let config = HooksConfig::default();
+        let content = generate_pre_commit_hook(&config);
+
+        // Scans the staged diff, not the working tree or history.
+        assert!(content.contains("git diff --cached"));
+        // Uses `-e` for the pattern (some formats, e.g. `glpat-`, start with
+        // a `-`, which `grep` would otherwise treat as a flag).
+        assert!(content.contains("grep -nEi -e"));
+        // High-precision, unambiguous secret formats only.
+        assert!(content.contains("PRIVATE KEY"));
+        assert!(content.contains("AKIA"));
+        assert!(content.contains("ghp_"));
+        assert!(content.contains("github_pat_"));
+        assert!(content.contains("glpat-"));
+        assert!(content.contains("xox"));
+        assert!(content.contains("AIza"));
+        assert!(content.contains("sk-"));
+        // Never false-positives on `git@host` SSH URLs.
+        assert!(!content.contains("git@"));
     }
 
     #[test]
@@ -813,7 +889,11 @@ mod tests {
             fs::read_to_string(temp_dir.path().join(".git/hooks/pre-commit")).unwrap();
         assert!(pre_commit_content.contains("#!/bin/sh"));
         assert!(pre_commit_content.contains("# RepoLens Git Hook"));
-        assert!(pre_commit_content.contains("repolens plan --only secrets"));
+        assert!(pre_commit_content.contains("repolens plan --only files,git"));
+        // Review bug #1: the installed hook must also carry the dedicated
+        // content-secret scan (the `secrets` rule category no longer exists).
+        assert!(pre_commit_content.contains("git diff --cached"));
+        assert!(pre_commit_content.contains("AKIA"));
 
         // Verify pre-push content
         let pre_push_content =

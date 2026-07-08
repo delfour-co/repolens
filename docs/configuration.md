@@ -14,12 +14,12 @@ RepoLens utilise un fichier de configuration TOML (`.repolens.toml`) à la racin
 preset = "opensource"  # ou "enterprise", "strict"
 
 [rules]
-secrets = true
 files = true
 docs = true
 security = true
-workflows = true
-quality = true
+git = true
+codeowners = true
+metadata = true
 ```
 
 ## Section `[general]`
@@ -43,37 +43,12 @@ Active ou désactive les catégories de règles.
 
 ```toml
 [rules]
-secrets = true        # Détection de secrets
 files = true          # Vérification des fichiers requis
 docs = true           # Qualité de la documentation
-security = true       # Bonnes pratiques de sécurité
-workflows = true      # Validation des workflows GitHub Actions
-quality = true        # Standards de qualité de code
-licenses = true       # Conformité des licences (LIC001-LIC004)
-dependencies = true   # Vulnérabilités des dépendances (DEP001-DEP002)
-custom = true         # Règles personnalisées
-```
-
-## Configuration des secrets
-
-### `[rules.secrets]`
-
-```toml
-[rules.secrets]
-# Patterns à ignorer (chemins glob)
-ignore_patterns = [
-    "**/test/**",
-    "**/tests/**",
-    "**/__tests__/**",
-    "**/*.test.*",
-    "**/*.spec.*",
-]
-
-# Fichiers spécifiques à ignorer
-ignore_files = [
-    ".env.example",
-    "config.example.json",
-]
+security = true       # Paramètres de sécurité du dépôt
+git = true            # Bonnes pratiques Git (.gitattributes, fichiers sensibles)
+codeowners = true     # Présence et syntaxe du fichier CODEOWNERS
+metadata = true       # Métadonnées du dépôt (description, topics, site web)
 ```
 
 ## Configuration des fichiers requis
@@ -183,18 +158,10 @@ preset = "opensource"
 preset = "opensource"
 
 [rules]
-secrets = true
 files = true
 docs = true
 security = true
-workflows = false  # Désactiver la validation des workflows
-quality = false    # Désactiver les vérifications de qualité
-
-[rules.secrets]
-ignore_patterns = [
-    "**/test/**",
-    "**/fixtures/**",
-]
+git = false        # Désactiver les vérifications Git hygiene (.gitattributes, fichiers sensibles)
 
 [files.required]
 readme = true
@@ -224,20 +191,12 @@ required_approvals = 1
 preset = "enterprise"
 
 [rules]
-secrets = true
 files = true
 docs = true
 security = true
-workflows = true
-quality = true
-
-[rules.secrets]
-ignore_patterns = [
-    "**/test/**",
-    "**/tests/**",
-    "**/fixtures/**",
-    "**/mocks/**",
-]
+git = true
+codeowners = true
+metadata = true
 
 [actions.branch_protection]
 enabled = true
@@ -245,20 +204,6 @@ branch = "main"
 required_approvals = 2  # Plus strict pour l'entreprise
 require_signed_commits = true
 ```
-
-## Configuration des licences
-
-### `["rules.licenses"]`
-
-```toml
-["rules.licenses"]
-enabled = true
-allowed_licenses = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]
-denied_licenses = ["GPL-3.0", "AGPL-3.0"]
-```
-
-- `allowed_licenses` : Liste blanche de licences SPDX autorisées pour les dépendances
-- `denied_licenses` : Liste noire de licences SPDX interdites
 
 ## Configuration du cache
 
@@ -390,7 +335,7 @@ export NO_COLOR=1
 
 ## Sécurité du fichier de configuration
 
-Le fichier `.repolens.toml` peut contenir des informations sensibles (patterns de secrets à ignorer, configuration personnalisée). Sur les systèmes Unix, RepoLens applique automatiquement les permissions `600` (lecture/écriture propriétaire uniquement) lors de la création du fichier via `repolens init`.
+Le fichier `.repolens.toml` peut contenir des informations sensibles (par exemple des tokens d'API dans une configuration personnalisée). Sur les systèmes Unix, RepoLens applique automatiquement les permissions `600` (lecture/écriture propriétaire uniquement) lors de la création du fichier via `repolens init`.
 
 ```bash
 # Vérifier les permissions

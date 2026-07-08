@@ -256,6 +256,61 @@ pub fn check_github_auth_available() -> CheckResult {
     }
 }
 
+/// Detect the host of the git `origin` remote (e.g. `github.com`, `gitlab.com`).
+///
+/// Returns `None` when there is no `origin` remote or the URL cannot be parsed.
+/// Handles both SSH (`git@host:path`) and HTTPS (`scheme://host/path`) forms.
+/// This is the single source of truth for remote-host detection, reused by
+/// provider auto-selection (`providers::detect_provider_from_remote`).
+pub fn detect_remote_host() -> Option<String> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    parse_remote_host(&url)
+}
+
+/// Extract the host portion of a git remote URL.
+fn parse_remote_host(url: &str) -> Option<String> {
+    // SSH form: git@host:path or user@host:path
+    if let Some(at) = url.find('@') {
+        let after_at = &url[at + 1..];
+        if let Some(colon) = after_at.find(':') {
+            let host = &after_at[..colon];
+            if !host.is_empty() {
+                return Some(host.to_string());
+            }
+        }
+    }
+
+    // HTTPS/scheme form: scheme://[user[:token]@]host[:port]/path
+    if let Some(scheme) = url.find("://") {
+        let after_scheme = &url[scheme + 3..];
+        // The authority ends at the first `/` (or the end of the string).
+        let authority_end = after_scheme.find('/').unwrap_or(after_scheme.len());
+        let authority = &after_scheme[..authority_end];
+        // Strip `user[:token]@` userinfo before taking the host, so credentials
+        // embedded in the URL are never mistaken for the host (review bug #7).
+        let host_and_port = match authority.rfind('@') {
+            Some(at) => &authority[at + 1..],
+            None => authority,
+        };
+        let host_end = host_and_port.find(':').unwrap_or(host_and_port.len());
+        let host = &host_and_port[..host_end];
+        if !host.is_empty() {
+            return Some(host.to_string());
+        }
+    }
+
+    None
+}
+
 /// Check if a remote origin is configured
 pub fn check_remote_origin(root: &Path) -> CheckResult {
     let output = Command::new("git")
@@ -502,6 +557,10 @@ pub fn is_github_auth_available() -> bool {
 }
 
 /// Get repository info (owner/name) from GitHub CLI
+///
+/// Retained as a public utility (exercised by integration tests); provider
+/// write paths now resolve the slug via the provider abstraction instead.
+#[allow(dead_code)]
 pub fn get_repo_info() -> Result<String> {
     let output = Command::new("gh")
         .args([
@@ -958,6 +1017,59 @@ mod tests {
                 expected
             );
         }
+    }
+
+    #[test]
+    fn test_parse_remote_host_https() {
+        assert_eq!(
+            parse_remote_host("https://github.com/owner/repo.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            parse_remote_host("https://gitlab.com/group/repo.git").as_deref(),
+            Some("gitlab.com")
+        );
+        assert_eq!(
+            parse_remote_host("https://gitlab.internal.corp/team/svc").as_deref(),
+            Some("gitlab.internal.corp")
+        );
+    }
+
+    #[test]
+    fn test_parse_remote_host_ssh() {
+        assert_eq!(
+            parse_remote_host("git@github.com:owner/repo.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            parse_remote_host("git@gitlab.com:group/repo.git").as_deref(),
+            Some("gitlab.com")
+        );
+    }
+
+    #[test]
+    fn test_parse_remote_host_invalid() {
+        assert!(parse_remote_host("not-a-url").is_none());
+    }
+
+    #[test]
+    fn test_parse_remote_host_https_with_credentials() {
+        // Regression test for review bug #7: `user:token@host` credentials in
+        // an HTTPS remote must not be parsed as the host.
+        assert_eq!(
+            parse_remote_host("https://user:tok3n@gitlab.example.com/group/repo.git").as_deref(),
+            Some("gitlab.example.com")
+        );
+        // Also covers credentials without a token (`user@host`).
+        assert_eq!(
+            parse_remote_host("https://user@github.com/owner/repo.git").as_deref(),
+            Some("github.com")
+        );
+    }
+
+    #[test]
+    fn test_detect_remote_host_does_not_panic() {
+        let _ = detect_remote_host();
     }
 
     #[test]

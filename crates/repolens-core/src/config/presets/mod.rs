@@ -72,9 +72,6 @@ impl Preset {
     pub fn enabled_rules(&self) -> Vec<&'static str> {
         match self {
             Self::OpenSource => vec![
-                "secrets/hardcoded",
-                "secrets/files",
-                "secrets/env",
                 "docs/readme",
                 "docs/license",
                 "docs/contributing",
@@ -82,36 +79,19 @@ impl Preset {
                 "docs/security",
                 "docs/changelog",
                 "files/sensitive",
-                "files/large",
                 "files/gitignore",
-                "security/dependencies",
                 "security/branch-protection",
                 "security/vulnerability-alerts",
                 "security/dependabot-updates",
-                "workflows/secrets",
-                "workflows/permissions",
-                "workflows/linters-in-ci",
-                "docker/dockerfile-presence",
-                "docker/dockerignore",
-                "docker/from-pinning",
-                "docker/user",
-                "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
-                "dependencies/lock-files",
                 "codeowners/presence",
-                "codeowners/releases",
             ],
             Self::Enterprise => vec![
-                "secrets/hardcoded",
-                "secrets/files",
-                "secrets/env",
                 "docs/readme",
                 "docs/security",
                 "files/sensitive",
-                "files/large",
                 "files/gitignore",
-                "security/dependencies",
                 "security/codeowners",
                 "security/signed-commits",
                 "security/branch-protection",
@@ -122,33 +102,12 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "security/access-control",
-                "security/infrastructure",
-                "workflows/secrets",
-                "workflows/permissions",
-                "workflows/timeout",
-                "workflows/pull-request-target",
-                "docker/dockerfile-presence",
-                "docker/dockerignore",
-                "docker/from-pinning",
-                "docker/user",
-                "docker/secrets-in-env",
-                "docker/healthcheck",
-                "quality/coverage",
-                "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
-                "dependencies/lock-files",
                 "codeowners/presence",
                 "codeowners/syntax",
-                "codeowners/valid-owners",
-                "codeowners/releases",
             ],
             Self::Strict => vec![
-                "secrets/hardcoded",
-                "secrets/files",
-                "secrets/env",
-                "secrets/history",
                 "docs/readme",
                 "docs/license",
                 "docs/contributing",
@@ -158,10 +117,8 @@ impl Preset {
                 "docs/changelog-format",
                 "docs/changelog-unreleased",
                 "files/sensitive",
-                "files/large",
                 "files/gitignore",
                 "files/editorconfig",
-                "security/dependencies",
                 "security/codeowners",
                 "security/signed-commits",
                 "security/branch-protection",
@@ -172,41 +129,10 @@ impl Preset {
                 "security/actions-permissions",
                 "security/workflow-permissions",
                 "security/fork-pr-approval",
-                "security/access-control",
-                "security/infrastructure",
-                "workflows/secrets",
-                "workflows/permissions",
-                "workflows/pinned-actions",
-                "workflows/timeout",
-                "workflows/concurrency",
-                "workflows/reusable-workflows",
-                "workflows/artifacts-retention",
-                "workflows/pull-request-target",
-                "workflows/linters-in-ci",
-                "docker/dockerfile-presence",
-                "docker/dockerignore",
-                "docker/from-pinning",
-                "docker/user",
-                "docker/healthcheck",
-                "docker/multistage",
-                "docker/secrets-in-env",
-                "docker/copy-all",
-                "quality/tests",
-                "quality/linting",
-                "quality/coverage",
-                "quality/api-docs",
-                "quality/complexity",
-                "quality/dead-code",
-                "quality/naming-conventions",
-                "git/large-binaries",
                 "git/gitattributes",
                 "git/sensitive-files",
-                "dependencies/lock-files",
                 "codeowners/presence",
                 "codeowners/syntax",
-                "codeowners/valid-owners",
-                "codeowners/releases",
-                "codeowners/signed-tags",
             ],
         }
     }
@@ -218,17 +144,12 @@ impl Preset {
     #[allow(dead_code)]
     pub fn critical_rules(&self) -> Vec<&'static str> {
         match self {
-            Self::OpenSource => vec!["secrets/hardcoded", "secrets/files", "docs/license"],
-            Self::Enterprise => vec!["secrets/hardcoded", "secrets/files", "security/codeowners"],
+            Self::OpenSource => vec!["docs/license"],
+            Self::Enterprise => vec!["security/codeowners"],
             Self::Strict => vec![
-                "secrets/hardcoded",
-                "secrets/files",
-                "secrets/history",
                 "docs/license",
                 "security/codeowners",
                 "security/signed-commits",
-                "docker/from-pinning",
-                "git/large-binaries",
             ],
         }
     }
@@ -284,7 +205,6 @@ mod tests {
     #[test]
     fn test_preset_enabled_rules_opensource() {
         let rules = Preset::OpenSource.enabled_rules();
-        assert!(rules.contains(&"secrets/hardcoded"));
         assert!(rules.contains(&"docs/readme"));
         assert!(rules.contains(&"docs/license"));
         assert!(rules.contains(&"docs/contributing"));
@@ -294,7 +214,6 @@ mod tests {
     #[test]
     fn test_preset_enabled_rules_enterprise() {
         let rules = Preset::Enterprise.enabled_rules();
-        assert!(rules.contains(&"secrets/hardcoded"));
         assert!(rules.contains(&"security/codeowners"));
         assert!(rules.contains(&"security/signed-commits"));
         // Enterprise doesn't require license
@@ -304,61 +223,51 @@ mod tests {
     #[test]
     fn test_preset_enabled_rules_strict() {
         let rules = Preset::Strict.enabled_rules();
-        assert!(rules.contains(&"secrets/hardcoded"));
-        assert!(rules.contains(&"secrets/history"));
-        assert!(rules.contains(&"quality/tests"));
-        assert!(rules.contains(&"quality/linting"));
-        assert!(rules.contains(&"workflows/pinned-actions"));
-        // New rules
-        assert!(rules.contains(&"docker/from-pinning"));
-        assert!(rules.contains(&"workflows/timeout"));
-        assert!(rules.contains(&"quality/coverage"));
         assert!(rules.contains(&"docs/changelog-format"));
+        assert!(rules.contains(&"files/editorconfig"));
+        assert!(rules.contains(&"security/fork-pr-approval"));
+        assert!(rules.contains(&"codeowners/syntax"));
     }
 
     #[test]
     fn test_preset_enabled_rules_opensource_new() {
         let rules = Preset::OpenSource.enabled_rules();
         assert!(rules.contains(&"docs/changelog"));
-        assert!(rules.contains(&"workflows/linters-in-ci"));
-        assert!(rules.contains(&"docker/dockerfile-presence"));
+        assert!(rules.contains(&"security/dependabot-updates"));
+        assert!(rules.contains(&"codeowners/presence"));
     }
 
     #[test]
     fn test_preset_enabled_rules_enterprise_new() {
         let rules = Preset::Enterprise.enabled_rules();
-        assert!(rules.contains(&"workflows/timeout"));
-        assert!(rules.contains(&"workflows/pull-request-target"));
-        assert!(rules.contains(&"docker/from-pinning"));
-        assert!(rules.contains(&"quality/coverage"));
+        assert!(rules.contains(&"security/secret-scanning"));
+        assert!(rules.contains(&"security/push-protection"));
+        assert!(rules.contains(&"codeowners/syntax"));
     }
 
     #[test]
-    fn test_preset_critical_rules_strict_docker() {
-        let rules = Preset::Strict.critical_rules();
-        assert!(rules.contains(&"docker/from-pinning"));
+    fn test_preset_strict_enables_git_rules() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(rules.contains(&"git/gitattributes"));
+        assert!(rules.contains(&"git/sensitive-files"));
     }
 
     #[test]
     fn test_preset_critical_rules_opensource() {
         let rules = Preset::OpenSource.critical_rules();
-        assert!(rules.contains(&"secrets/hardcoded"));
-        assert!(rules.contains(&"secrets/files"));
         assert!(rules.contains(&"docs/license"));
     }
 
     #[test]
     fn test_preset_critical_rules_enterprise() {
         let rules = Preset::Enterprise.critical_rules();
-        assert!(rules.contains(&"secrets/hardcoded"));
         assert!(rules.contains(&"security/codeowners"));
     }
 
     #[test]
     fn test_preset_critical_rules_strict() {
         let rules = Preset::Strict.critical_rules();
-        assert!(rules.contains(&"secrets/hardcoded"));
-        assert!(rules.contains(&"secrets/history"));
+        assert!(rules.contains(&"docs/license"));
         assert!(rules.contains(&"security/signed-commits"));
     }
 
@@ -457,27 +366,33 @@ mod tests {
         assert!(rules.contains(&"security/fork-pr-approval"));
     }
 
-    // ===== Access Control and Infrastructure Rules Tests =====
+    // ===== Removed Rules Regression Tests =====
 
     #[test]
-    fn test_preset_enterprise_has_access_control() {
+    fn test_preset_enterprise_no_removed_rules() {
         let rules = Preset::Enterprise.enabled_rules();
-        assert!(rules.contains(&"security/access-control"));
-        assert!(rules.contains(&"security/infrastructure"));
-    }
-
-    #[test]
-    fn test_preset_strict_has_access_control() {
-        let rules = Preset::Strict.enabled_rules();
-        assert!(rules.contains(&"security/access-control"));
-        assert!(rules.contains(&"security/infrastructure"));
-    }
-
-    #[test]
-    fn test_preset_opensource_no_access_control() {
-        let rules = Preset::OpenSource.enabled_rules();
-        // OpenSource preset does not include access control rules (require API access)
+        // These detection-only rules were removed during the auto-configurator recentering.
         assert!(!rules.contains(&"security/access-control"));
         assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/valid-owners"));
+        assert!(!rules.contains(&"codeowners/releases"));
+    }
+
+    #[test]
+    fn test_preset_strict_no_removed_rules() {
+        let rules = Preset::Strict.enabled_rules();
+        assert!(!rules.contains(&"security/access-control"));
+        assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/valid-owners"));
+        assert!(!rules.contains(&"codeowners/releases"));
+        assert!(!rules.contains(&"codeowners/signed-tags"));
+    }
+
+    #[test]
+    fn test_preset_opensource_no_removed_rules() {
+        let rules = Preset::OpenSource.enabled_rules();
+        assert!(!rules.contains(&"security/access-control"));
+        assert!(!rules.contains(&"security/infrastructure"));
+        assert!(!rules.contains(&"codeowners/releases"));
     }
 }

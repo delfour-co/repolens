@@ -10,7 +10,7 @@
 use crate::error::RepoLensError;
 
 use crate::config::Config;
-use crate::providers::github::GitHubProvider;
+use crate::providers::RepoProvider;
 use crate::rules::engine::RuleCategory;
 use crate::rules::results::{Finding, Severity};
 use crate::scanner::Scanner;
@@ -50,44 +50,40 @@ impl RuleCategory for SecurityRules {
             findings.extend(check_branch_protection(scanner).await?);
         }
 
-        // Check GitHub security features (requires API access)
-        if config.is_rule_enabled("security/vulnerability-alerts") {
-            findings.extend(check_vulnerability_alerts().await?);
-        }
+        // Provider-backed checks (require API access). Build the provider once;
+        // if none is available/authenticated, skip the network checks entirely
+        // (no findings) — preserving the previous graceful-skip contract.
+        let provider = crate::providers::for_config(config);
+        if let Some(provider) = provider.as_deref() {
+            // Check GitHub security features (requires API access)
+            if config.is_rule_enabled("security/vulnerability-alerts") {
+                findings.extend(check_vulnerability_alerts(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/dependabot-updates") {
-            findings.extend(check_dependabot_updates().await?);
-        }
+            if config.is_rule_enabled("security/dependabot-updates") {
+                findings.extend(check_dependabot_updates(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/secret-scanning") {
-            findings.extend(check_secret_scanning().await?);
-        }
+            if config.is_rule_enabled("security/secret-scanning") {
+                findings.extend(check_secret_scanning(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/push-protection") {
-            findings.extend(check_push_protection().await?);
-        }
+            if config.is_rule_enabled("security/push-protection") {
+                findings.extend(check_push_protection(provider).await?);
+            }
 
-        // Check Actions permissions
-        if config.is_rule_enabled("security/actions-permissions") {
-            findings.extend(check_actions_permissions().await?);
-        }
+            // Check Actions permissions
+            if config.is_rule_enabled("security/actions-permissions") {
+                findings.extend(check_actions_permissions(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/workflow-permissions") {
-            findings.extend(check_workflow_permissions().await?);
-        }
+            if config.is_rule_enabled("security/workflow-permissions") {
+                findings.extend(check_workflow_permissions(provider).await?);
+            }
 
-        if config.is_rule_enabled("security/fork-pr-approval") {
-            findings.extend(check_fork_pr_approval().await?);
-        }
-
-        // Access Control rules
-        if config.is_rule_enabled("security/access-control") {
-            findings.extend(check_access_control().await?);
-        }
-
-        // Infrastructure rules
-        if config.is_rule_enabled("security/infrastructure") {
-            findings.extend(check_infrastructure().await?);
+            if config.is_rule_enabled("security/fork-pr-approval") {
+                findings.extend(check_fork_pr_approval(provider).await?);
+            }
         }
 
         Ok(findings)
@@ -108,48 +104,6 @@ impl RuleCategory for SecurityRules {
 /// A vector of findings for dependency-related issues
 async fn check_dependencies(scanner: &Scanner) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    // Check for lock files (indicates dependency management)
-    let _lock_files = [
-        ("package-lock.json", "npm"),
-        ("yarn.lock", "Yarn"),
-        ("pnpm-lock.yaml", "pnpm"),
-        ("Cargo.lock", "Cargo"),
-        ("Gemfile.lock", "Bundler"),
-        ("poetry.lock", "Poetry"),
-        ("Pipfile.lock", "Pipenv"),
-        ("composer.lock", "Composer"),
-        ("go.sum", "Go modules"),
-    ];
-
-    let package_files = [
-        ("package.json", "package-lock.json"),
-        ("Cargo.toml", "Cargo.lock"),
-        ("Gemfile", "Gemfile.lock"),
-        ("pyproject.toml", "poetry.lock"),
-        ("Pipfile", "Pipfile.lock"),
-        ("composer.json", "composer.lock"),
-        ("go.mod", "go.sum"),
-    ];
-
-    for (package_file, lock_file) in package_files {
-        if scanner.file_exists(package_file) && !scanner.file_exists(lock_file) {
-            findings.push(
-                Finding::new(
-                    "SECURITY002",
-                    "security",
-                    Severity::Warning,
-                    format!("Lock file {} is missing", lock_file),
-                )
-                .with_description(
-                    "Lock files ensure reproducible builds and protect against supply chain attacks."
-                )
-                .with_remediation(
-                    "Generate the lock file by running your package manager's install command."
-                )
-            );
-        }
-    }
 
     // Check for .nvmrc or similar version files
     let version_managers = [
@@ -351,18 +305,10 @@ async fn check_branch_protection(scanner: &Scanner) -> Result<Vec<Finding>, Repo
 /// # Returns
 ///
 /// A vector of findings if vulnerability alerts are disabled
-async fn check_vulnerability_alerts() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_vulnerability_alerts(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    // Check if GitHub provider is available
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.has_vulnerability_alerts() {
         Ok(enabled) => {
@@ -402,17 +348,10 @@ async fn check_vulnerability_alerts() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if Dependabot security updates are disabled
-async fn check_dependabot_updates() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_dependabot_updates(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.has_dependabot_security_updates() {
         Ok(enabled) => {
@@ -451,17 +390,8 @@ async fn check_dependabot_updates() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if secret scanning is disabled
-async fn check_secret_scanning() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_secret_scanning(provider: &dyn RepoProvider) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_secret_scanning() {
         Ok(settings) => {
@@ -501,17 +431,8 @@ async fn check_secret_scanning() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if push protection is disabled
-async fn check_push_protection() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_push_protection(provider: &dyn RepoProvider) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_secret_scanning() {
         Ok(settings) => {
@@ -553,17 +474,10 @@ async fn check_push_protection() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if actions are not restricted
-async fn check_actions_permissions() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_actions_permissions(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_actions_permissions() {
         Ok(perms) => {
@@ -608,17 +522,10 @@ async fn check_actions_permissions() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if workflow permissions are too permissive
-async fn check_workflow_permissions() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_workflow_permissions(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_actions_workflow_permissions() {
         Ok(perms) => {
@@ -662,17 +569,10 @@ async fn check_workflow_permissions() -> Result<Vec<Finding>, RepoLensError> {
 /// # Returns
 ///
 /// A vector of findings if fork PR workflows don't require approval
-async fn check_fork_pr_approval() -> Result<Vec<Finding>, RepoLensError> {
+async fn check_fork_pr_approval(
+    provider: &dyn RepoProvider,
+) -> Result<Vec<Finding>, RepoLensError> {
     let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
 
     match provider.get_fork_pr_workflows_policy() {
         Ok(requires_approval) => {
@@ -705,314 +605,6 @@ async fn check_fork_pr_approval() -> Result<Vec<Finding>, RepoLensError> {
     Ok(findings)
 }
 
-// ===== Access Control Rules =====
-
-/// Check access control settings (TEAM001-004, KEY001-002, APP001)
-///
-/// Analyzes collaborators, teams, deploy keys, and GitHub App installations
-/// for potential security issues.
-async fn check_access_control() -> Result<Vec<Finding>, RepoLensError> {
-    let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
-
-    // Check collaborators
-    if let Ok(collaborators) = provider.list_collaborators() {
-        for collab in &collaborators {
-            // TEAM001: Direct collaborator with admin access
-            if collab.permissions.admin {
-                findings.push(
-                    Finding::new(
-                        "TEAM001",
-                        "security",
-                        Severity::Info,
-                        format!("Direct collaborator '{}' has admin access", collab.login),
-                    )
-                    .with_description(
-                        "Direct collaborators with admin access can modify repository settings, \
-                         manage access, and perform destructive operations.",
-                    )
-                    .with_remediation(
-                        "Review if admin access is necessary. Consider using team-based access \
-                         control for better auditability and management.",
-                    ),
-                );
-            }
-
-            // TEAM002: External collaborator with push access
-            if collab.user_type == "User" && collab.permissions.push && !collab.permissions.admin {
-                findings.push(
-                    Finding::new(
-                        "TEAM002",
-                        "security",
-                        Severity::Warning,
-                        format!("External collaborator '{}' has push access", collab.login),
-                    )
-                    .with_description(
-                        "External collaborators with push access can directly modify the codebase.",
-                    )
-                    .with_remediation(
-                        "Review external collaborator access regularly. Consider requiring PR reviews \
-                         for all changes.",
-                    ),
-                );
-            }
-        }
-    }
-
-    // Check teams
-    if let Ok(teams) = provider.list_teams() {
-        for team in &teams {
-            // TEAM003: Teams with write+ access
-            let has_write_access = team.permission == "push"
-                || team.permission == "admin"
-                || team.permission == "maintain";
-            if has_write_access {
-                findings.push(
-                    Finding::new(
-                        "TEAM003",
-                        "security",
-                        Severity::Info,
-                        format!("Team '{}' has '{}' access", team.name, team.permission),
-                    )
-                    .with_description(
-                        "Teams with write access or higher can modify the repository.",
-                    )
-                    .with_remediation(
-                        "Review team membership periodically. Remove inactive members.",
-                    ),
-                );
-            }
-        }
-    }
-
-    // Check deploy keys
-    if let Ok(keys) = provider.list_deploy_keys() {
-        for key in &keys {
-            // KEY001: Deploy key with write access
-            if !key.read_only {
-                findings.push(
-                    Finding::new(
-                        "KEY001",
-                        "security",
-                        Severity::Warning,
-                        format!("Deploy key '{}' has write access", key.title),
-                    )
-                    .with_description(
-                        "Deploy keys with write access can push changes to the repository.",
-                    )
-                    .with_remediation(
-                        "Review if write access is necessary. Use read-only keys when possible.",
-                    ),
-                );
-            }
-
-            // KEY002: Deploy key without expiration
-            findings.push(
-                Finding::new(
-                    "KEY002",
-                    "security",
-                    Severity::Info,
-                    format!("Deploy key '{}' has no expiration", key.title),
-                )
-                .with_description(
-                    "Deploy keys don't expire automatically. Implement a key rotation policy.",
-                )
-                .with_remediation(
-                    "Implement a regular key rotation schedule (e.g., every 90 days).",
-                ),
-            );
-        }
-    }
-
-    // Check GitHub App installations
-    if let Ok(installations) = provider.list_installations() {
-        for inst in &installations {
-            // APP001: Apps with broad permissions
-            let has_admin = inst.permissions.administration.as_deref() == Some("write");
-            let has_contents_write = inst.permissions.contents.as_deref() == Some("write");
-
-            if has_admin || has_contents_write {
-                let app_name = inst.app_slug.as_deref().unwrap_or("Unknown app");
-                findings.push(
-                    Finding::new(
-                        "APP001",
-                        "security",
-                        Severity::Info,
-                        format!("GitHub App '{}' has broad permissions", app_name),
-                    )
-                    .with_description(
-                        "This GitHub App has administrative or write access to repository contents.",
-                    )
-                    .with_remediation(
-                        "Review the GitHub App's permissions in Settings > Integrations.",
-                    ),
-                );
-            }
-        }
-    }
-
-    Ok(findings)
-}
-
-// ===== Infrastructure Rules =====
-
-/// Check infrastructure settings (HOOK001-003, ENV001-003)
-///
-/// Analyzes webhooks and deployment environments for potential security issues.
-async fn check_infrastructure() -> Result<Vec<Finding>, RepoLensError> {
-    let mut findings = Vec::new();
-
-    if !GitHubProvider::is_available() {
-        return Ok(findings);
-    }
-
-    let provider = match GitHubProvider::new() {
-        Ok(p) => p,
-        Err(_) => return Ok(findings),
-    };
-
-    // Check webhooks
-    if let Ok(webhooks) = provider.list_webhooks() {
-        for hook in &webhooks {
-            let url = hook.config.url.as_deref().unwrap_or("");
-
-            // HOOK001: Webhook with non-HTTPS URL
-            if !url.is_empty() && !url.starts_with("https://") {
-                findings.push(
-                    Finding::new(
-                        "HOOK001",
-                        "security",
-                        Severity::Warning,
-                        format!("Webhook '{}' uses non-HTTPS URL", hook.name),
-                    )
-                    .with_location(format!("Webhook ID: {}", hook.id))
-                    .with_description("Webhooks should use HTTPS to ensure data is encrypted.")
-                    .with_remediation("Update the webhook URL to use HTTPS."),
-                );
-            }
-
-            // HOOK002: Webhook without secret configured
-            if hook.config.secret.is_none() {
-                findings.push(
-                    Finding::new(
-                        "HOOK002",
-                        "security",
-                        Severity::Warning,
-                        format!("Webhook '{}' has no secret configured", hook.name),
-                    )
-                    .with_location(format!("Webhook ID: {}", hook.id))
-                    .with_description(
-                        "Webhooks without a secret cannot verify the authenticity of payloads.",
-                    )
-                    .with_remediation(
-                        "Configure a webhook secret and validate X-Hub-Signature-256 header.",
-                    ),
-                );
-            }
-
-            // HOOK003: Inactive webhook
-            if !hook.active {
-                findings.push(
-                    Finding::new(
-                        "HOOK003",
-                        "security",
-                        Severity::Info,
-                        format!("Webhook '{}' is inactive", hook.name),
-                    )
-                    .with_location(format!("Webhook ID: {}", hook.id))
-                    .with_description(
-                        "Inactive webhooks may be leftover from previous integrations.",
-                    )
-                    .with_remediation("Review if this webhook is still needed. If not, delete it."),
-                );
-            }
-        }
-    }
-
-    // Check environments
-    if let Ok(environments) = provider.list_environments() {
-        for env in &environments {
-            let protection = match provider.get_environment_protection(&env.name) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-
-            let is_production =
-                env.name.to_lowercase().contains("prod") || env.name.to_lowercase() == "production";
-
-            let has_protection_rules = !protection.protection_rules.is_empty();
-            let has_required_reviewers = protection
-                .protection_rules
-                .iter()
-                .any(|r| r.rule_type == "required_reviewers");
-            let has_branch_policy = protection.deployment_branch_policy.is_some();
-
-            // ENV001: Environment without protection rules
-            if !has_protection_rules {
-                findings.push(
-                    Finding::new(
-                        "ENV001",
-                        "security",
-                        Severity::Info,
-                        format!("Environment '{}' has no protection rules", env.name),
-                    )
-                    .with_description(
-                        "Environments without protection rules allow any workflow to deploy.",
-                    )
-                    .with_remediation("Add protection rules in Settings > Environments."),
-                );
-            }
-
-            // ENV002: Production environment without required reviewers
-            if is_production && !has_required_reviewers {
-                findings.push(
-                    Finding::new(
-                        "ENV002",
-                        "security",
-                        Severity::Warning,
-                        format!(
-                            "Production environment '{}' has no required reviewers",
-                            env.name
-                        ),
-                    )
-                    .with_description(
-                        "Production deployments should require approval from designated reviewers.",
-                    )
-                    .with_remediation("Add required reviewers in Settings > Environments."),
-                );
-            }
-
-            // ENV003: Environment without branch policies
-            if !has_branch_policy {
-                findings.push(
-                    Finding::new(
-                        "ENV003",
-                        "security",
-                        Severity::Info,
-                        format!("Environment '{}' has no branch policies", env.name),
-                    )
-                    .with_description(
-                        "Environments without branch policies allow deployments from any branch.",
-                    )
-                    .with_remediation(
-                        "Configure deployment branch policy in Settings > Environments.",
-                    ),
-                );
-            }
-        }
-    }
-
-    Ok(findings)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1021,21 +613,6 @@ mod tests {
     use tempfile::TempDir;
 
     // Note: CODEOWNERS tests are now in codeowners.rs module (CODE001-003)
-
-    #[tokio::test]
-    async fn test_check_dependencies_missing_lock_file() {
-        let temp_dir = TempDir::new().unwrap();
-        let root = temp_dir.path();
-        let package_json = root.join("package.json");
-
-        fs::write(&package_json, r#"{"name": "test"}"#).unwrap();
-
-        let scanner = Scanner::new(root.to_path_buf());
-        let findings = check_dependencies(&scanner).await.unwrap();
-
-        assert!(!findings.is_empty());
-        assert!(findings.iter().any(|f| f.rule_id == "SECURITY002"));
-    }
 
     #[tokio::test]
     async fn test_check_dependencies_no_version_file() {
@@ -1255,12 +832,15 @@ branches:
 
     // ===== GitHub Security Features Tests (SEC011-017) =====
     // Note: These tests verify the Finding structure and logic.
-    // The actual API calls are mocked or skipped when GitHub is unavailable.
+    // The actual API calls are skipped when no provider is available.
 
     #[tokio::test]
     async fn test_check_vulnerability_alerts_returns_empty_when_no_github() {
-        // When GitHub is not available, should return empty findings
-        let findings = check_vulnerability_alerts().await.unwrap();
+        // When no provider is available, the helper is never reached (mirrors run()).
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_vulnerability_alerts(provider.as_ref()).await.unwrap();
         // We can't assert on the result since it depends on GitHub availability
         // but we verify it doesn't panic
         assert!(findings.len() <= 1);
@@ -1268,37 +848,55 @@ branches:
 
     #[tokio::test]
     async fn test_check_dependabot_updates_returns_empty_when_no_github() {
-        let findings = check_dependabot_updates().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_dependabot_updates(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_secret_scanning_returns_empty_when_no_github() {
-        let findings = check_secret_scanning().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_secret_scanning(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_push_protection_returns_empty_when_no_github() {
-        let findings = check_push_protection().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_push_protection(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_actions_permissions_returns_empty_when_no_github() {
-        let findings = check_actions_permissions().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_actions_permissions(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_workflow_permissions_returns_empty_when_no_github() {
-        let findings = check_workflow_permissions().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_workflow_permissions(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
     #[tokio::test]
     async fn test_check_fork_pr_approval_returns_empty_when_no_github() {
-        let findings = check_fork_pr_approval().await.unwrap();
+        let Some(provider) = crate::providers::for_config(&Config::default()) else {
+            return;
+        };
+        let findings = check_fork_pr_approval(provider.as_ref()).await.unwrap();
         assert!(findings.len() <= 1);
     }
 
@@ -1397,185 +995,6 @@ branches:
         );
 
         assert_eq!(finding.rule_id, "SEC017");
-        assert_eq!(finding.severity, Severity::Info);
-    }
-
-    // ===== Access Control Tests (TEAM, KEY, APP) =====
-
-    #[tokio::test]
-    async fn test_check_access_control_returns_empty_when_no_github() {
-        let findings = check_access_control().await.unwrap();
-        // Should not panic, returns empty when GitHub unavailable
-        let _ = findings.len();
-    }
-
-    #[test]
-    fn test_team001_finding_construction() {
-        let finding = Finding::new(
-            "TEAM001",
-            "security",
-            Severity::Info,
-            "Direct collaborator 'testuser' has admin access",
-        )
-        .with_description("Test description")
-        .with_remediation("Test remediation");
-
-        assert_eq!(finding.rule_id, "TEAM001");
-        assert_eq!(finding.category, "security");
-        assert_eq!(finding.severity, Severity::Info);
-    }
-
-    #[test]
-    fn test_team002_finding_construction() {
-        let finding = Finding::new(
-            "TEAM002",
-            "security",
-            Severity::Warning,
-            "External collaborator 'external-user' has push access",
-        );
-
-        assert_eq!(finding.rule_id, "TEAM002");
-        assert_eq!(finding.severity, Severity::Warning);
-    }
-
-    #[test]
-    fn test_team003_finding_construction() {
-        let finding = Finding::new(
-            "TEAM003",
-            "security",
-            Severity::Info,
-            "Team 'developers' has 'push' access",
-        );
-
-        assert_eq!(finding.rule_id, "TEAM003");
-        assert_eq!(finding.severity, Severity::Info);
-    }
-
-    #[test]
-    fn test_key001_finding_construction() {
-        let finding = Finding::new(
-            "KEY001",
-            "security",
-            Severity::Warning,
-            "Deploy key 'production-key' has write access",
-        );
-
-        assert_eq!(finding.rule_id, "KEY001");
-        assert_eq!(finding.severity, Severity::Warning);
-    }
-
-    #[test]
-    fn test_key002_finding_construction() {
-        let finding = Finding::new(
-            "KEY002",
-            "security",
-            Severity::Info,
-            "Deploy key 'ci-key' has no expiration",
-        );
-
-        assert_eq!(finding.rule_id, "KEY002");
-        assert_eq!(finding.severity, Severity::Info);
-    }
-
-    #[test]
-    fn test_app001_finding_construction() {
-        let finding = Finding::new(
-            "APP001",
-            "security",
-            Severity::Info,
-            "GitHub App 'my-app' has broad permissions",
-        );
-
-        assert_eq!(finding.rule_id, "APP001");
-        assert_eq!(finding.severity, Severity::Info);
-    }
-
-    // ===== Infrastructure Tests (HOOK, ENV) =====
-
-    #[tokio::test]
-    async fn test_check_infrastructure_returns_empty_when_no_github() {
-        let findings = check_infrastructure().await.unwrap();
-        // Should not panic, returns empty when GitHub unavailable
-        let _ = findings.len();
-    }
-
-    #[test]
-    fn test_hook001_finding_construction() {
-        let finding = Finding::new(
-            "HOOK001",
-            "security",
-            Severity::Warning,
-            "Webhook 'web' uses non-HTTPS URL",
-        )
-        .with_location("Webhook ID: 123");
-
-        assert_eq!(finding.rule_id, "HOOK001");
-        assert_eq!(finding.severity, Severity::Warning);
-        assert!(finding.location.is_some());
-    }
-
-    #[test]
-    fn test_hook002_finding_construction() {
-        let finding = Finding::new(
-            "HOOK002",
-            "security",
-            Severity::Warning,
-            "Webhook 'web' has no secret configured",
-        );
-
-        assert_eq!(finding.rule_id, "HOOK002");
-        assert_eq!(finding.severity, Severity::Warning);
-    }
-
-    #[test]
-    fn test_hook003_finding_construction() {
-        let finding = Finding::new(
-            "HOOK003",
-            "security",
-            Severity::Info,
-            "Webhook 'web' is inactive",
-        );
-
-        assert_eq!(finding.rule_id, "HOOK003");
-        assert_eq!(finding.severity, Severity::Info);
-    }
-
-    #[test]
-    fn test_env001_finding_construction() {
-        let finding = Finding::new(
-            "ENV001",
-            "security",
-            Severity::Info,
-            "Environment 'staging' has no protection rules",
-        );
-
-        assert_eq!(finding.rule_id, "ENV001");
-        assert_eq!(finding.severity, Severity::Info);
-    }
-
-    #[test]
-    fn test_env002_finding_construction() {
-        let finding = Finding::new(
-            "ENV002",
-            "security",
-            Severity::Warning,
-            "Production environment 'production' has no required reviewers",
-        );
-
-        assert_eq!(finding.rule_id, "ENV002");
-        assert_eq!(finding.severity, Severity::Warning);
-    }
-
-    #[test]
-    fn test_env003_finding_construction() {
-        let finding = Finding::new(
-            "ENV003",
-            "security",
-            Severity::Info,
-            "Environment 'staging' has no branch policies",
-        );
-
-        assert_eq!(finding.rule_id, "ENV003");
         assert_eq!(finding.severity, Severity::Info);
     }
 }

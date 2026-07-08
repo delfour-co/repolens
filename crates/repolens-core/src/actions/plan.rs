@@ -85,14 +85,53 @@ pub enum ActionOperation {
         variables: std::collections::HashMap<String, String>,
     },
 
-    /// Configure branch protection
-    ConfigureBranchProtection {
+    /// Configure protected branch (provider-agnostic)
+    ConfigureProtectedBranch {
         branch: String,
         settings: BranchProtectionSettings,
     },
 
-    /// Update GitHub repository settings
-    UpdateGitHubSettings { settings: GitHubRepoSettings },
+    /// Update repository settings (provider-agnostic)
+    UpdateRepoSettings { settings: GitHubRepoSettings },
+
+    /// Update repository metadata (description, topics, homepage)
+    UpdateRepoMetadata {
+        description: Option<String>,
+        topics: Vec<String>,
+        homepage: Option<String>,
+    },
+
+    /// Merge missing branch-protection sections into an EXISTING
+    /// `.github/settings.yml` (review bug #12). This is a local file edit —
+    /// not a forge call — so it applies regardless of which `RepoProvider` is
+    /// configured. The executor parses the existing YAML and adds only the
+    /// missing pieces, preserving any content the user already has.
+    UpdateSettingsFile {
+        /// Path to the settings file, relative to the repository root.
+        path: String,
+        /// Branch the protection block should target (falls back to the
+        /// first existing entry if no entry named `branch` is found).
+        branch: String,
+        /// Required approving review count when adding
+        /// `required_pull_request_reviews`.
+        required_approvals: u32,
+        /// Whether the `branches:` key itself is missing and must be added.
+        ensure_branches_block: bool,
+        /// Whether `required_pull_request_reviews` must be added (SEC009).
+        ensure_pr_reviews: bool,
+        /// Whether `required_status_checks` must be added (SEC010).
+        ensure_status_checks: bool,
+    },
+
+    /// Update GitHub Actions & repository security settings: secret
+    /// scanning, push protection, Actions permissions, default workflow
+    /// permissions, and fork pull-request-workflow approval (review bug
+    /// #11 -- SEC013-017). GitHub-only: `GitLabProvider`'s corresponding
+    /// write methods all return `Err`, so the planner never plans this
+    /// action for a non-GitHub provider.
+    UpdateActionsSecuritySettings {
+        settings: GitHubActionsSecuritySettings,
+    },
 }
 
 /// Branch protection settings
@@ -131,6 +170,25 @@ pub struct GitHubRepoSettings {
     pub enable_wiki: Option<bool>,
     pub enable_vulnerability_alerts: Option<bool>,
     pub enable_automated_security_fixes: Option<bool>,
+}
+
+/// GitHub Actions & repository security settings (SEC013-017).
+///
+/// Each field is `Some(desired_value)` when that specific toggle needs to
+/// change and `None` when it should be left untouched -- mirrors
+/// [`GitHubRepoSettings`]'s "only touch what's needed" shape.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GitHubActionsSecuritySettings {
+    /// Enable/disable secret scanning (SEC013).
+    pub secret_scanning: Option<bool>,
+    /// Enable/disable push protection (SEC014).
+    pub secret_scanning_push_protection: Option<bool>,
+    /// Desired Actions permissions: `"all"`, `"local_only"`, or `"selected"` (SEC015).
+    pub allowed_actions: Option<String>,
+    /// Desired default `GITHUB_TOKEN` workflow permissions: `"read"` or `"write"` (SEC016).
+    pub default_workflow_permissions: Option<String>,
+    /// Whether fork pull request workflows must require approval (SEC017).
+    pub require_fork_pr_approval: Option<bool>,
 }
 
 /// A collection of actions to perform
@@ -307,7 +365,7 @@ mod tests {
             "action2",
             "security",
             "Security action",
-            ActionOperation::ConfigureBranchProtection {
+            ActionOperation::ConfigureProtectedBranch {
                 branch: "main".to_string(),
                 settings: BranchProtectionSettings::default(),
             },
@@ -344,7 +402,7 @@ mod tests {
             "action2",
             "security",
             "Security action",
-            ActionOperation::ConfigureBranchProtection {
+            ActionOperation::ConfigureProtectedBranch {
                 branch: "main".to_string(),
                 settings: BranchProtectionSettings::default(),
             },
@@ -424,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn test_action_operation_update_github_settings() {
+    fn test_action_operation_update_repo_settings() {
         let settings = GitHubRepoSettings {
             enable_discussions: Some(true),
             enable_issues: Some(true),
@@ -436,18 +494,121 @@ mod tests {
         let action = Action::new(
             "action1",
             "security",
-            "Update GitHub settings",
-            ActionOperation::UpdateGitHubSettings {
+            "Update repository settings",
+            ActionOperation::UpdateRepoSettings {
                 settings: settings.clone(),
             },
         );
 
         match action.operation() {
-            ActionOperation::UpdateGitHubSettings { settings } => {
+            ActionOperation::UpdateRepoSettings { settings } => {
                 assert_eq!(settings.enable_discussions, Some(true));
                 assert_eq!(settings.enable_wiki, Some(false));
             }
-            _ => panic!("Expected UpdateGitHubSettings operation"),
+            _ => panic!("Expected UpdateRepoSettings operation"),
+        }
+    }
+
+    #[test]
+    fn test_action_operation_update_settings_file() {
+        let action = Action::new(
+            "settings-file-update",
+            "security",
+            "Update .github/settings.yml",
+            ActionOperation::UpdateSettingsFile {
+                path: ".github/settings.yml".to_string(),
+                branch: "main".to_string(),
+                required_approvals: 1,
+                ensure_branches_block: false,
+                ensure_pr_reviews: true,
+                ensure_status_checks: false,
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateSettingsFile {
+                path,
+                branch,
+                ensure_pr_reviews,
+                ensure_status_checks,
+                ..
+            } => {
+                assert_eq!(path, ".github/settings.yml");
+                assert_eq!(branch, "main");
+                assert!(ensure_pr_reviews);
+                assert!(!ensure_status_checks);
+            }
+            _ => panic!("Expected UpdateSettingsFile operation"),
+        }
+    }
+
+    #[test]
+    fn test_github_actions_security_settings_default() {
+        let settings = GitHubActionsSecuritySettings::default();
+        assert!(settings.secret_scanning.is_none());
+        assert!(settings.secret_scanning_push_protection.is_none());
+        assert!(settings.allowed_actions.is_none());
+        assert!(settings.default_workflow_permissions.is_none());
+        assert!(settings.require_fork_pr_approval.is_none());
+    }
+
+    #[test]
+    fn test_action_operation_update_actions_security_settings() {
+        let settings = GitHubActionsSecuritySettings {
+            secret_scanning: Some(true),
+            secret_scanning_push_protection: Some(true),
+            allowed_actions: Some("selected".to_string()),
+            default_workflow_permissions: Some("read".to_string()),
+            require_fork_pr_approval: Some(true),
+        };
+
+        let action = Action::new(
+            "actions-security-settings",
+            "github",
+            "Update GitHub Actions & security settings",
+            ActionOperation::UpdateActionsSecuritySettings {
+                settings: settings.clone(),
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateActionsSecuritySettings { settings } => {
+                assert_eq!(settings.secret_scanning, Some(true));
+                assert_eq!(settings.allowed_actions.as_deref(), Some("selected"));
+                assert_eq!(
+                    settings.default_workflow_permissions.as_deref(),
+                    Some("read")
+                );
+                assert_eq!(settings.require_fork_pr_approval, Some(true));
+            }
+            _ => panic!("Expected UpdateActionsSecuritySettings operation"),
+        }
+    }
+
+    #[test]
+    fn test_action_operation_update_repo_metadata() {
+        let action = Action::new(
+            "action1",
+            "metadata",
+            "Update repository metadata",
+            ActionOperation::UpdateRepoMetadata {
+                description: Some("A test repo".to_string()),
+                topics: vec!["rust".to_string(), "cli".to_string()],
+                homepage: Some("https://example.com".to_string()),
+            },
+        );
+
+        match action.operation() {
+            ActionOperation::UpdateRepoMetadata {
+                description,
+                topics,
+                homepage,
+            } => {
+                assert_eq!(description.as_deref(), Some("A test repo"));
+                assert_eq!(topics.len(), 2);
+                assert_eq!(homepage.as_deref(), Some("https://example.com"));
+            }
+            _ => panic!("Expected UpdateRepoMetadata operation"),
         }
     }
 }

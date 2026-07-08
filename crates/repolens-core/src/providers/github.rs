@@ -10,6 +10,7 @@
 //! 2. `gh auth login` - Fallback via gh CLI
 
 use crate::error::{ProviderError, RepoLensError};
+use crate::providers::{RepoMetadata, RepoProvider};
 use octocrab::Octocrab;
 use serde::Deserialize;
 use std::env;
@@ -42,6 +43,29 @@ pub struct RepoInfo {
     pub has_discussions_enabled: bool,
     #[serde(rename = "hasWikiEnabled")]
     pub has_wiki_enabled: bool,
+}
+
+impl RepoInfo {
+    /// Build a [`RepoInfo`] from GitLab project settings.
+    ///
+    /// GitLab has no "discussions" concept, so `has_discussions_enabled` is
+    /// always `false`; the kept checks only read issues / wiki here.
+    pub fn from_gitlab(
+        name: &str,
+        owner: &str,
+        has_issues_enabled: bool,
+        has_wiki_enabled: bool,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            owner: RepoOwner {
+                login: owner.to_string(),
+            },
+            has_issues_enabled,
+            has_discussions_enabled: false,
+            has_wiki_enabled,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -537,193 +561,6 @@ impl GitHubProvider {
             .unwrap_or(false))
     }
 
-    // ===== Access Control Methods =====
-
-    /// List repository collaborators
-    pub fn list_collaborators(&self) -> Result<Vec<Collaborator>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/collaborators", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/collaborators", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let collaborators: Vec<Collaborator> = serde_json::from_slice(&output.stdout)?;
-        Ok(collaborators)
-    }
-
-    /// List repository teams
-    pub fn list_teams(&self) -> Result<Vec<Team>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/teams", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/teams", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let teams: Vec<Team> = serde_json::from_slice(&output.stdout)?;
-        Ok(teams)
-    }
-
-    /// List deploy keys
-    pub fn list_deploy_keys(&self) -> Result<Vec<DeployKey>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/keys", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/keys", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let keys: Vec<DeployKey> = serde_json::from_slice(&output.stdout)?;
-        Ok(keys)
-    }
-
-    /// List GitHub App installations on this repository
-    pub fn list_installations(&self) -> Result<Vec<Installation>, RepoLensError> {
-        let output = Command::new("gh")
-            .args(["api", &format!("repos/{}/installation", self.full_name())])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/installation", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        // The installation endpoint returns a single installation, not an array
-        let installation: Result<Installation, _> = serde_json::from_slice(&output.stdout);
-        match installation {
-            Ok(inst) => Ok(vec![inst]),
-            Err(_) => Ok(Vec::new()),
-        }
-    }
-
-    // ===== Infrastructure Methods =====
-
-    /// List repository webhooks
-    pub fn list_webhooks(&self) -> Result<Vec<Webhook>, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!("repos/{}/hooks", self.full_name()),
-                "--paginate",
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/hooks", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        let webhooks: Vec<Webhook> = serde_json::from_slice(&output.stdout)?;
-        Ok(webhooks)
-    }
-
-    /// List repository environments
-    pub fn list_environments(&self) -> Result<Vec<Environment>, RepoLensError> {
-        let output = Command::new("gh")
-            .args(["api", &format!("repos/{}/environments", self.full_name())])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!("gh api repos/{}/environments", self.full_name()),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty list if API call fails (may not have permission)
-            return Ok(Vec::new());
-        }
-
-        #[derive(Deserialize)]
-        struct EnvironmentsResponse {
-            environments: Vec<Environment>,
-        }
-
-        let response: Result<EnvironmentsResponse, _> = serde_json::from_slice(&output.stdout);
-        match response {
-            Ok(r) => Ok(r.environments),
-            Err(_) => Ok(Vec::new()),
-        }
-    }
-
-    /// Get environment protection rules
-    pub fn get_environment_protection(
-        &self,
-        environment_name: &str,
-    ) -> Result<EnvironmentProtection, RepoLensError> {
-        let output = Command::new("gh")
-            .args([
-                "api",
-                &format!(
-                    "repos/{}/environments/{}",
-                    self.full_name(),
-                    environment_name
-                ),
-            ])
-            .output()
-            .map_err(|_| {
-                RepoLensError::Provider(ProviderError::CommandFailed {
-                    command: format!(
-                        "gh api repos/{}/environments/{}",
-                        self.full_name(),
-                        environment_name
-                    ),
-                })
-            })?;
-
-        if !output.status.success() {
-            // Return empty protection if API call fails
-            return Ok(EnvironmentProtection::default());
-        }
-
-        let protection: EnvironmentProtection =
-            serde_json::from_slice(&output.stdout).unwrap_or_default();
-        Ok(protection)
-    }
-
     /// Ensure a label exists in the repository, creating it if necessary
     pub fn ensure_label(&self, label: &str, color: &str, description: &str) {
         // Check if label exists by trying to view it
@@ -869,6 +706,634 @@ impl GitHubProvider {
         let url = stdout.trim().to_string();
         Ok(url)
     }
+
+    /// Build the `gh repo edit` flags for the issues/wiki/discussions toggles.
+    ///
+    /// Fixes review bug #10: `enable_issues` was never read at all, and
+    /// `enable_wiki = Some(true)` was silently ignored (only `Some(false)`
+    /// produced a flag). Every explicitly-configured toggle (`Some(true)` or
+    /// `Some(false)`) now produces an explicit `--enable-X=<bool>` flag;
+    /// `None` means "leave as-is" and produces no flag.
+    fn repo_edit_flags(settings: &crate::actions::plan::GitHubRepoSettings) -> Vec<String> {
+        let mut flags = Vec::new();
+        if let Some(enable) = settings.enable_discussions {
+            flags.push(format!("--enable-discussions={enable}"));
+        }
+        if let Some(enable) = settings.enable_issues {
+            flags.push(format!("--enable-issues={enable}"));
+        }
+        if let Some(enable) = settings.enable_wiki {
+            flags.push(format!("--enable-wiki={enable}"));
+        }
+        flags
+    }
+
+    /// Build the `security_and_analysis` PATCH payload for
+    /// [`Self::set_secret_scanning`] (SEC013/SEC014). Returns `None` when
+    /// neither field is requested (nothing to send) -- a pure, unit-tested
+    /// builder so the request shape can be verified without invoking `gh`.
+    fn secret_scanning_payload(
+        secret_scanning: Option<bool>,
+        push_protection: Option<bool>,
+    ) -> Option<serde_json::Value> {
+        if secret_scanning.is_none() && push_protection.is_none() {
+            return None;
+        }
+
+        let mut security_and_analysis = serde_json::Map::new();
+        if let Some(enabled) = secret_scanning {
+            security_and_analysis.insert(
+                "secret_scanning".to_string(),
+                serde_json::json!({ "status": if enabled { "enabled" } else { "disabled" } }),
+            );
+        }
+        if let Some(enabled) = push_protection {
+            security_and_analysis.insert(
+                "secret_scanning_push_protection".to_string(),
+                serde_json::json!({ "status": if enabled { "enabled" } else { "disabled" } }),
+            );
+        }
+
+        Some(serde_json::json!({ "security_and_analysis": security_and_analysis }))
+    }
+
+    /// Build the `PUT actions/permissions` payload for
+    /// [`Self::set_actions_permissions`] (SEC015). `None` -> nothing to send.
+    fn actions_permissions_payload(allowed_actions: Option<&str>) -> Option<serde_json::Value> {
+        allowed_actions
+            .map(|allowed| serde_json::json!({ "enabled": true, "allowed_actions": allowed }))
+    }
+
+    /// Default scoping applied when [`Self::set_actions_permissions`]
+    /// restricts `allowed_actions` to `"selected"`. Without this follow-up
+    /// call GitHub blocks every third-party action outright, which would
+    /// silently break most existing CI; scoping to GitHub-owned + verified
+    /// creators mirrors the SEC015 finding's own remediation text
+    /// ("Restrict actions to verified creators or selected actions only").
+    fn selected_actions_payload() -> serde_json::Value {
+        serde_json::json!({
+            "github_owned_allowed": true,
+            "verified_allowed": true,
+            "patterns_allowed": [],
+        })
+    }
+
+    /// Build the `PUT actions/permissions/workflow` payload for
+    /// [`Self::set_actions_workflow_permissions`] (SEC016). `None` ->
+    /// nothing to send.
+    fn actions_workflow_permissions_payload(
+        default_workflow_permissions: Option<&str>,
+    ) -> Option<serde_json::Value> {
+        default_workflow_permissions
+            .map(|perm| serde_json::json!({ "default_workflow_permissions": perm }))
+    }
+
+    /// Build the `PUT actions/permissions/access` payload for
+    /// [`Self::set_fork_pr_workflows_policy`] (SEC017). Mirrors
+    /// `get_fork_pr_workflows_policy`'s own read of the same endpoint
+    /// (`access_level == "none"` means approval is required), so the
+    /// write side stays symmetric with what the rule actually checks.
+    fn fork_pr_access_payload(require_approval: bool) -> serde_json::Value {
+        serde_json::json!({ "access_level": if require_approval { "none" } else { "organization" } })
+    }
+
+    /// Run `gh api <path> --method <method> --input -` with `payload` piped
+    /// via stdin, returning `Ok(())` on success. Shared plumbing for the
+    /// Actions/security-settings write methods (review bug #11): each PATCHes
+    /// or PUTs a small JSON body to a single GitHub REST endpoint, identical
+    /// in shape to the existing `--input -` calls in
+    /// [`Self::set_protected_branch`]/[`RepoProvider::set_repo_metadata`].
+    fn gh_api_write(
+        &self,
+        path: &str,
+        method: &str,
+        payload: &serde_json::Value,
+    ) -> Result<(), RepoLensError> {
+        use std::io::Write as _;
+        use std::process::Stdio;
+
+        let mut child = Command::new("gh")
+            .args(["api", path, "--method", method, "--input", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api {path} --method {method}"),
+                })
+            })?;
+
+        let json_str = serde_json::to_string(payload).map_err(|e| {
+            RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                message: format!("Failed to serialize request payload for {path}: {e}"),
+            })
+        })?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(json_str.as_bytes()).map_err(|e| {
+                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to write to gh CLI stdin: {e}"),
+                })
+            })?;
+        }
+
+        let output = child.wait_with_output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("gh api {path} --method {method}"),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(RepoLensError::Action(
+                crate::error::ActionError::ExecutionFailed {
+                    message: format!("gh api {path} --method {method} failed: {stderr}"),
+                },
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+impl RepoProvider for GitHubProvider {
+    fn owner(&self) -> &str {
+        &self.repo_owner
+    }
+
+    fn name(&self) -> &str {
+        &self.repo_name
+    }
+
+    /// Fetch repository metadata (description, topics, homepage) via `gh repo view`.
+    fn repo_metadata(&self) -> Result<RepoMetadata, RepoLensError> {
+        let output = Command::new("gh")
+            .args([
+                "repo",
+                "view",
+                &self.full_name(),
+                "--json",
+                "description,topics,homepage,hasPages",
+            ])
+            .output()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: "gh repo view".to_string(),
+                })
+            })?;
+
+        if !output.status.success() {
+            return Err(RepoLensError::Provider(ProviderError::CommandFailed {
+                command: "gh repo view".to_string(),
+            }));
+        }
+
+        let metadata: RepoMetadata = serde_json::from_slice(&output.stdout)?;
+        Ok(metadata)
+    }
+
+    fn get_branch_protection(
+        &self,
+        branch: &str,
+    ) -> Result<Option<BranchProtection>, RepoLensError> {
+        GitHubProvider::get_branch_protection(self, branch)
+    }
+
+    fn get_repo_settings(&self) -> Result<RepoInfo, RepoLensError> {
+        GitHubProvider::get_repo_settings(self)
+    }
+
+    fn has_vulnerability_alerts(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::has_vulnerability_alerts(self)
+    }
+
+    fn has_automated_security_fixes(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::has_automated_security_fixes(self)
+    }
+
+    fn has_dependabot_security_updates(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::has_dependabot_security_updates(self)
+    }
+
+    fn get_secret_scanning(&self) -> Result<SecretScanningSettings, RepoLensError> {
+        GitHubProvider::get_secret_scanning(self)
+    }
+
+    fn get_actions_permissions(&self) -> Result<ActionsPermissions, RepoLensError> {
+        GitHubProvider::get_actions_permissions(self)
+    }
+
+    fn get_actions_workflow_permissions(&self) -> Result<ActionsPermissions, RepoLensError> {
+        GitHubProvider::get_actions_workflow_permissions(self)
+    }
+
+    fn get_fork_pr_workflows_policy(&self) -> Result<bool, RepoLensError> {
+        GitHubProvider::get_fork_pr_workflows_policy(self)
+    }
+
+    /// Apply protected-branch settings via the GitHub branch-protection API.
+    ///
+    /// Behaviour-identical to the former `actions::branch_protection::configure`
+    /// (same `gh api ... PUT` payload + optional required-signatures call).
+    fn set_protected_branch(
+        &self,
+        branch: &str,
+        settings: &crate::actions::plan::BranchProtectionSettings,
+    ) -> Result<(), RepoLensError> {
+        use serde_json::json;
+        use std::io::Write as _;
+        use std::process::Stdio;
+
+        let repo = self.full_name();
+
+        // Build the JSON payload according to GitHub API specification
+        let mut payload = json!({
+            "enforce_admins": settings.enforce_admins,
+            "required_linear_history": settings.require_linear_history,
+            "allow_force_pushes": !settings.block_force_push,
+            "allow_deletions": !settings.block_deletions,
+            "required_conversation_resolution": settings.require_conversation_resolution,
+            "restrictions": null,
+        });
+
+        if settings.require_status_checks {
+            payload["required_status_checks"] = json!({
+                "strict": true,
+                "contexts": []
+            });
+        } else {
+            payload["required_status_checks"] = json!(null);
+        }
+
+        if settings.required_approvals > 0 {
+            payload["required_pull_request_reviews"] = json!({
+                "required_approving_review_count": settings.required_approvals,
+                "dismiss_stale_reviews": true
+            });
+        } else {
+            payload["required_pull_request_reviews"] = json!(null);
+        }
+
+        let mut child = Command::new("gh")
+            .args([
+                "api",
+                &format!("repos/{}/branches/{}/protection", repo, branch),
+                "--method",
+                "PUT",
+                "--input",
+                "-",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api repos/{}/branches/{}/protection", repo, branch),
+                })
+            })?;
+
+        let json_str = serde_json::to_string(&payload).map_err(|e| {
+            RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                message: format!("Failed to serialize branch protection payload: {}", e),
+            })
+        })?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(json_str.as_bytes()).map_err(|e| {
+                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to write to gh CLI stdin: {}", e),
+                })
+            })?;
+        }
+
+        let output = child.wait_with_output().map_err(|_| {
+            RepoLensError::Provider(ProviderError::CommandFailed {
+                command: format!("gh api repos/{}/branches/{}/protection", repo, branch),
+            })
+        })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            if stderr.contains("Resource not accessible") {
+                return Err(RepoLensError::Action(
+                    crate::error::ActionError::ExecutionFailed {
+                        message: "Cannot configure branch protection. This may require admin \
+                            access or the repository may not support this feature (e.g., free \
+                            private repos)."
+                            .to_string(),
+                    },
+                ));
+            }
+
+            return Err(RepoLensError::Action(
+                crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to configure branch protection: {}", stderr),
+                },
+            ));
+        }
+
+        // Configure signed commits if required (separate API call)
+        if settings.require_signed_commits {
+            let output = Command::new("gh")
+                .args([
+                    "api",
+                    &format!(
+                        "repos/{}/branches/{}/protection/required_signatures",
+                        repo, branch
+                    ),
+                    "--method",
+                    "POST",
+                ])
+                .output()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!(
+                            "gh api repos/{}/branches/{}/protection/required_signatures",
+                            repo, branch
+                        ),
+                    })
+                })?;
+
+            if !output.status.success() {
+                tracing::warn!(
+                    "Could not enable signed commits requirement (may require GitHub Pro)"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply repository settings via `gh repo edit` and the security-toggle APIs.
+    ///
+    /// Behaviour-identical to the former `actions::github_settings::update`.
+    fn set_repo_settings(
+        &self,
+        settings: &crate::actions::plan::GitHubRepoSettings,
+    ) -> Result<(), RepoLensError> {
+        let repo = self.full_name();
+
+        let mut args: Vec<String> = vec!["repo".to_string(), "edit".to_string()];
+        args.extend(Self::repo_edit_flags(settings));
+
+        if args.len() > 2 {
+            let output = Command::new("gh").args(&args).output().map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh {}", args.join(" ")),
+                })
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::warn!("Could not update some repository settings: {}", stderr);
+            }
+        }
+
+        if let Some(true) = settings.enable_vulnerability_alerts {
+            let output = Command::new("gh")
+                .args([
+                    "api",
+                    &format!("repos/{}/vulnerability-alerts", repo),
+                    "--method",
+                    "PUT",
+                ])
+                .output()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!("gh api repos/{}/vulnerability-alerts", repo),
+                    })
+                })?;
+
+            if !output.status.success() {
+                tracing::warn!(
+                    "Could not enable vulnerability alerts (may require specific permissions)"
+                );
+            }
+        }
+
+        if let Some(true) = settings.enable_automated_security_fixes {
+            let output = Command::new("gh")
+                .args([
+                    "api",
+                    &format!("repos/{}/automated-security-fixes", repo),
+                    "--method",
+                    "PUT",
+                ])
+                .output()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!("gh api repos/{}/automated-security-fixes", repo),
+                    })
+                })?;
+
+            if !output.status.success() {
+                tracing::warn!(
+                    "Could not enable automated security fixes (may require specific permissions)"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply repository metadata: description / homepage via `gh repo edit`,
+    /// topics via the topics API (`PUT repos/:owner/:repo/topics`).
+    fn set_repo_metadata(
+        &self,
+        description: Option<&str>,
+        topics: &[String],
+        homepage: Option<&str>,
+    ) -> Result<(), RepoLensError> {
+        let repo = self.full_name();
+
+        // description / homepage via `gh repo edit`
+        let mut args: Vec<String> = vec!["repo".to_string(), "edit".to_string(), repo.clone()];
+        if let Some(desc) = description {
+            args.push("--description".to_string());
+            args.push(desc.to_string());
+        }
+        if let Some(home) = homepage {
+            args.push("--homepage".to_string());
+            args.push(home.to_string());
+        }
+
+        if args.len() > 3 {
+            let output = Command::new("gh").args(&args).output().map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh {}", args.join(" ")),
+                })
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(RepoLensError::Action(
+                    crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to update repository metadata: {}", stderr),
+                    },
+                ));
+            }
+        }
+
+        // topics via the topics API
+        if !topics.is_empty() {
+            let payload = serde_json::json!({ "names": topics });
+            let json_str = serde_json::to_string(&payload).map_err(|e| {
+                RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                    message: format!("Failed to serialize topics payload: {}", e),
+                })
+            })?;
+
+            use std::io::Write as _;
+            use std::process::Stdio;
+
+            let mut child = Command::new("gh")
+                .args([
+                    "api",
+                    &format!("repos/{}/topics", repo),
+                    "--method",
+                    "PUT",
+                    "-H",
+                    "Accept: application/vnd.github.mercy-preview+json",
+                    "--input",
+                    "-",
+                ])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|_| {
+                    RepoLensError::Provider(ProviderError::CommandFailed {
+                        command: format!("gh api repos/{}/topics", repo),
+                    })
+                })?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(json_str.as_bytes()).map_err(|e| {
+                    RepoLensError::Action(crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to write to gh CLI stdin: {}", e),
+                    })
+                })?;
+            }
+
+            let output = child.wait_with_output().map_err(|_| {
+                RepoLensError::Provider(ProviderError::CommandFailed {
+                    command: format!("gh api repos/{}/topics", repo),
+                })
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(RepoLensError::Action(
+                    crate::error::ActionError::ExecutionFailed {
+                        message: format!("Failed to update repository topics: {}", stderr),
+                    },
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Enable/disable secret scanning and/or push protection via a single
+    /// `PATCH repos/{full}` call against `security_and_analysis` (review bug
+    /// #11: SEC013/SEC014). Only the requested fields are sent; `None`
+    /// leaves the current GitHub-side setting untouched.
+    fn set_secret_scanning(
+        &self,
+        secret_scanning: Option<bool>,
+        push_protection: Option<bool>,
+    ) -> Result<(), RepoLensError> {
+        match Self::secret_scanning_payload(secret_scanning, push_protection) {
+            Some(payload) => {
+                self.gh_api_write(&format!("repos/{}", self.full_name()), "PATCH", &payload)
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// Restrict Actions permissions via `PUT actions/permissions` (review bug
+    /// #11: SEC015). When restricting to `"selected"`, also scopes the
+    /// selected-actions sub-resource to GitHub-owned + verified creators so
+    /// existing CI doesn't break outright (see
+    /// [`Self::selected_actions_payload`]).
+    fn set_actions_permissions(&self, allowed_actions: Option<&str>) -> Result<(), RepoLensError> {
+        let Some(payload) = Self::actions_permissions_payload(allowed_actions) else {
+            return Ok(());
+        };
+
+        self.gh_api_write(
+            &format!("repos/{}/actions/permissions", self.full_name()),
+            "PUT",
+            &payload,
+        )?;
+
+        if allowed_actions == Some("selected") {
+            self.gh_api_write(
+                &format!(
+                    "repos/{}/actions/permissions/selected-actions",
+                    self.full_name()
+                ),
+                "PUT",
+                &Self::selected_actions_payload(),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Set default `GITHUB_TOKEN` workflow permissions via `PUT
+    /// actions/permissions/workflow` (review bug #11: SEC016).
+    fn set_actions_workflow_permissions(
+        &self,
+        default_workflow_permissions: Option<&str>,
+    ) -> Result<(), RepoLensError> {
+        let Some(payload) =
+            Self::actions_workflow_permissions_payload(default_workflow_permissions)
+        else {
+            return Ok(());
+        };
+
+        self.gh_api_write(
+            &format!("repos/{}/actions/permissions/workflow", self.full_name()),
+            "PUT",
+            &payload,
+        )
+    }
+
+    /// Set fork pull-request-workflow approval policy via `PUT
+    /// actions/permissions/access` (review bug #11: SEC017).
+    fn set_fork_pr_workflows_policy(&self, require_approval: bool) -> Result<(), RepoLensError> {
+        let payload = Self::fork_pr_access_payload(require_approval);
+        self.gh_api_write(
+            &format!("repos/{}/actions/permissions/access", self.full_name()),
+            "PUT",
+            &payload,
+        )
+    }
+
+    /// Behaviour-identical to the inherent [`GitHubProvider::create_issue`].
+    fn create_issue(
+        &self,
+        title: &str,
+        body: &str,
+        labels: &[&str],
+    ) -> Result<String, RepoLensError> {
+        GitHubProvider::create_issue(self, title, body, labels)
+    }
+
+    /// Behaviour-identical to the inherent [`GitHubProvider::create_pull_request`].
+    fn open_change_request(
+        &self,
+        title: &str,
+        body: &str,
+        head: &str,
+        base: Option<&str>,
+    ) -> Result<String, RepoLensError> {
+        GitHubProvider::create_pull_request(self, title, body, head, base)
+    }
 }
 
 /// Secret scanning settings from GitHub API
@@ -927,6 +1392,28 @@ pub struct BranchProtection {
     pub allow_deletions: Option<AllowDeletions>,
 }
 
+impl BranchProtection {
+    /// Build a [`BranchProtection`] from GitLab protected-branch state.
+    ///
+    /// GitLab exposes a force-push toggle and (via approval rules) a required
+    /// approval count. The remaining GitHub-shaped fields have no GitLab
+    /// equivalent and are left `None`.
+    pub fn from_gitlab(allow_force_push: bool, required_approvals: u32) -> Self {
+        Self {
+            required_status_checks: None,
+            enforce_admins: None,
+            required_pull_request_reviews: (required_approvals > 0).then_some(PullRequestReviews {
+                required_approving_review_count: required_approvals,
+            }),
+            required_linear_history: None,
+            allow_force_pushes: Some(AllowForcePushes {
+                enabled: allow_force_push,
+            }),
+            allow_deletions: None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StatusChecks {
     #[allow(dead_code)]
@@ -962,157 +1449,6 @@ pub struct AllowForcePushes {
 pub struct AllowDeletions {
     #[allow(dead_code)]
     pub enabled: bool,
-}
-
-// ===== Access Control Structures =====
-
-/// Repository collaborator from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-pub struct Collaborator {
-    pub login: String,
-    #[serde(default)]
-    pub permissions: CollaboratorPermissions,
-    #[serde(rename = "type", default)]
-    pub user_type: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct CollaboratorPermissions {
-    #[serde(default)]
-    pub admin: bool,
-    #[serde(default)]
-    pub push: bool,
-    #[serde(default)]
-    pub pull: bool,
-}
-
-/// Repository team from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Team {
-    pub name: String,
-    pub slug: String,
-    #[serde(default)]
-    pub permission: String,
-}
-
-/// Deploy key from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct DeployKey {
-    pub id: u64,
-    pub title: String,
-    #[serde(default)]
-    pub read_only: bool,
-    pub created_at: Option<String>,
-}
-
-/// GitHub App installation from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Installation {
-    pub id: u64,
-    pub app_slug: Option<String>,
-    #[serde(default)]
-    pub permissions: InstallationPermissions,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct InstallationPermissions {
-    #[serde(default)]
-    pub contents: Option<String>,
-    #[serde(default)]
-    pub metadata: Option<String>,
-    #[serde(default)]
-    pub pull_requests: Option<String>,
-    #[serde(default)]
-    pub issues: Option<String>,
-    #[serde(default)]
-    pub actions: Option<String>,
-    #[serde(default)]
-    pub administration: Option<String>,
-}
-
-// ===== Infrastructure Structures =====
-
-/// Webhook from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-pub struct Webhook {
-    pub id: u64,
-    pub name: String,
-    #[serde(default)]
-    pub active: bool,
-    pub config: WebhookConfig,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[allow(dead_code)]
-pub struct WebhookConfig {
-    #[serde(default)]
-    pub url: Option<String>,
-    #[serde(default)]
-    pub content_type: Option<String>,
-    #[serde(default)]
-    pub insecure_ssl: Option<String>,
-    #[serde(default)]
-    pub secret: Option<String>,
-}
-
-/// Environment from GitHub API
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Environment {
-    pub id: u64,
-    pub name: String,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-}
-
-/// Environment protection rules from GitHub API
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct EnvironmentProtection {
-    #[serde(default)]
-    pub protection_rules: Vec<ProtectionRule>,
-    #[serde(default)]
-    pub deployment_branch_policy: Option<DeploymentBranchPolicy>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct ProtectionRule {
-    #[serde(rename = "type")]
-    pub rule_type: String,
-    #[serde(default)]
-    pub wait_timer: Option<u32>,
-    #[serde(default)]
-    pub reviewers: Option<Vec<Reviewer>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Reviewer {
-    #[serde(rename = "type")]
-    pub reviewer_type: String,
-    #[serde(default)]
-    pub reviewer: Option<ReviewerDetails>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct ReviewerDetails {
-    pub login: Option<String>,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct DeploymentBranchPolicy {
-    #[serde(default)]
-    pub protected_branches: bool,
-    #[serde(default)]
-    pub custom_branch_policies: bool,
 }
 
 #[cfg(test)]
@@ -1436,301 +1772,139 @@ mod tests {
         assert_eq!(perms.allowed_actions, Some("local_only".to_string()));
     }
 
-    // ===== Access Control Tests =====
-
+    /// Regression test for review bug #10: `enable_issues` was never read at
+    /// all, and `enable_wiki = Some(true)` was silently ignored (only
+    /// `Some(false)` produced a `gh repo edit` flag).
     #[test]
-    fn test_collaborator_deserialization() {
-        let json = r#"{
-            "login": "octocat",
-            "permissions": {
-                "admin": true,
-                "push": true,
-                "pull": true
-            },
-            "type": "User"
-        }"#;
-
-        let collab: Collaborator = serde_json::from_str(json).unwrap();
-        assert_eq!(collab.login, "octocat");
-        assert!(collab.permissions.admin);
-        assert!(collab.permissions.push);
-        assert!(collab.permissions.pull);
-        assert_eq!(collab.user_type, "User");
-    }
-
-    #[test]
-    fn test_collaborator_minimal() {
-        let json = r#"{"login": "testuser"}"#;
-
-        let collab: Collaborator = serde_json::from_str(json).unwrap();
-        assert_eq!(collab.login, "testuser");
-        assert!(!collab.permissions.admin);
-        assert!(!collab.permissions.push);
-        assert!(!collab.permissions.pull);
-    }
-
-    #[test]
-    fn test_team_deserialization() {
-        let json = r#"{
-            "name": "Developers",
-            "slug": "developers",
-            "permission": "push"
-        }"#;
-
-        let team: Team = serde_json::from_str(json).unwrap();
-        assert_eq!(team.name, "Developers");
-        assert_eq!(team.slug, "developers");
-        assert_eq!(team.permission, "push");
-    }
-
-    #[test]
-    fn test_team_admin_permission() {
-        let json = r#"{
-            "name": "Admins",
-            "slug": "admins",
-            "permission": "admin"
-        }"#;
-
-        let team: Team = serde_json::from_str(json).unwrap();
-        assert_eq!(team.permission, "admin");
-    }
-
-    #[test]
-    fn test_deploy_key_deserialization() {
-        let json = r#"{
-            "id": 12345,
-            "title": "Production Deploy Key",
-            "read_only": false,
-            "created_at": "2023-01-15T10:30:00Z"
-        }"#;
-
-        let key: DeployKey = serde_json::from_str(json).unwrap();
-        assert_eq!(key.id, 12345);
-        assert_eq!(key.title, "Production Deploy Key");
-        assert!(!key.read_only);
-        assert_eq!(key.created_at, Some("2023-01-15T10:30:00Z".to_string()));
-    }
-
-    #[test]
-    fn test_deploy_key_read_only() {
-        let json = r#"{
-            "id": 67890,
-            "title": "CI Deploy Key",
-            "read_only": true
-        }"#;
-
-        let key: DeployKey = serde_json::from_str(json).unwrap();
-        assert!(key.read_only);
-        assert!(key.created_at.is_none());
-    }
-
-    #[test]
-    fn test_installation_deserialization() {
-        let json = r#"{
-            "id": 999,
-            "app_slug": "my-github-app",
-            "permissions": {
-                "contents": "write",
-                "metadata": "read",
-                "pull_requests": "write",
-                "issues": "write",
-                "actions": "read",
-                "administration": "read"
-            }
-        }"#;
-
-        let inst: Installation = serde_json::from_str(json).unwrap();
-        assert_eq!(inst.id, 999);
-        assert_eq!(inst.app_slug, Some("my-github-app".to_string()));
-        assert_eq!(inst.permissions.contents, Some("write".to_string()));
-        assert_eq!(inst.permissions.administration, Some("read".to_string()));
-    }
-
-    #[test]
-    fn test_installation_minimal() {
-        let json = r#"{"id": 123}"#;
-
-        let inst: Installation = serde_json::from_str(json).unwrap();
-        assert_eq!(inst.id, 123);
-        assert!(inst.app_slug.is_none());
-        assert!(inst.permissions.contents.is_none());
-    }
-
-    // ===== Infrastructure Tests =====
-
-    #[test]
-    fn test_webhook_deserialization() {
-        let json = r#"{
-            "id": 111,
-            "name": "web",
-            "active": true,
-            "config": {
-                "url": "https://example.com/webhook",
-                "content_type": "json",
-                "insecure_ssl": "0",
-                "secret": "********"
-            }
-        }"#;
-
-        let hook: Webhook = serde_json::from_str(json).unwrap();
-        assert_eq!(hook.id, 111);
-        assert_eq!(hook.name, "web");
-        assert!(hook.active);
-        assert_eq!(
-            hook.config.url,
-            Some("https://example.com/webhook".to_string())
-        );
-        assert_eq!(hook.config.content_type, Some("json".to_string()));
-    }
-
-    #[test]
-    fn test_webhook_non_https() {
-        let json = r#"{
-            "id": 222,
-            "name": "web",
-            "active": true,
-            "config": {
-                "url": "http://insecure.example.com/hook"
-            }
-        }"#;
-
-        let hook: Webhook = serde_json::from_str(json).unwrap();
+    fn test_repo_edit_flags_honors_enable_issues_and_wiki_true() {
+        let settings = crate::actions::plan::GitHubRepoSettings {
+            enable_issues: Some(true),
+            enable_wiki: Some(true),
+            ..Default::default()
+        };
+        let flags = GitHubProvider::repo_edit_flags(&settings);
         assert!(
-            hook.config
-                .url
-                .as_ref()
-                .map(|u| u.starts_with("http://"))
-                .unwrap_or(false)
+            flags.iter().any(|f| f.starts_with("--enable-issues")),
+            "expected an --enable-issues flag, got {flags:?}"
+        );
+        assert!(
+            flags.iter().any(|f| f.starts_with("--enable-wiki")),
+            "expected an --enable-wiki flag, got {flags:?}"
         );
     }
 
     #[test]
-    fn test_webhook_inactive() {
-        let json = r#"{
-            "id": 333,
-            "name": "web",
-            "active": false,
-            "config": {}
-        }"#;
-
-        let hook: Webhook = serde_json::from_str(json).unwrap();
-        assert!(!hook.active);
+    fn test_repo_edit_flags_honors_enable_issues_and_wiki_false() {
+        let settings = crate::actions::plan::GitHubRepoSettings {
+            enable_issues: Some(false),
+            enable_wiki: Some(false),
+            ..Default::default()
+        };
+        let flags = GitHubProvider::repo_edit_flags(&settings);
+        assert!(flags.contains(&"--enable-issues=false".to_string()));
+        assert!(flags.contains(&"--enable-wiki=false".to_string()));
     }
 
     #[test]
-    fn test_webhook_no_secret() {
-        let json = r#"{
-            "id": 444,
-            "name": "web",
-            "active": true,
-            "config": {
-                "url": "https://example.com/hook"
-            }
-        }"#;
+    fn test_repo_edit_flags_none_when_all_unset() {
+        let settings = crate::actions::plan::GitHubRepoSettings::default();
+        assert!(GitHubProvider::repo_edit_flags(&settings).is_empty());
+    }
 
-        let hook: Webhook = serde_json::from_str(json).unwrap();
-        assert!(hook.config.secret.is_none());
+    // ===== Review bug #11: SEC013-017 write-side payload builders =====
+    //
+    // These test the pure JSON-payload construction only -- no `gh` process
+    // is spawned, matching the existing `protect_branch_calls`/
+    // `repo_settings_fields` pure-builder pattern in `gitlab.rs`.
+
+    /// Regression test for SEC013/SEC014: before this feature, secret
+    /// scanning / push protection had no write path at all -- this proves
+    /// the `security_and_analysis` PATCH payload carries both statuses.
+    #[test]
+    fn test_secret_scanning_payload_both_fields() {
+        let payload = GitHubProvider::secret_scanning_payload(Some(true), Some(false))
+            .expect("expected Some when at least one field is requested");
+        assert_eq!(
+            payload["security_and_analysis"]["secret_scanning"]["status"],
+            "enabled"
+        );
+        assert_eq!(
+            payload["security_and_analysis"]["secret_scanning_push_protection"]["status"],
+            "disabled"
+        );
     }
 
     #[test]
-    fn test_environment_deserialization() {
-        let json = r#"{
-            "id": 555,
-            "name": "production",
-            "created_at": "2023-06-01T00:00:00Z",
-            "updated_at": "2023-06-15T12:00:00Z"
-        }"#;
-
-        let env: Environment = serde_json::from_str(json).unwrap();
-        assert_eq!(env.id, 555);
-        assert_eq!(env.name, "production");
-        assert!(env.created_at.is_some());
+    fn test_secret_scanning_payload_single_field() {
+        let payload = GitHubProvider::secret_scanning_payload(Some(true), None)
+            .expect("expected Some when secret_scanning is requested");
+        assert_eq!(
+            payload["security_and_analysis"]["secret_scanning"]["status"],
+            "enabled"
+        );
+        assert!(
+            payload["security_and_analysis"]
+                .get("secret_scanning_push_protection")
+                .is_none(),
+            "an untouched field must not appear in the payload at all"
+        );
     }
 
     #[test]
-    fn test_environment_protection_deserialization() {
-        let json = r#"{
-            "protection_rules": [
-                {
-                    "type": "required_reviewers",
-                    "reviewers": [
-                        {
-                            "type": "User",
-                            "reviewer": {
-                                "login": "reviewer1"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "type": "wait_timer",
-                    "wait_timer": 30
-                }
-            ],
-            "deployment_branch_policy": {
-                "protected_branches": true,
-                "custom_branch_policies": false
-            }
-        }"#;
+    fn test_secret_scanning_payload_none_when_both_unset() {
+        assert!(GitHubProvider::secret_scanning_payload(None, None).is_none());
+    }
 
-        let prot: EnvironmentProtection = serde_json::from_str(json).unwrap();
-        assert_eq!(prot.protection_rules.len(), 2);
-        assert_eq!(prot.protection_rules[0].rule_type, "required_reviewers");
-        assert_eq!(prot.protection_rules[1].rule_type, "wait_timer");
-        assert_eq!(prot.protection_rules[1].wait_timer, Some(30));
-        assert!(prot.deployment_branch_policy.is_some());
-        let policy = prot.deployment_branch_policy.unwrap();
-        assert!(policy.protected_branches);
-        assert!(!policy.custom_branch_policies);
+    /// Regression test for SEC015: before this feature, unrestricted Actions
+    /// permissions had no write path -- this proves the `allowed_actions`
+    /// PUT payload carries the desired restriction.
+    #[test]
+    fn test_actions_permissions_payload_selected() {
+        let payload = GitHubProvider::actions_permissions_payload(Some("selected"))
+            .expect("expected Some when allowed_actions is requested");
+        assert_eq!(payload["enabled"], true);
+        assert_eq!(payload["allowed_actions"], "selected");
     }
 
     #[test]
-    fn test_environment_protection_empty() {
-        let json = r#"{}"#;
-
-        let prot: EnvironmentProtection = serde_json::from_str(json).unwrap();
-        assert!(prot.protection_rules.is_empty());
-        assert!(prot.deployment_branch_policy.is_none());
+    fn test_actions_permissions_payload_none_when_unset() {
+        assert!(GitHubProvider::actions_permissions_payload(None).is_none());
     }
 
     #[test]
-    fn test_environment_protection_default() {
-        let prot = EnvironmentProtection::default();
-        assert!(prot.protection_rules.is_empty());
-        assert!(prot.deployment_branch_policy.is_none());
+    fn test_selected_actions_payload_scopes_to_verified_and_github_owned() {
+        let payload = GitHubProvider::selected_actions_payload();
+        assert_eq!(payload["github_owned_allowed"], true);
+        assert_eq!(payload["verified_allowed"], true);
+        assert_eq!(payload["patterns_allowed"], serde_json::json!([]));
+    }
+
+    /// Regression test for SEC016: before this feature, permissive default
+    /// workflow permissions had no write path.
+    #[test]
+    fn test_actions_workflow_permissions_payload_read() {
+        let payload = GitHubProvider::actions_workflow_permissions_payload(Some("read"))
+            .expect("expected Some when default_workflow_permissions is requested");
+        assert_eq!(payload["default_workflow_permissions"], "read");
     }
 
     #[test]
-    fn test_protection_rule_with_reviewers() {
-        let json = r#"{
-            "type": "required_reviewers",
-            "reviewers": [
-                {
-                    "type": "Team",
-                    "reviewer": {
-                        "name": "security-team"
-                    }
-                }
-            ]
-        }"#;
+    fn test_actions_workflow_permissions_payload_none_when_unset() {
+        assert!(GitHubProvider::actions_workflow_permissions_payload(None).is_none());
+    }
 
-        let rule: ProtectionRule = serde_json::from_str(json).unwrap();
-        assert_eq!(rule.rule_type, "required_reviewers");
-        assert!(rule.reviewers.is_some());
-        let reviewers = rule.reviewers.unwrap();
-        assert_eq!(reviewers.len(), 1);
-        assert_eq!(reviewers[0].reviewer_type, "Team");
+    /// Regression test for SEC017: before this feature, fork-PR-workflow
+    /// approval had no write path. Mirrors `get_fork_pr_workflows_policy`'s
+    /// own read (`access_level == "none"` means approval is required).
+    #[test]
+    fn test_fork_pr_access_payload_require_approval_true() {
+        let payload = GitHubProvider::fork_pr_access_payload(true);
+        assert_eq!(payload["access_level"], "none");
     }
 
     #[test]
-    fn test_deployment_branch_policy() {
-        let json = r#"{
-            "protected_branches": false,
-            "custom_branch_policies": true
-        }"#;
-
-        let policy: DeploymentBranchPolicy = serde_json::from_str(json).unwrap();
-        assert!(!policy.protected_branches);
-        assert!(policy.custom_branch_policies);
+    fn test_fork_pr_access_payload_require_approval_false() {
+        let payload = GitHubProvider::fork_pr_access_payload(false);
+        assert_eq!(payload["access_level"], "organization");
     }
 }
