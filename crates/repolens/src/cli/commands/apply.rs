@@ -18,7 +18,7 @@ use repolens_core::actions::plan::{Action, ActionOperation, ActionPlan};
 use repolens_core::actions::planner::ActionPlanner;
 use repolens_core::config::Config;
 use repolens_core::error::RepoLensError;
-use repolens_core::providers::github::GitHubProvider;
+use repolens_core::providers::{RepoProvider, for_config};
 use repolens_core::rules::engine::RulesEngine;
 use repolens_core::rules::results::{AuditResults, Severity};
 use repolens_core::scanner::Scanner;
@@ -455,6 +455,15 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
         config.provider = Some(provider.into());
     }
 
+    // Resolve the repository provider once, up front (review bug #8 fix):
+    // issue/PR creation below routes through the `RepoProvider` trait via
+    // `for_config` instead of hardcoding `GitHubProvider`, so a
+    // GitLab-configured repository opens a merge request instead of silently
+    // orphaning the pushed branch. `None` means no provider CLI is
+    // available/authenticated; callers degrade gracefully. Captured here,
+    // before `config` is moved into the `ActionExecutor` below.
+    let provider = for_config(&config);
+
     // Initialize scanner
     let scanner = Scanner::new(PathBuf::from("."));
 
@@ -483,7 +492,7 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
 
     // If only warning issues to create (no plan actions), handle that directly
     if action_plan.is_empty() && has_warnings && !args.no_issues {
-        create_warning_issues(&audit_results);
+        create_warning_issues(provider.as_deref(), &audit_results);
         return Ok(exit_codes::SUCCESS);
     }
 
@@ -657,12 +666,13 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
     println!();
     println!("{}", separator.dimmed());
 
-    // Create GitHub issues for warning findings (unless --no-issues is set)
+    // Create issues for warning findings (unless --no-issues is set)
     if !args.no_issues {
-        create_warning_issues(&audit_results);
+        create_warning_issues(provider.as_deref(), &audit_results);
     }
 
-    // Handle git operations and PR creation if there were successful file changes
+    // Handle git operations and change-request creation if there were
+    // successful file changes
     if success_count > 0 {
         let repo_root = PathBuf::from(".");
         let should_create_pr = if args.no_pr {
@@ -673,13 +683,16 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
         };
 
         if should_create_pr && git::is_git_repository(&repo_root) {
-            if let Err(e) = handle_git_operations(&repo_root, &filtered_plan, &results).await {
+            if let Err(e) =
+                handle_git_operations(&repo_root, &filtered_plan, &results, provider.as_deref())
+                    .await
+            {
                 eprintln!(
                     "{} {}",
                     "[WARN]".yellow().bold(),
-                    format!("Failed to create PR: {}", e).yellow()
+                    format!("Failed to create change request: {}", e).yellow()
                 );
-                // Don't fail the whole command if PR creation fails
+                // Don't fail the whole command if PR/MR creation fails
             }
         }
     }
@@ -701,28 +714,21 @@ pub async fn execute(args: ApplyArgs) -> Result<i32, RepoLensError> {
     Ok(exit_code)
 }
 
-/// Create GitHub issues for warning findings grouped by category
-fn create_warning_issues(audit_results: &AuditResults) {
-    // Check if GitHub CLI is available
-    if !GitHubProvider::is_available() {
+/// Create issues for warning findings grouped by category.
+///
+/// Routes through the [`RepoProvider`] trait (`create_issue`) so this works
+/// for both GitHub and GitLab, instead of hardcoding `GitHubProvider` and
+/// silently failing on a GitLab remote (review bug #8). `provider` is `None`
+/// when no provider CLI is available/authenticated, which is a graceful skip
+/// -- not an error.
+fn create_warning_issues(provider: Option<&dyn RepoProvider>, audit_results: &AuditResults) {
+    let Some(provider) = provider else {
         println!(
             "{} {}",
             "[WARN]".yellow().bold(),
-            "GitHub CLI not available, skipping issue creation.".yellow()
+            "No repository provider available, skipping issue creation.".yellow()
         );
         return;
-    }
-
-    let github_provider = match GitHubProvider::new() {
-        Ok(provider) => provider,
-        Err(e) => {
-            println!(
-                "{} {}",
-                "[WARN]".yellow().bold(),
-                format!("Unable to create issues: {}. Skipping.", e).yellow()
-            );
-            return;
-        }
     };
 
     // Group warnings by category
@@ -768,7 +774,7 @@ fn create_warning_issues(audit_results: &AuditResults) {
 
         let labels = vec!["repolens-audit"];
 
-        match github_provider.create_issue(&title, &body, &labels) {
+        match provider.create_issue(&title, &body, &labels) {
             Ok(url) => {
                 println!(
                     "  {} {} ({} warning{}) -> {}",
@@ -794,11 +800,13 @@ fn create_warning_issues(audit_results: &AuditResults) {
     println!("{}", separator.dimmed());
 }
 
-/// Handle git operations: create branch, commit, push, and create PR
+/// Handle git operations: create branch, commit, push, and open a change
+/// request (a pull request on GitHub, a merge request on GitLab).
 async fn handle_git_operations(
     repo_root: &Path,
     action_plan: &ActionPlan,
     results: &[repolens_core::actions::executor::ActionResult],
+    provider: Option<&dyn RepoProvider>,
 ) -> Result<(), RepoLensError> {
     // Check if there are any file-related changes by checking the action plan
     let has_file_changes = action_plan.actions().iter().any(|action| {
@@ -871,42 +879,78 @@ async fn handle_git_operations(
     git::push_branch(repo_root, &branch_name)?;
     println!("  {} Branch pushed to origin", "[OK]".green().bold());
 
-    // Create PR - check if GitHub CLI is available first
-    if !GitHubProvider::is_available() {
-        println!(
-            "{} {}",
-            "[WARN]".yellow().bold(),
-            "GitHub CLI not available, PR not created. Changes are in the local branch.".yellow()
-        );
-        return Ok(());
-    }
+    let default_branch = git::get_default_branch(repo_root).unwrap_or_else(|| "main".to_string());
 
-    let github_provider = match GitHubProvider::new() {
-        Ok(provider) => provider,
+    // Open the change request via the trait (review bug #8 fix): this used to
+    // hardcode `GitHubProvider`, silently orphaning the pushed branch when the
+    // remote was GitLab. `create_change_request` degrades gracefully (returns
+    // `Ok(None)`, not an error) when no provider is available/authenticated.
+    match create_change_request(
+        provider,
+        action_plan,
+        results,
+        &branch_name,
+        &default_branch,
+    ) {
+        Ok(Some(url)) => {
+            println!();
+            println!(
+                "{} {}",
+                "[OK]".green().bold(),
+                format!("Change request created: {}", url.cyan()).green()
+            );
+        }
+        Ok(None) => {
+            // Graceful skip; `create_change_request` already logged why.
+        }
         Err(e) => {
             println!(
                 "{} {}",
                 "[WARN]".yellow().bold(),
                 format!(
-                    "Unable to create PR: {}. Changes are in the local branch.",
+                    "Unable to open change request: {}. Changes are in the local branch.",
                     e
                 )
                 .yellow()
             );
-            return Ok(());
         }
+    }
+
+    Ok(())
+}
+
+/// Open a change request (a pull request on GitHub, a merge request on
+/// GitLab) for `branch_name` into `default_branch`, via the [`RepoProvider`]
+/// trait so it lands on whichever forge `provider` was resolved for.
+///
+/// Returns `Ok(None)` -- not an error -- when no provider is
+/// available/authenticated, matching the read-side graceful-skip contract
+/// used everywhere else in the provider abstraction.
+fn create_change_request(
+    provider: Option<&dyn RepoProvider>,
+    action_plan: &ActionPlan,
+    results: &[repolens_core::actions::executor::ActionResult],
+    branch_name: &str,
+    default_branch: &str,
+) -> Result<Option<String>, RepoLensError> {
+    let Some(provider) = provider else {
+        println!(
+            "{} {}",
+            "[WARN]".yellow().bold(),
+            "No repository provider available, change request not created. Changes are in the local branch."
+                .yellow()
+        );
+        return Ok(None);
     };
 
-    let default_branch = git::get_default_branch(repo_root).unwrap_or_else(|| "main".to_string());
-
-    let pr_title = format!(
+    let title = format!(
         "RepoLens: Automatic fixes ({})",
         chrono::Local::now().format("%Y-%m-%d %H:%M")
     );
 
-    let pr_body = format!(
+    let body = format!(
         "# RepoLens Automatic Fixes\n\n\
-        This PR contains automatic fixes applied by RepoLens.\n\n\
+        This change request contains automatic fixes applied by RepoLens.\n\n\
         ## Actions Applied\n\n\
         {}\n\n\
         ## Details\n\n\
@@ -925,21 +969,8 @@ async fn handle_git_operations(
             .join("\n")
     );
 
-    let pr_url = github_provider.create_pull_request(
-        &pr_title,
-        &pr_body,
-        &branch_name,
-        Some(&default_branch),
-    )?;
-
-    println!();
-    println!(
-        "{} {}",
-        "[OK]".green().bold(),
-        format!("Pull Request created: {}", pr_url.cyan()).green()
-    );
-
-    Ok(())
+    let url = provider.open_change_request(&title, &body, branch_name, Some(default_branch))?;
+    Ok(Some(url))
 }
 
 #[cfg(test)]
@@ -949,7 +980,166 @@ mod tests {
         Action, ActionOperation, BranchProtectionSettings, GitHubActionsSecuritySettings,
         GitHubRepoSettings,
     };
+    use repolens_core::error::ProviderError;
+    use repolens_core::providers::{
+        ActionsPermissions, BranchProtection, RepoInfo, RepoMetadata, SecretScanningSettings,
+    };
+    use repolens_core::rules::results::Finding;
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Minimal fake [`RepoProvider`] used to exercise review bug #8's
+    /// trait-routing (`create_issue` / `open_change_request`) without
+    /// shelling out to `gh`/`glab`, which are not on `PATH` in this
+    /// environment. Every read-side method is an unused stub; only the two
+    /// write methods under test record that they were called and return a
+    /// URL tagged with `kind` so tests can assert *which* forge flavour the
+    /// call was routed to.
+    struct MockProvider {
+        kind: &'static str,
+        issue_called: AtomicBool,
+        change_request_called: AtomicBool,
+    }
+
+    impl MockProvider {
+        fn new(kind: &'static str) -> Self {
+            Self {
+                kind,
+                issue_called: AtomicBool::new(false),
+                change_request_called: AtomicBool::new(false),
+            }
+        }
+    }
+
+    fn mock_provider_error() -> RepoLensError {
+        RepoLensError::Provider(ProviderError::CommandFailed {
+            command: "mock".to_string(),
+        })
+    }
+
+    impl RepoProvider for MockProvider {
+        fn owner(&self) -> &str {
+            "owner"
+        }
+
+        fn name(&self) -> &str {
+            "repo"
+        }
+
+        fn repo_metadata(&self) -> Result<RepoMetadata, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn get_branch_protection(
+            &self,
+            _branch: &str,
+        ) -> Result<Option<BranchProtection>, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn get_repo_settings(&self) -> Result<RepoInfo, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn has_vulnerability_alerts(&self) -> Result<bool, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn has_automated_security_fixes(&self) -> Result<bool, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn has_dependabot_security_updates(&self) -> Result<bool, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn get_secret_scanning(&self) -> Result<SecretScanningSettings, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn get_actions_permissions(&self) -> Result<ActionsPermissions, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn get_actions_workflow_permissions(&self) -> Result<ActionsPermissions, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn get_fork_pr_workflows_policy(&self) -> Result<bool, RepoLensError> {
+            Err(mock_provider_error())
+        }
+
+        fn set_protected_branch(
+            &self,
+            _branch: &str,
+            _settings: &BranchProtectionSettings,
+        ) -> Result<(), RepoLensError> {
+            Ok(())
+        }
+
+        fn set_repo_settings(&self, _settings: &GitHubRepoSettings) -> Result<(), RepoLensError> {
+            Ok(())
+        }
+
+        fn set_repo_metadata(
+            &self,
+            _description: Option<&str>,
+            _topics: &[String],
+            _homepage: Option<&str>,
+        ) -> Result<(), RepoLensError> {
+            Ok(())
+        }
+
+        fn set_secret_scanning(
+            &self,
+            _secret_scanning: Option<bool>,
+            _push_protection: Option<bool>,
+        ) -> Result<(), RepoLensError> {
+            Ok(())
+        }
+
+        fn set_actions_permissions(
+            &self,
+            _allowed_actions: Option<&str>,
+        ) -> Result<(), RepoLensError> {
+            Ok(())
+        }
+
+        fn set_actions_workflow_permissions(
+            &self,
+            _default_workflow_permissions: Option<&str>,
+        ) -> Result<(), RepoLensError> {
+            Ok(())
+        }
+
+        fn set_fork_pr_workflows_policy(
+            &self,
+            _require_approval: bool,
+        ) -> Result<(), RepoLensError> {
+            Ok(())
+        }
+
+        fn create_issue(
+            &self,
+            _title: &str,
+            _body: &str,
+            _labels: &[&str],
+        ) -> Result<String, RepoLensError> {
+            self.issue_called.store(true, Ordering::SeqCst);
+            Ok(format!("https://{}.example/issues/1", self.kind))
+        }
+
+        fn open_change_request(
+            &self,
+            _title: &str,
+            _body: &str,
+            _head: &str,
+            _base: Option<&str>,
+        ) -> Result<String, RepoLensError> {
+            self.change_request_called.store(true, Ordering::SeqCst);
+            Ok(format!("https://{}.example/merge_requests/1", self.kind))
+        }
+    }
 
     #[test]
     fn test_get_category_icon() {
@@ -1151,5 +1341,81 @@ mod tests {
     fn test_create_spinner() {
         let sp = create_spinner("Testing...");
         sp.finish_and_clear();
+    }
+
+    fn warning_audit_results() -> AuditResults {
+        let mut results = AuditResults::new("test-repo", "opensource");
+        results.add_finding(Finding::new(
+            "DOC001",
+            "docs",
+            Severity::Warning,
+            "README missing",
+        ));
+        results
+    }
+
+    /// Regression test for review bug #8: with no provider available (no
+    /// `gh`/`glab` CLI, no token), issue creation must be a graceful skip --
+    /// no panic, no hardcoded `GitHubProvider` construction attempt.
+    #[test]
+    fn test_create_warning_issues_no_provider_is_graceful_skip() {
+        let audit_results = warning_audit_results();
+        create_warning_issues(None, &audit_results);
+    }
+
+    /// Regression test for review bug #8: issue creation must route through
+    /// the `RepoProvider` trait so a GitLab-configured provider is actually
+    /// invoked, instead of `apply.rs` hardcoding `GitHubProvider` (which would
+    /// never be called here, orphaning the warning-issue request).
+    #[test]
+    fn test_create_warning_issues_routes_through_trait_for_gitlab() {
+        let mock = MockProvider::new("gitlab");
+        let audit_results = warning_audit_results();
+
+        create_warning_issues(Some(&mock), &audit_results);
+
+        assert!(
+            mock.issue_called.load(Ordering::SeqCst),
+            "issue creation must route through the RepoProvider trait, not a hardcoded GitHubProvider"
+        );
+    }
+
+    /// Regression test for review bug #8: no provider available must yield a
+    /// graceful `Ok(None)` -- never an orphaned branch/error -- from the
+    /// change-request path.
+    #[test]
+    fn test_create_change_request_no_provider_is_graceful_skip_no_orphan() {
+        let action_plan = ActionPlan::new();
+        let results: Vec<repolens_core::actions::executor::ActionResult> = Vec::new();
+
+        let outcome =
+            create_change_request(None, &action_plan, &results, "repolens/branch", "main");
+
+        assert!(matches!(outcome, Ok(None)));
+    }
+
+    /// Regression test for review bug #8: `apply --create-pr` used to
+    /// hardcode `GitHubProvider::create_pull_request`, which on a GitLab
+    /// remote would never be reached (the hardcoded type doesn't match), so
+    /// the pushed branch was orphaned with no merge request. This asserts the
+    /// change-request path routes through the trait and actually invokes the
+    /// GitLab-flavoured implementation.
+    #[test]
+    fn test_create_change_request_routes_through_gitlab_provider() {
+        let mock = MockProvider::new("gitlab");
+        let action_plan = ActionPlan::new();
+        let results: Vec<repolens_core::actions::executor::ActionResult> = Vec::new();
+
+        let outcome = create_change_request(
+            Some(&mock),
+            &action_plan,
+            &results,
+            "repolens/branch",
+            "main",
+        );
+
+        assert!(mock.change_request_called.load(Ordering::SeqCst));
+        let url = outcome.unwrap().unwrap();
+        assert!(url.contains("gitlab"));
     }
 }

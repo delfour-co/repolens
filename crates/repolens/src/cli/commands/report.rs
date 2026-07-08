@@ -49,6 +49,15 @@ pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
         None
     };
 
+    // Capture the effective provider before `config` is moved into the engine
+    // below: the JSON report metadata records which forge was actually
+    // queried. Mirrors `providers::resolve_provider`'s selection order --
+    // explicit config/CLI choice first, then auto-detection from the git
+    // remote, defaulting to GitHub.
+    let effective_provider = config.provider.unwrap_or_else(|| {
+        repolens_core::providers::detect_provider_from_remote().unwrap_or_default()
+    });
+
     // Initialize scanner
     let scanner = Scanner::new(PathBuf::from("."));
 
@@ -62,13 +71,13 @@ pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
 
     // Apply filters if specified (with validation)
     if let Some(only) = args.only {
-        let valid_only = filter_valid_categories(only);
+        let valid_only = validate_category_filter("--only", only)?;
         if !valid_only.is_empty() {
             engine.set_only_categories(valid_only);
         }
     }
     if let Some(skip) = args.skip {
-        let valid_skip = filter_valid_categories(skip);
+        let valid_skip = validate_category_filter("--skip", skip)?;
         if !valid_skip.is_empty() {
             engine.set_skip_categories(valid_skip);
         }
@@ -156,7 +165,8 @@ pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
         ReportFormat::Json => Box::new(
             JsonOutput::new()
                 .with_schema(args.schema)
-                .with_validation(args.validate),
+                .with_validation(args.validate)
+                .with_provider(effective_provider),
         ),
     };
 
@@ -184,4 +194,64 @@ pub async fn execute(args: ReportArgs) -> Result<i32, RepoLensError> {
     };
 
     Ok(exit_code)
+}
+
+/// Validate a `--only`/`--skip` category selection after `filter_valid_categories`
+/// has dropped unknown names.
+///
+/// clap's `PossibleValuesParser` (see `VALID_CATEGORIES` in
+/// `cli/commands/mod.rs`) already rejects a removed/unknown category before
+/// this code runs, so in practice `categories` only ever contains valid
+/// names. This is defense in depth (review bug #2): if that guard were ever
+/// loosened, a selection that reduces to zero valid categories must be a
+/// hard error, not a silent fallthrough to a full, unfiltered audit.
+fn validate_category_filter(
+    flag: &str,
+    categories: Vec<String>,
+) -> Result<Vec<String>, RepoLensError> {
+    let requested_any = !categories.is_empty();
+    let valid = filter_valid_categories(categories);
+
+    if requested_any && valid.is_empty() {
+        return Err(RepoLensError::Rule(
+            repolens_core::error::RuleError::ExecutionFailed {
+                message: format!(
+                    "{flag}: no valid categories in selection. Valid categories: {}",
+                    repolens_core::rules::constants::VALID_CATEGORIES.join(", ")
+                ),
+            },
+        ));
+    }
+
+    Ok(valid)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for review bug #2: a selection that reduces to zero
+    /// valid categories must error out, not silently fall through to a full
+    /// audit. Bypasses clap's `PossibleValuesParser` guard directly to
+    /// exercise the defense-in-depth path.
+    #[test]
+    fn test_validate_category_filter_all_invalid_errors() {
+        let result = validate_category_filter(
+            "--only",
+            vec!["secrets".to_string(), "workflows".to_string()],
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_category_filter_keeps_valid_categories() {
+        let result = validate_category_filter("--skip", vec!["docs".to_string()]).unwrap();
+        assert_eq!(result, vec!["docs".to_string()]);
+    }
+
+    #[test]
+    fn test_validate_category_filter_empty_selection_is_ok() {
+        let result = validate_category_filter("--only", vec![]).unwrap();
+        assert!(result.is_empty());
+    }
 }

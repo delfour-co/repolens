@@ -92,9 +92,14 @@
           "type": "string",
           "description": "Version of this JSON Schema",
           "const": "1.0.0"
+        },
+        "provider": {
+          "type": "string",
+          "description": "Repository hosting provider the audit ran against",
+          "enum": ["github", "gitlab"]
         }
       },
-      "required": ["version", "timestamp", "schema_version"],
+      "required": ["version", "timestamp", "schema_version", "provider"],
       "additionalProperties": false
     },
     "Summary": {

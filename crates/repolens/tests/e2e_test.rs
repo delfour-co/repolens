@@ -93,6 +93,13 @@ async fn e2e_repolens_report_json_valid() {
         report.get("repository_name").is_some() || report.get("repository").is_some(),
         "Report should have repository info"
     );
+
+    // The report metadata records which provider (GitHub or GitLab) the
+    // audit ran against.
+    let provider = report["metadata"]["provider"]
+        .as_str()
+        .expect("Report metadata should include a provider");
+    assert!(matches!(provider, "github" | "gitlab"));
 }
 
 #[tokio::test]
@@ -111,6 +118,77 @@ async fn e2e_repolens_report_markdown_valid() {
     // Verify output is valid Markdown
     let content = fs::read_to_string(&output_path).unwrap();
     assert!(content.contains("# "), "Markdown should have headers");
+}
+
+// ============================================================================
+// E2E Tests: --only / --skip category validation (review bug #2)
+// ============================================================================
+//
+// The `secrets`/`workflows`/etc. categories were removed in v3 (only `files`,
+// `docs`, `security`, `git`, `codeowners`, `metadata` remain). `--only`/
+// `--skip` are clap-guarded via `PossibleValuesParser::new(VALID_CATEGORIES)`
+// (see `cli/commands/mod.rs`), so a removed category must be rejected at the
+// CLI level -- not silently ignored, which used to fall through to running a
+// full, unfiltered audit (review bug #2).
+
+#[tokio::test]
+async fn e2e_plan_rejects_removed_only_category() {
+    let repo_root = repo_root();
+    get_cmd()
+        .current_dir(&repo_root)
+        .args(["plan", "--only", "secrets"])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_plan_rejects_removed_skip_category() {
+    let repo_root = repo_root();
+    get_cmd()
+        .current_dir(&repo_root)
+        .args(["plan", "--skip", "workflows"])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_report_rejects_removed_only_category() {
+    let repo_root = repo_root();
+    get_cmd()
+        .current_dir(&repo_root)
+        .args(["report", "--only", "secrets"])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_report_rejects_removed_skip_category() {
+    let repo_root = repo_root();
+    get_cmd()
+        .current_dir(&repo_root)
+        .args(["report", "--skip", "quality"])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_apply_rejects_removed_only_category() {
+    let repo_root = repo_root();
+    get_cmd()
+        .current_dir(&repo_root)
+        .args(["apply", "--dry-run", "--only", "docker"])
+        .assert()
+        .failure();
+}
+
+#[tokio::test]
+async fn e2e_apply_rejects_removed_skip_category() {
+    let repo_root = repo_root();
+    get_cmd()
+        .current_dir(&repo_root)
+        .args(["apply", "--dry-run", "--skip", "history"])
+        .assert()
+        .failure();
 }
 
 // ============================================================================
@@ -1374,44 +1452,6 @@ async fn e2e_exit_code_returns_valid_exit_codes() {
             exit_codes::CRITICAL_ISSUES,
             exit_codes::WARNINGS,
         ]));
-}
-
-#[tokio::test]
-async fn e2e_exit_code_critical_for_secrets() {
-    let temp_dir = TempDir::new().unwrap();
-    create_rust_project(temp_dir.path());
-
-    // Add a file with exposed secrets
-    fs::write(
-        temp_dir.path().join("secrets.rs"),
-        r#"
-// Fake AWS credentials for testing
-const AWS_ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
-const AWS_SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
-"#,
-    )
-    .unwrap();
-
-    // Initialize config with strict preset (more likely to detect secrets)
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args([
-            "init",
-            "--preset",
-            "strict",
-            "--non-interactive",
-            "--force",
-            "--skip-checks",
-        ])
-        .assert()
-        .success();
-
-    // Run plan - should return CRITICAL_ISSUES (1) for exposed secrets
-    get_cmd()
-        .current_dir(temp_dir.path())
-        .args(["plan"])
-        .assert()
-        .code(predicate::eq(exit_codes::CRITICAL_ISSUES));
 }
 
 #[tokio::test]

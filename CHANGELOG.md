@@ -26,6 +26,14 @@ concerns overlap with dedicated tooling.
 - Provider-agnostic action catalog: `CreateFile`, `UpdateGitignore`,
   `ConfigureProtectedBranch`, `UpdateRepoSettings`, and the new
   `UpdateRepoMetadata` (repository description and topics/tags).
+- The generated pre-commit hook now runs a dedicated, self-contained
+  staged-diff secret scan (private keys, AWS/GitHub/GitLab/Slack/Google/generic
+  API tokens) in addition to the `files`/`git` hygiene check, restoring the
+  content-secret detection that moving the hook off the removed `secrets`
+  category would otherwise have silently dropped.
+- The JSON audit report's `metadata` object now includes a `provider` field
+  (`"github"` or `"gitlab"`) recording which hosting provider the audit ran
+  against.
 
 ### Changed
 
@@ -33,6 +41,11 @@ concerns overlap with dedicated tooling.
   applicable repository-configuration action.
 - Migrated the repository to a 2-crate Cargo workspace (`repolens-core` +
   `repolens`); the split is structural only and does not change behavior.
+- `apply`'s automatic issue creation and `--create-pr` change-request creation
+  now go through the selected provider: GitHub issues/pull requests, or GitLab
+  issues/merge requests via `glab`. Previously these always assumed GitHub,
+  so applying fixes on a GitLab repository could push a branch with no merge
+  request opened.
 
 ### Removed (BREAKING CHANGES)
 
@@ -47,6 +60,9 @@ concerns overlap with dedicated tooling.
   configuration sections. They are ignored if still present in `.repolens.toml`.
 - The audit-report `category` enum is now
   `["files", "docs", "security", "git", "codeowners", "metadata"]`.
+- The audit-report JSON Schema's `Metadata` definition now requires a
+  `provider` property; reports validated against the schema before this change
+  will need to add it (or re-generate with `repolens report`).
 
 ### Migration
 
@@ -59,8 +75,9 @@ concerns overlap with dedicated tooling.
 - Set `provider = "gitlab"` (or pass `--provider gitlab`) to audit GitLab
   repositories; GitHub remains the default.
 - Reinstall Git hooks (`repolens install-hooks --force`) to pick up the updated
-  pre-commit hook, which now checks `files`/`git` instead of the removed
-  `secrets` category.
+  pre-commit hook: it now runs a dedicated content-secret scan (replacing the
+  detection lost when the `secrets` category was removed) in addition to the
+  `files`/`git` hygiene check.
 
 ## [2.0.2] - 2026-05-13
 
