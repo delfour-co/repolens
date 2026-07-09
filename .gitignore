@@ -52,3 +52,6 @@ logs/security/
 
 # RepoLens generated reports
 repolens-report.*
+
+# Zola build output
+/site/public

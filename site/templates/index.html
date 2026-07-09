@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}RepoLens — {{ section.extra.tagline }}{% endblock title %}
+{% block content %}
+<header class="hero">
+  <nav class="langs">
+    <a class="{% if lang == 'en' %}on{% endif %}" href="{{ get_url(path='@/_index.md', lang='en') }}">EN</a>
+    <a class="{% if lang == 'fr' %}on{% endif %}" href="{{ get_url(path='@/_index.md', lang='fr') }}">FR</a>
+  </nav>
+  <img class="mascot" src="{{ get_url(path='img/mascot.webp') }}" alt="RepoLens guardian" />
+  <h1>{{ section.title }}</h1>
+  <p class="tag">{{ section.extra.tagline }}</p>
+  <p class="lede">{{ section.extra.lede }}</p>
+  <div class="cta">
+    <a class="btn b1" href="{{ config.extra.repo_url }}">{{ section.extra.cta }}</a>
+    <a class="btn b2" href="#install">{{ section.extra.cta2 }}</a>
+  </div>
+</header>
+<main class="wrap">{{ section.content | safe }}</main>
+{% endblock content %}

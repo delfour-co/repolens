@@ -1,0 +1,17 @@
+base_url = "https://systm-d.github.io/repolens"
+title = "RepoLens"
+description = "A CLI auto-configurator for GitHub and GitLab repositories."
+default_language = "en"
+compile_sass = true
+build_search_index = false
+
+[markdown]
+highlight_code = true
+
+[languages.fr]
+title = "RepoLens"
+description = "Un auto-configurateur CLI pour les dépôts GitHub et GitLab."
+
+[extra]
+brand_color = "#38bdf8"
+repo_url = "https://github.com/systm-d/repolens"
