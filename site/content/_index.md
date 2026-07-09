@@ -73,5 +73,5 @@ docker run --rm -v "$(pwd)":/repo ghcr.io/systm-d/repolens plan
 # Cargo
 cargo install repolens</pre>
   <p style="color:var(--mut);font-size:.85rem;margin-top:.7rem">Also on Homebrew, AUR, Debian .deb and Scoop — or grab a binary from the latest GitHub release.</p>
-  <div class="callout"><img src="img/portrait.webp" alt="" /><div>🛡️ <strong>RepoLens configures a repository as well as it can, automatically</strong> — the plan/apply split means you always review before anything changes. <em>Not a secret or dependency scanner; it focuses on structure, docs &amp; hosting-platform configuration.</em></div></div>
+  <div class="callout">{{ img(src="img/portrait.webp") }}<div>🛡️ <strong>RepoLens configures a repository as well as it can, automatically</strong> — the plan/apply split means you always review before anything changes. <em>Not a secret or dependency scanner; it focuses on structure, docs &amp; hosting-platform configuration.</em></div></div>
 </div>

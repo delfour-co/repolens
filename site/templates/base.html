@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}{{ config.title }}{% endblock title %}</title>
-    <meta name="description" content="{{ config.description }}" />
+    <meta name="description" content="{% if lang == 'fr' %}Un auto-configurateur CLI pour les dépôts GitHub et GitLab.{% else %}{{ config.description }}{% endif %}" />
     <meta property="og:title" content="{{ config.title }}" />
-    <meta property="og:description" content="{{ config.description }}" />
+    <meta property="og:description" content="{% if lang == 'fr' %}Un auto-configurateur CLI pour les dépôts GitHub et GitLab.{% else %}{{ config.description }}{% endif %}" />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="{{ get_url(path='img/og.jpg') }}" />
     <meta name="twitter:card" content="summary_large_image" />
