@@ -44,7 +44,7 @@ impl TerminalOutput {
         let critical: Vec<_> = results.findings_by_severity(Severity::Critical).collect();
         if !critical.is_empty() {
             output.push_str(&format!(
-                "{} ({})\\n",
+                "{} ({})\n",
                 "❌ CRITICAL".red().bold(),
                 critical.len()
             ));
@@ -58,7 +58,7 @@ impl TerminalOutput {
         let warnings: Vec<_> = results.findings_by_severity(Severity::Warning).collect();
         if !warnings.is_empty() {
             output.push_str(&format!(
-                "{} ({})\\n",
+                "{} ({})\n",
                 "⚠️  WARNING".yellow().bold(),
                 warnings.len()
             ));
@@ -71,7 +71,7 @@ impl TerminalOutput {
         // Info findings
         let info: Vec<_> = results.findings_by_severity(Severity::Info).collect();
         if !info.is_empty() {
-            output.push_str(&format!("{} ({})\\n", "ℹ️  INFO".blue().bold(), info.len()));
+            output.push_str(&format!("{} ({})\n", "ℹ️  INFO".blue().bold(), info.len()));
             for finding in info {
                 output.push_str(&self.format_finding(finding));
             }
@@ -291,6 +291,20 @@ mod tests {
         assert!(formatted.contains("SEC001"));
         assert!(formatted.contains("DOC001"));
         assert!(formatted.contains("INFO001"));
+    }
+
+    #[test]
+    fn test_severity_headers_use_real_newlines() {
+        // Regression: the severity header format strings used an escaped `\\n`,
+        // printing a literal backslash-n after "CRITICAL (1)" instead of a line
+        // break. The output must never contain a literal `\n` sequence.
+        let output = TerminalOutput::new();
+        let results = create_test_results();
+        let formatted = output.format_findings(&results);
+        assert!(
+            !formatted.contains("\\n"),
+            "severity headers must break with a real newline, not a literal \\n"
+        );
     }
 
     #[test]
