@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}RepoLens — {{ section.extra.tagline }}{% endblock title %}
+{% block title %}RepoLens — {{ section.extra.eyebrow }}{% endblock title %}
 {% block content %}
 <header class="hero">
   <nav class="langs">
@@ -7,13 +7,25 @@
     <a class="{% if lang == 'fr' %}on{% endif %}" href="{{ get_url(path='@/_index.md', lang='fr') }}">FR</a>
   </nav>
   <img class="mascot" src="{{ get_url(path='img/mascot.webp') }}" alt="RepoLens guardian" />
+  <div class="eyebrow mono">◇ {{ section.extra.eyebrow }}</div>
   <h1>{{ section.title }}</h1>
-  <p class="tag">{{ section.extra.tagline }}</p>
-  <p class="lede">{{ section.extra.lede }}</p>
+  <p class="sub">{{ section.extra.subline }}</p>
+  <div class="flow">
+    <div class="fcard mono">
+      <div class="h">{{ section.extra.found_label }} <b>repolens plan</b></div>
+      {% for f in section.extra.found %}<div><span class="{{ f.c }}">{{ f.g }}</span> {{ f.t }}</div>{% endfor %}
+    </div>
+    <div class="arrow">→</div>
+    <div class="fcard mono">
+      <div class="h">{{ section.extra.done_label }} <b>repolens apply</b></div>
+      {% for d in section.extra.done %}<div><span class="ok">✓</span> {{ d }}</div>{% endfor %}
+    </div>
+  </div>
   <div class="cta">
     <a class="btn b1" href="{{ config.extra.repo_url }}">{{ section.extra.cta }}</a>
     <a class="btn b2" href="#install">{{ section.extra.cta2 }}</a>
   </div>
+  <div class="oneliner mono"><span class="p">$</span> {{ section.extra.oneliner }}</div>
 </header>
 <main class="wrap">{{ section.content | safe }}</main>
 {% endblock content %}

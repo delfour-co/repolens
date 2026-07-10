@@ -1,11 +1,24 @@
 +++
-title = "Alignez chaque dépôt sur un standard constant."
+title = "Ne livrez plus de dépôts incomplets."
 
 [extra]
-tagline = "Un auto-configurateur CLI pour les dépôts GitHub & GitLab."
-lede = "RepoLens audite l'hygiène et la configuration d'un dépôt, puis transforme chaque écart en action applicable et vérifiable — vous validez le plan avant tout changement."
+eyebrow = "audit · plan · apply"
+subline = "Pas de LICENSE, pas de protection de branche, pas de topics, métadonnées obsolètes… RepoLens détecte chaque lacune — puis la corrige, après votre relecture du plan."
 cta = "Voir sur GitHub"
 cta2 = "Installer"
+oneliner = "cargo install repolens"
+found_label = "détecté par"
+done_label = "corrigé par"
+found = [
+  { c = "cr", g = "✗", t = "LICENSE manquante" },
+  { c = "wa", g = "!", t = "protection de branche absente" },
+  { c = "cr", g = "✗", t = "ni description ni topics" },
+]
+done = [
+  "LICENSE ajoutée",
+  "protection de branche activée",
+  "description & topics définis",
+]
 +++
 
 <div class="sec">
@@ -19,25 +32,145 @@ cta2 = "Installer"
 </div>
 
 <div class="sec">
-  <div class="lbl mono">en action</div>
-  <h2>Relisez le plan. Puis appliquez.</h2>
-  <div class="term mono">
-    <div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
-    <div class="b">
-      <div><span class="p">$</span> repolens plan <span class="mut">--preset opensource</span></div>
-      <div class="mut">audit de 6 catégories · provider : github (auto)…</div>
-      <div>&nbsp;</div>
-      <div>&nbsp;&nbsp;<span class="cy">docs</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;README, LICENSE, SECURITY&nbsp;&nbsp;&nbsp;&nbsp;<span class="ok">ok</span></div>
-      <div>&nbsp;&nbsp;<span class="cy">security</span>&nbsp;&nbsp;protection de branche absente&nbsp;&nbsp;<span class="wa">warn</span></div>
-      <div>&nbsp;&nbsp;<span class="cy">metadata</span>&nbsp;&nbsp;description / topics manquants&nbsp;&nbsp;<span class="cr">fix</span></div>
-      <div>&nbsp;</div>
-      <div><span class="p">▸</span> 4 actions planifiées <span class="mut">— lancez</span> <span class="cy">repolens apply</span> <span class="mut">pour exécuter</span></div>
-      <div>&nbsp;</div>
-      <div><span class="p">$</span> repolens apply</div>
-      <div><span class="g">✓</span> description &amp; topics du dépôt mis à jour</div>
-      <div><span class="g">✓</span> protection de branche activée sur <span class="cy">main</span></div>
-    </div>
-  </div>
+  <div class="lbl mono">en action · sortie réelle</div>
+  <h2>Six commandes, capturées en vrai.</h2>
+
+<div class="term flag mono">
+<div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="ttl">plan — audit + plan d'actions relisable</span></div>
+<div class="b">
+<div><span class="p">$</span> repolens plan</div>
+<div class="mut">auditing 6 categories · provider: github (auto)…</div>
+<div class="sp"></div>
+<div><span class="cy">━━━━━━ AUDIT RESULTS ━━━━━━</span></div>
+<div><span class="cr">❌ CRITICAL (1)</span></div>
+<div>  • [DOC004] LICENSE file is missing</div>
+<div><span class="wa">⚠️  WARNING (6)</span></div>
+<div>  • [FILE002] .gitignore file is missing</div>
+<div>  • [DOC001] README file is missing</div>
+<div>  • [DOC005] CONTRIBUTING file is missing</div>
+<div class="mut">  … +3 (CODE_OF_CONDUCT, SECURITY, CHANGELOG)</div>
+<div><span class="cy">ℹ️  INFO (4)</span></div>
+<div>  • [SEC007] .github/settings.yml is absent</div>
+<div>  • [GIT002] .gitattributes file is missing</div>
+<div>  • [CODE001] CODEOWNERS file is missing</div>
+<div class="mut">  … +1 (runtime version file)</div>
+<div class="sp"></div>
+<div><span class="cy">━━━━━━ PLANNED ACTIONS ━━━━━━</span></div>
+<div><span class="ok">+</span> [file]   Create LICENSE file  <span class="mut">└─ MIT</span></div>
+<div><span class="ok">+</span> [file]   Create README.md</div>
+<div><span class="ok">+</span> [file]   Create .gitignore</div>
+<div><span class="ok">+</span> [github] Enable branch protection on 'main'</div>
+<div><span class="ok">+</span> [github] Update repository settings</div>
+<div><span class="ok">+</span> [issues] Open issues for 6 warnings</div>
+<div class="mut">  … +8 more</div>
+<div class="sp"></div>
+<div><span class="cy">━━━━━━ SUMMARY ━━━━━━</span></div>
+<div>Critical: 1 │ Warnings: 6 │ Info: 4</div>
+<div><span class="p">▸</span> Run <span class="cy">repolens apply</span> to execute planned actions.</div>
+</div>
+</div>
+
+<div class="pano">
+
+<div class="term mono">
+<div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="ttl">apply --dry-run — prévisualiser chaque changement</span></div>
+<div class="b">
+<div><span class="p">$</span> repolens apply <span class="mut">--dry-run</span></div>
+<div class="sp"></div>
+<div><span class="cy">════ ACTION SUMMARY ════</span></div>
+<div class="sp"></div>
+<div>[*] FILE (10 actions)</div>
+<div>    <span class="ok">+</span> Create LICENSE file  <span class="mut">— MIT</span></div>
+<div>    <span class="ok">+</span> Create README.md</div>
+<div>    <span class="ok">+</span> Create .gitignore</div>
+<div>    <span class="ok">+</span> Create CONTRIBUTING.md</div>
+<div class="mut">    … +6 more</div>
+<div class="sp"></div>
+<div>[G] GITHUB (3 actions)</div>
+<div>    <span class="ok">+</span> Enable branch protection on 'main'</div>
+<div>    <span class="ok">+</span> Update repository settings</div>
+<div>    <span class="ok">+</span> Update GitHub Actions &amp; security settings</div>
+<div class="sp"></div>
+<div class="mut">dry run — nothing was changed.</div>
+</div>
+</div>
+
+<div class="term mono">
+<div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="ttl">report — json · markdown · sarif · html</span></div>
+<div class="b">
+<div><span class="p">$</span> repolens report <span class="mut">--format markdown</span></div>
+<div><span class="ok">✓</span> Report written to: repolens-report.md</div>
+<div class="sp"></div>
+<div class="mut"># RepoLens Audit Report</div>
+<div class="mut">Preset: opensource · Version: 3.0.0</div>
+<div class="sp"></div>
+<div>## Summary</div>
+<div>| Severity | Count |</div>
+<div>|----------|-------|</div>
+<div>| Critical | 1     |</div>
+<div>| Warning  | 6     |</div>
+<div>| Info     | 4     |</div>
+<div class="sp"></div>
+<div class="mut">also: json · sarif · html · -o &lt;file&gt;</div>
+</div>
+</div>
+
+<div class="term mono">
+<div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="ttl">compare — diff de deux audits (gate CI)</span></div>
+<div class="b">
+<div><span class="p">$</span> repolens compare <span class="mut">--base-file before.json --head-file after.json</span></div>
+<div class="sp"></div>
+<div><span class="cy">━━ SCORE ━━</span></div>
+<div>32 → 26   <span class="ok">(-6, improved)</span></div>
+<div class="sp"></div>
+<div><span class="cy">━━ RESOLVED (3) ━━</span></div>
+<div>  <span class="ok">-</span> [DOC004]  <span class="cr">CRITICAL</span>  LICENSE file is missing</div>
+<div>  <span class="ok">-</span> [DOC001]  <span class="wa">WARNING</span>   README file is missing</div>
+<div>  <span class="ok">-</span> [FILE002] <span class="wa">WARNING</span>   .gitignore file is missing</div>
+<div class="sp"></div>
+<div><span class="cy">━━ NEW ISSUES (8) ━━</span></div>
+<div>  <span class="wa">+</span> [DOC002] README is too short (3 lines)</div>
+<div class="mut">  + [DOC003] README missing section: Installation</div>
+<div class="mut">  … +6 more</div>
+</div>
+</div>
+
+<div class="term mono">
+<div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="ttl">install-hooks — pre-commit &amp; pre-push</span></div>
+<div class="b">
+<div><span class="p">$</span> repolens install-hooks</div>
+<div class="sp"></div>
+<div>Installing Git hooks…</div>
+<div>  <span class="ok">→</span> Installed pre-commit hook</div>
+<div>  <span class="ok">→</span> Installed pre-push hook</div>
+<div class="sp"></div>
+<div><span class="ok">Done!</span></div>
+</div>
+</div>
+
+<div class="term mono">
+<div class="bar"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i><span class="ttl">--help — toute la surface</span></div>
+<div class="b">
+<div><span class="p">$</span> repolens --help</div>
+<div class="sp"></div>
+<div class="mut">Commands:</div>
+<div>  <span class="cy">init</span>           Initialize a new configuration file</div>
+<div>  <span class="cy">plan</span>           Analyze repository and show planned actions</div>
+<div>  <span class="cy">apply</span>          Apply planned changes to the repository</div>
+<div>  <span class="cy">report</span>         Generate an audit report</div>
+<div>  <span class="cy">compare</span>        Compare two audit reports</div>
+<div>  <span class="cy">install-hooks</span>  Install or remove Git hooks</div>
+<div>  <span class="cy">schema</span>         Display the report JSON Schema</div>
+<div class="sp"></div>
+<div class="mut">Options:</div>
+<div>  <span class="cy">-C</span> &lt;dir&gt;     working directory</div>
+<div>  <span class="cy">-c</span> &lt;file&gt;    config file</div>
+<div>  <span class="cy">-v</span>           verbose (-v, -vv, -vvv)</div>
+<div class="mut">  --provider github|gitlab on plan/report/apply (else auto-detected)</div>
+</div>
+</div>
+
+</div>
 </div>
 
 <div class="sec">
@@ -54,24 +187,23 @@ cta2 = "Installer"
 </div>
 
 <div class="sec">
-  <div class="lbl mono">commandes</div>
-  <ul class="cmds">
-    <li><code>repolens plan</code><span>calcule un plan d'actions relisable</span></li>
-    <li><code>repolens apply</code><span>exécute le plan (ou --dry-run)</span></li>
-    <li><code>repolens report</code><span>rapport d'audit — json / sarif / html…</span></li>
-    <li><code>repolens compare</code><span>compare deux rapports d'audit</span></li>
-    <li><code>repolens install-hooks</code><span>hooks git avec scan de secrets</span></li>
-  </ul>
-</div>
-
-<div class="sec">
   <div class="lbl mono">installation</div>
   <h2 id="install">Installer RepoLens</h2>
-  <pre># Docker (recommandé)
-docker run --rm -v "$(pwd)":/repo ghcr.io/systm-d/repolens plan
-
-# Cargo
-cargo install repolens</pre>
-  <p style="color:var(--mut);font-size:.85rem;margin-top:.7rem">Également sur Homebrew, AUR, Debian .deb et Scoop — ou téléchargez un binaire depuis la dernière release GitHub.</p>
+  <div class="installs">
+    <div class="ins"><h3>🐳 Docker <span class="mut">· recommandé</span></h3><pre>docker run --rm -v "$(pwd)":/repo \
+  ghcr.io/systm-d/repolens plan</pre><p>Aucune installation locale. Image amd64 sur GHCR.</p></div>
+    <div class="ins"><h3>📦 Cargo</h3><pre>cargo install repolens</pre><p>Depuis crates.io — nécessite Rust 1.85+.</p></div>
+    <div class="ins"><h3>🍺 Homebrew</h3><pre>brew tap systm-d/repolens
+brew install repolens</pre><p>macOS &amp; Linux.</p></div>
+    <div class="ins"><h3>🪟 Scoop</h3><pre>scoop bucket add systm-d https://github.com/systm-d/scoop-bucket
+scoop install repolens</pre><p>Windows.</p></div>
+    <div class="ins"><h3>🏛️ AUR</h3><pre>yay -S repolens</pre><p>Arch Linux.</p></div>
+    <div class="ins"><h3>⬇️ Binaire pré-compilé</h3><pre>curl -LO https://github.com/systm-d/repolens/releases/latest/download/repolens-linux-x86_64.tar.gz
+tar xzf repolens-linux-x86_64.tar.gz
+sudo mv repolens /usr/local/bin/</pre><p>Linux x86_64/arm64, macOS, Windows.</p></div>
+    <div class="ins"><h3>🔨 Depuis les sources</h3><pre>git clone https://github.com/systm-d/repolens
+cargo build --release -p repolens</pre><p>Rust 1.85+, edition 2024.</p></div>
+  </div>
+  <p class="verify">Vérifiez avec <code>repolens --version</code> → <code>repolens 3.0.0</code>. Le packaging Debian est sous <code>packaging/debian</code>.</p>
   <div class="callout">{{ img(src="img/portrait.webp") }}<div>🛡️ <strong>RepoLens configure un dépôt au mieux, automatiquement</strong> — la séparation plan/apply garantit que vous validez toujours avant tout changement. <em>Ce n'est pas un scanner de secrets ni de dépendances ; il se concentre sur la structure, la documentation &amp; la configuration de la plateforme d'hébergement.</em></div></div>
 </div>
