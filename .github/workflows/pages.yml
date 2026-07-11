@@ -32,7 +32,7 @@ jobs:
           tool: zola@0.21.0
       - name: Build site
         run: cd site && zola build
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site/public
 
