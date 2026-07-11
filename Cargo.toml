@@ -28,7 +28,7 @@ regex = "1.12"
 lazy_static = "1"
 url = "2"
 sha2 = "0.10"
-similar = "2"
+similar = "3"
 
 # Paths
 dirs = "6"
