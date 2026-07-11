@@ -22,7 +22,7 @@ jobs:
       contents: read
       pages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure Pages (enable if needed)
         uses: actions/configure-pages@v5
         with:
