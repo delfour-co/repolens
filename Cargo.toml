@@ -65,7 +65,7 @@ metrics-prometheus = "0.3"
 # Terminal output
 colored = "2"
 indicatif = { version = "0.17", features = ["tokio"] }
-console = "0.15"
+console = "0.16"
 dialoguer = { version = "0.12", features = ["fuzzy-select"] }
 
 # CLI framework
